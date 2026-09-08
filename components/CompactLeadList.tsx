@@ -3,6 +3,7 @@ import type { Lead, FollowUpType, FollowUpStatus } from '../types';
 import { trackCallAction, trackWhatsAppAction, trackEmailAction } from '../services/ctaTrackingService';
 import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
+import { canMutateLead } from '../utils/leadPermissions';
 
 interface CompactLeadListProps {
   leads: Lead[];
@@ -678,6 +679,11 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                                   AM: {getUserDisplayNameLocal(lead.accountManager)}
                                 </span>
                               )}
+                              {!canMutateLead(lead, { currentUser, isAdmin }) && (
+                                <span className="inline-block mr-2 px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
+                                  View only
+                                </span>
+                              )}
                               <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${getCategoryColor(lead.agentCategory)}`}>
                                 {lead.agentCategory}
                               </span>
@@ -985,7 +991,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                             >
                               👁️
                             </button>
-                            {isAdmin && availableUsers.length > 0 && (
+                            {isAdmin && canMutateLead(lead, { currentUser, isAdmin }) && availableUsers.length > 0 && (
                               <button
                                 onClick={() => {
                           const accountManagerOptions = availableUsers
@@ -1111,6 +1117,11 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                           AM: {getUserDisplayNameLocal(lead.accountManager)}
                         </span>
                       </div>
+                    )}
+                    {!canMutateLead(lead, { currentUser, isAdmin }) && (
+                      <span className="inline-block mt-2 px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
+                        View only
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1938,9 +1949,13 @@ Iapply.io`;
                 >
                   Close
                 </button>
-                {average !== null && average >= 1 && average <= 10 && (
+                {average !== null && average >= 1 && average <= 10 && selectedLeadForIcp && canMutateLead(selectedLeadForIcp, { currentUser, isAdmin }) && (
                   <button
                     onClick={async () => {
+                      if (!selectedLeadForIcp || !canMutateLead(selectedLeadForIcp, { currentUser, isAdmin })) {
+                        alert('You can view this lead but only the current Account Manager can edit it.');
+                        return;
+                      }
                       if (selectedLeadForIcp && onUpdateLead) {
                         try {
                           await onUpdateLead(selectedLeadForIcp.id, { icpScore: Math.round(average) });

@@ -12,6 +12,7 @@ import { MultiSelect } from './MultiSelect';
 import { trackCallAction, trackWhatsAppAction, trackEmailAction } from '../services/ctaTrackingService';
 import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
+import { canMutateLead } from '../utils/leadPermissions';
 
 type ViewModeType = 'list' | 'board' | 'compact' | 'mobile-cards';
 
@@ -277,6 +278,11 @@ const LeadCard: React.FC<{
               {firstContact.city}
             </p>
           )}
+          {!canMutateLead(lead, { currentUser, isAdmin }) && (
+            <span className="text-[10px] sm:text-xs font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">
+              View only
+            </span>
+          )}
         </div>
         
         {/* Account Manager and Sales Person */}
@@ -506,7 +512,7 @@ Iapply.io`;
       </div>
     )}
     
-    {isAdmin && availableUsers && availableUsers.length > 0 && (
+    {isAdmin && canMutateLead(lead, { currentUser, isAdmin }) && availableUsers && availableUsers.length > 0 && (
         <div className="mt-2 flex gap-2 items-center">
           <button 
             onClick={(e) => {
@@ -784,9 +790,13 @@ Iapply.io`;
                 >
                   Close
                 </button>
-                {average !== null && average >= 1 && average <= 10 && (
+                {average !== null && average >= 1 && average <= 10 && canMutateLead(lead, { currentUser, isAdmin }) && (
                   <button
                     onClick={async () => {
+                      if (!canMutateLead(lead, { currentUser, isAdmin })) {
+                        alert('You can view this lead but only the current Account Manager can edit it.');
+                        return;
+                      }
                       if (onUpdateLead) {
                         try {
                           await onUpdateLead(lead.id, { icpScore: Math.round(average) });
@@ -1175,7 +1185,7 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <div className="flex items-center gap-2">
                                         <button onClick={() => onSelectLead(lead)} className="text-indigo-600 hover:text-indigo-900">View</button>
-                                            {isAdmin && availableUsers && availableUsers.length > 0 && (
+                                            {isAdmin && canMutateLead(lead, { currentUser, isAdmin }) && availableUsers && availableUsers.length > 0 && (
                                                 <button 
                                                     onClick={() => {
                                                         // Create a simple assignment dialog

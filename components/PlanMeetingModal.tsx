@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { Modal } from './Modal';
-import { CustomDateTimePicker } from './CustomDateTimePicker';
 import type { Lead, FollowUp } from '../types';
 
 interface PlanMeetingModalProps {
@@ -9,10 +8,51 @@ interface PlanMeetingModalProps {
   onSchedule: (leadId: string, meetingDetails: Omit<FollowUp, 'id' | 'type' | 'status'> & { durationMinutes?: number }) => void;
 }
 
+function getLeadContacts(lead: Lead): Record<string, unknown>[] {
+  const raw: unknown = lead.contacts as unknown;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object') return [parsed];
+    } catch {
+      return [];
+    }
+  }
+  if (raw && typeof raw === 'object') return [raw as Record<string, unknown>];
+  return [];
+}
+
+function collectText(value: unknown, out: string[] = []): string[] {
+  if (value == null) return out;
+  if (typeof value === 'string' || typeof value === 'number') {
+    out.push(String(value));
+    return out;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((v) => collectText(v, out));
+    return out;
+  }
+  if (typeof value === 'object') {
+    Object.values(value).forEach((v) => collectText(v, out));
+  }
+  return out;
+}
+
+function leadCityLabel(lead: Lead, term = ''): string {
+  const cities = getLeadContacts(lead)
+    .map((c) => c?.city || c?.City)
+    .filter((c) => c != null && String(c).trim())
+    .map((c) => String(c).trim());
+  const t = term.toLowerCase().trim();
+  return (t && cities.find((c) => c.toLowerCase().includes(t))) || cities[0] || '';
+}
+
 export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClose, onSchedule }) => {
   const safeLeads = Array.isArray(leads) ? leads : [];
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedLeadId, setSelectedLeadId] = useState<string>(safeLeads[0]?.id || '');
+  const [selectedLeadId, setSelectedLeadId] = useState<string>('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [date, setDate] = useState(() => {
     const now = new Date();
@@ -27,16 +67,18 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
   const filteredLeads = useMemo(() => {
     if (!searchTerm.trim()) return safeLeads;
     const term = searchTerm.toLowerCase().trim();
-    return safeLeads.filter(
-      (l) =>
-        (l.agencyName || '').toLowerCase().includes(term) ||
-        (l.country || '').toLowerCase().includes(term) ||
-        (l.remarks || '').toLowerCase().includes(term)
-    );
+    return safeLeads.filter((l) => {
+      const nameMatch = (l.agencyName || '').toLowerCase().includes(term);
+      const countryMatch = (l.country || '').toLowerCase().includes(term);
+      const remarksMatch = (l.remarks || '').toLowerCase().includes(term);
+      const cityMatch = getLeadContacts(l).some((c) => collectText(c).join(' ').toLowerCase().includes(term));
+      return nameMatch || countryMatch || remarksMatch || cityMatch;
+    });
   }, [safeLeads, searchTerm]);
 
   const selectedLead = safeLeads.find((l) => l.id === selectedLeadId);
   const inputDisplayValue = selectedLeadId && selectedLead ? selectedLead.agencyName || '' : searchTerm;
+  const showSuggestions = !selectedLeadId && (dropdownOpen || Boolean(searchTerm.trim()));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +100,7 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
           <label htmlFor="lead-search" className="block text-sm font-medium text-slate-700 mb-1">
             Agency / Partner <span className="text-red-500">*</span>
           </label>
-          <div className="relative">
+          <div className="relative overflow-visible">
             <div className="relative">
               <input
                 id="lead-search"
@@ -71,7 +113,6 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
                   setDropdownOpen(true);
                 }}
                 onFocus={() => setDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
                 className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 autoComplete="off"
               />
@@ -81,21 +122,23 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
                 </svg>
               </div>
             </div>
-            {dropdownOpen && (
+            {showSuggestions && (
               <ul
-                className="absolute z-10 mt-1 w-full max-h-48 overflow-auto rounded-md border border-slate-300 bg-white shadow-lg py-1"
+                className="mt-1 w-full max-h-48 overflow-auto rounded-md border border-slate-300 bg-white shadow-lg py-1"
                 role="listbox"
               >
                 {filteredLeads.length === 0 ? (
                   <li className="px-3 py-2 text-sm text-slate-500">No agency found</li>
                 ) : (
-                  filteredLeads.map((lead) => (
+                  filteredLeads.map((lead) => {
+                    const city = leadCityLabel(lead, searchTerm);
+                    return (
                     <li
                       key={lead.id}
                       role="option"
                       aria-selected={selectedLeadId === lead.id}
                       className={`px-3 py-2 text-sm cursor-pointer ${
-                        selectedLeadId === lead.id ? 'bg-indigo-50 text-indigo-800' : 'text-slate-700 hover:bg-slate-100'
+                        selectedLeadId === lead.id ? 'bg-indigo-50' : 'hover:bg-slate-100'
                       }`}
                       onMouseDown={(e) => {
                         e.preventDefault();
@@ -104,9 +147,18 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
                         setDropdownOpen(false);
                       }}
                     >
-                      {lead.agencyName}
+                      <div className="font-medium text-slate-900">{lead.agencyName}</div>
+                      {city ? (
+                        <div className="flex items-center gap-1 mt-0.5 text-xs text-slate-500">
+                          <svg className="h-3 w-3 text-red-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                          </svg>
+                          {city}
+                        </div>
+                      ) : null}
                     </li>
-                  ))
+                    );
+                  })
                 )}
               </ul>
             )}

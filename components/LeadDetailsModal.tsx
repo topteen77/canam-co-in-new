@@ -11,6 +11,7 @@ import MeetingRemarksIntegration from './MeetingRemarksIntegration';
 import { MultiSelect } from './MultiSelect';
 import { CustomDateTimePicker } from './CustomDateTimePicker';
 import { SimplePagination } from './SimplePagination';
+import { canMutateLead } from '../utils/leadPermissions';
 
 interface LeadDetailsModalProps {
   lead: Lead | null;
@@ -335,11 +336,11 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     }
   };
 
-  // Reset page when lead changes
+  // Reset page when lead changes; only AM / admin open in edit mode
   useEffect(() => {
     setFollowUpPage(1);
-    setIsEditing(true); // 🟢 Always open in edit mode when a lead is selected
-  }, [lead]);
+    setIsEditing(canMutateLead(lead, { currentUser, isAdmin }));
+  }, [lead, currentUser, isAdmin]);
 
   // Reset contact modal when editing mode changes
   useEffect(() => {
@@ -357,26 +358,8 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   // Ensure country interest is always an array
   const displayCountryInterest = Array.isArray(lead.countryInterest) ? lead.countryInterest : ['Canada'];
 
-  // Enhanced permission logic
-  const isAccountManager = userRole === 'Account Manager' ||
-    userRole === 'account manager' ||
-    userRole === 'Account manager' ||
-    (userRole && userRole.toLowerCase().includes('account') && userRole.toLowerCase().includes('manager'));
-  const isSales = userRole === 'Sales' || userRole === 'sales';
-  const isOperations = userRole === 'Operations' || userRole === 'operations';
-
-  // SIMPLIFIED PERMISSION LOGIC: Role-based permissions take precedence
-  const userInAvailableUsers = availableUsers.find(u => u.email && u.email.toLowerCase() === currentUser.toLowerCase());
-  const isAccountManagerFromUsers = userInAvailableUsers && userInAvailableUsers.role === 'Account Manager';
-
-  // Allow ALL authenticated users to edit leads
-  const canEdit = !!currentUser ||
-    isAdmin ||
-    isAccountManager ||
-    isSales ||
-    isOperations ||
-    isAccountManagerFromUsers ||
-    true; // Fallback: allow all users to edit
+  // Admin can always edit/assign. Others only if they are this lead's current account manager.
+  const canEdit = canMutateLead(lead, { currentUser, isAdmin });
 
   // Stable id for API calls: prefer id, fallback firebase_id; never use literal "null" or empty
   const effectiveLeadId = (): string => {
@@ -389,7 +372,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   };
 
   const handleSaveEditedFollowUp = async () => {
-    if (!editingFollowUpId || !onUpdateFollowUp) return;
+    if (!canEdit || !editingFollowUpId || !onUpdateFollowUp) return;
     
     try {
       await onUpdateFollowUp(lead.id, editingFollowUpId, editFollowUpData);
@@ -410,6 +393,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   };
 
   const handleSave = async () => {
+    if (!canEdit) return;
     const id = effectiveLeadId();
     if (!id) {
       alert('Lead id is missing or invalid. Cannot update.');
@@ -431,6 +415,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   };
 
   const handleAddFollowUp = async () => {
+    if (!canEdit) return;
     // Validate required fields
     if (!newFollowUp.scheduledDate) {
       alert('Please select a scheduled date');
@@ -506,7 +491,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   };
 
   const handleSaveContact = async (contact: Contact) => {
-    if (!lead) return;
+    if (!lead || !canEdit) return;
     const id = effectiveLeadId();
     if (!id) {
       alert('Lead id is missing. Cannot update contacts.');
@@ -667,6 +652,11 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       <span className={`px-2 py-0.5 rounded-md text-xs font-bold bg-purple-100 text-purple-800`}>
                         ⭐ {lead.agentCategory}
                       </span>
+                      {!canEdit && (
+                        <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-800">
+                          View only
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

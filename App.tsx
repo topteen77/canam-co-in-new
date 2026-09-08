@@ -16,6 +16,7 @@ import {
 import apiClient from './services/apiClient';
 import { restoreAuth, logout as authLogout, getStoredUser } from './services/authService';
 import { getUserDisplayName as utilGetUserDisplayName } from './utils/dataCleaning';
+import { canMutateLead } from './utils/leadPermissions';
 import type { Lead, AttendanceRecord, MeetingCheckInRecord } from './types';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES, COUNTRY_OPTIONS } from './types';
 
@@ -200,10 +201,13 @@ const App: React.FC = () => {
     );
   }, [leads, isAdmin, currentUser]);
 
+  /** Leads page: everyone can browse all leads (e.g. by city). Edit/assign is locked to the current AM. */
+  const cityBrowsableLeads = leads;
+
   /** Pipeline = same layout as Leads but only leads with status "In Pipeline" */
   const pipelineLeads = useMemo(() =>
-    displayedLeads.filter(l => l.status === 'In Pipeline'),
-    [displayedLeads]
+    cityBrowsableLeads.filter(l => l.status === 'In Pipeline'),
+    [cityBrowsableLeads]
   );
 
   const canViewAllDashboardData = isAdmin; 
@@ -292,6 +296,10 @@ const App: React.FC = () => {
 
   /** Update lead and refetch from server so changes persist (fixes revert on refresh) */
   const handleUpdateLead = useCallback(async (id: string, data: Partial<Lead>) => {
+      const existing = leads.find(l => String(l.id) === String(id));
+      if (existing && !canMutateLead(existing, { currentUser, isAdmin })) {
+          return;
+      }
       await updateLead(id, data);
       const list = await getAllLeads();
       setLeads(list);
@@ -299,7 +307,7 @@ const App: React.FC = () => {
           const updated = list.find(l => String(l.id) === String(id));
           if (updated) setSelectedLead(updated);
       }
-  }, [selectedLead?.id]);
+  }, [selectedLead?.id, leads, currentUser, isAdmin]);
 
   const handleAddMeeting = useCallback(async (leadId: string, meetingDetails: { date: string; notes?: string; durationMinutes?: number }) => {
       const lead = leads.find(l => String(l.id) === String(leadId));
@@ -721,7 +729,7 @@ const App: React.FC = () => {
                         <LeadsDashboard
                             key="leads"
                             defaultViewMode="compact"
-                            leads={displayedLeads}
+                            leads={cityBrowsableLeads}
                             onSelectLead={handleViewLead}
                             onAddLead={() => setAddLeadModalOpen(true)}
                             onImportLeads={() => setImportModalOpen(true)}
@@ -736,10 +744,10 @@ const App: React.FC = () => {
                             onSelectVisibleLeads={(ids) => setSelectedLeads(ids)}
                             onClearSelection={() => setSelectedLeads([])}
                             onBulkDeleteLeads={async (ids) => { for(const id of ids) await deleteLead(id); }}
-                            onBulkAssignLeads={async (ids, am, sp) => { for(const id of ids) await updateLead(id, {accountManager: am, salesPerson: sp}); }}
+                            onBulkAssignLeads={async (ids, am, sp) => { for(const id of ids) await handleUpdateLead(id, {accountManager: am, salesPerson: sp}); }}
                             availableUsers={availableUsers}
-                            onAssignLead={(id, am, sp) => updateLead(id, {accountManager: am, salesPerson: sp})}
-                            onUpdateLead={(id, data) => updateLead(id, data)}
+                            onAssignLead={(id, am, sp) => handleUpdateLead(id, {accountManager: am, salesPerson: sp})}
+                            onUpdateLead={handleUpdateLead}
                         />
                     )}
 
@@ -778,11 +786,13 @@ const App: React.FC = () => {
                                     onSelectVisibleLeads={(ids) => setSelectedLeads(ids)}
                                     onClearSelection={() => setSelectedLeads([])}
                                     onBulkDeleteLeads={async (ids) => { for(const id of ids) await deleteLead(id); setLeads(await getAllLeads()); }}
-                                    onBulkAssignLeads={async (ids, am, sp) => { for(const id of ids) await updateLead(id, {accountManager: am, salesPerson: sp}); setLeads(await getAllLeads()); }}
+                                    onBulkAssignLeads={async (ids, am, sp) => { for(const id of ids) await handleUpdateLead(id, {accountManager: am, salesPerson: sp}); }}
                                     availableUsers={availableUsers}
                                     onAssignLead={(id, am, sp) => handleUpdateLead(id, {accountManager: am, salesPerson: sp})}
                                     onUpdateLead={handleUpdateLead}
                                     onAddFollowUp={async (id, f) => {
+                                        const existing = leads.find(l => String(l.id) === String(id));
+                                        if (existing && !canMutateLead(existing, { currentUser, isAdmin })) return;
                                         await appendFollowUp(id, { ...f, id: Date.now().toString() });
                                         const list = await getAllLeads();
                                         setLeads(list);
@@ -893,7 +903,7 @@ const App: React.FC = () => {
 
         {isPlanMeetingModalOpen && (
             <PlanMeetingModal
-                leads={displayedLeads}
+                leads={cityBrowsableLeads}
                 onClose={() => setPlanMeetingModalOpen(false)}
                 onSchedule={handleAddMeeting}
             />
@@ -921,6 +931,7 @@ const App: React.FC = () => {
                 userRole={userRole || ''}
                 onUpdateLead={handleUpdateLead}
                 onAddFollowUp={async (id, f) => {
+                    if (selectedLead && !canMutateLead(selectedLead, { currentUser, isAdmin })) return;
                     await appendFollowUp(id, { ...f, id: Date.now().toString() });
                     const list = await getAllLeads();
                     setLeads(list);

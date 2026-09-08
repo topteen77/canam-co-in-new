@@ -7,10 +7,35 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies (app + server)
 node_modules
+/node_modules
+server/node_modules
+
+# Build output
 dist
 dist-ssr
+.vite
+coverage
+
+# Environment / secrets (frontend and server/)
+.env
+.env.*
+!.env.example
+!.env*.example
+server/.env
+server/.env.*
+!server/.env.example
+!server/.env*.example
+server/.env.bak.*
+
+# Local / deploy leftovers
 *.local
+.deploy/
+
+# Accidental editor/backup copies (e.g. File.tsx---140526)
+*---*
+*--[0-9]*
 
 # Editor directories and files
 .vscode/*
