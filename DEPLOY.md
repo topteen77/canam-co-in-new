@@ -1,32 +1,111 @@
-# Deployment
+# Production deploy
 
-## Prerequisites
-- Node.js 18+
-- MySQL database
-- (Optional) Firebase project for auth
+Frontend PM2: **`new-crm-web`** on port **3001** (`/var/www/canam-co-in-new`)  
+Backend PM2: **`new-crm-api`** on port **5002** (`/var/www/canam-co-in-new/server`)
 
-## Steps
+Both processes run as **root**. Always use `sudo pm2` (`sudo pm2 list`, `sudo pm2 restart`, `sudo pm2 logs`).
 
-### 1. Backend (API server)
-```
-cd server
-cp env.example .env
-# Edit .env with your DB URL, JWT secret, Firebase credentials, etc.
-npm install
-npm run start
-# Or: node index-simple.js (default port 3001)
-```
+Pushes to `main` (and **Actions → Deploy production → Run workflow**) build the frontend on GitHub, copy `dist/` to the server, then restart both PM2 apps.
 
-### 2. Frontend (build and serve)
-```
-npm install
-npm run build
-# Serves from dist/ — use any static host (nginx, Firebase Hosting, etc.)
-# Or run: npx serve dist -p 3000
+Vite is **not** built on the VPS (it previously ran out of memory). GitHub Actions builds `dist/`.
+
+---
+
+## One-time server setup
+
+SSH in as `dev`, then from the project directory:
+
+```bash
+cd /var/www/canam-co-in-new
+git pull origin main
+bash scripts/bootstrap-github-deploy.sh
 ```
 
-### 3. Production
-- Point your reverse proxy (nginx/apache) to:
-  - API: http://localhost:3001 (or your server port)
-  - Static: dist/ folder
-- Set `VITE_API_URL` in .env before building (e.g. `VITE_API_URL=https://api.yoursite.com/api`) so the frontend calls your live API.
+That script:
+
+1. Adds the GitHub Actions SSH public key to `~/.ssh/authorized_keys`
+2. Allows passwordless `sudo pm2` (root’s process list)
+3. Checks `sudo pm2 list`
+
+If you cannot pull yet, add the key by hand:
+
+```bash
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMIuqyc6rAhWKIuYLWyfYMfqZ27I5XHzYbcossxd8oH8 github-actions-deploy-canam-co-in-new' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Then allow passwordless `sudo pm2`:
+
+```bash
+echo 'dev ALL=(root) NOPASSWD: /usr/bin/pm2, /usr/local/bin/pm2' | sudo tee /etc/sudoers.d/canam-github-deploy
+sudo chmod 440 /etc/sudoers.d/canam-github-deploy
+sudo visudo -cf /etc/sudoers.d/canam-github-deploy
+sudo -n pm2 list
+```
+
+Keep the existing root PM2 apps. Do **not** start a second copy under the `dev` user.
+
+---
+
+## GitHub secrets
+
+Repo → **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|--------|--------|
+| `DEPLOY_HOST` | server public IP or hostname |
+| `DEPLOY_USER` | `dev` |
+| `DEPLOY_SSH_KEY` | private key for the public key above |
+| `DEPLOY_PORT` | `22` |
+| `PROD_DEPLOY_PATH` | `/var/www/canam-co-in-new` |
+| `VITE_API_URL` | optional; defaults in code to `https://canam.co.in/api` |
+
+Environment **production** is used by the workflow.
+
+---
+
+## How a deploy works
+
+1. Push to `main` (or run the workflow manually).
+2. GitHub installs deps and runs `npm run build`.
+3. `dist.tar.gz` is copied to `/tmp/canam-co-in-new/` on the server.
+4. SSH runs `scripts/remote-deploy.sh`, which:
+   - `git fetch` + `git reset --hard origin/main`
+   - unpacks `dist/`
+   - `npm ci` in the app and in `server/`
+   - `sudo pm2 restart new-crm-api`
+   - `sudo pm2 restart new-crm-web`
+   - checks HTTP on ports 3001 and 5002
+
+`.env` on the server is not in git and is left untouched.
+
+### Manual deploy on the server (after a local/CI `dist` upload)
+
+```bash
+cd /var/www/canam-co-in-new
+DIST_TARBALL=/tmp/canam-co-in-new/dist.tar.gz ./scripts/remote-deploy.sh
+sudo pm2 list
+```
+
+---
+
+## PM2 cheat sheet (root)
+
+```bash
+sudo pm2 list
+sudo pm2 restart new-crm-api new-crm-web
+sudo pm2 logs new-crm-api --lines 80
+sudo pm2 logs new-crm-web --lines 80
+sudo pm2 save
+```
+
+To (re)create the apps from the repo config:
+
+```bash
+cd /var/www/canam-co-in-new
+sudo pm2 start ecosystem.config.cjs
+sudo pm2 save
+```
+
+Only do that if `new-crm-api` / `new-crm-web` are missing. Do not start duplicates.
