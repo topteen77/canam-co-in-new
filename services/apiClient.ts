@@ -10,9 +10,11 @@ const apiClient = axios.create({
   },
 });
 
-// Attach JWT from localStorage on every request
+// Attach JWT from sessionStorage (session) or localStorage (remember me)
 apiClient.interceptors.request.use((config) => {
-  const token = typeof localStorage !== 'undefined' && localStorage.getItem('crmToken');
+  const token =
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('crmToken')) ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('crmToken'));
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });

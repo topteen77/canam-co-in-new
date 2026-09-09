@@ -3,6 +3,8 @@
  * City list is shown based on selected country.
  */
 
+export const DEFAULT_CONTACT_COUNTRY = 'India';
+
 export const CONTACT_COUNTRY_OPTIONS: string[] = [
   'India',
   'Canada',
@@ -32,12 +34,14 @@ export const CITIES_BY_COUNTRY: Record<string, string[]> = {
     'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai', 'Kolkata', 'Pune', 'Ahmedabad',
     'Chandigarh', 'Jaipur', 'Lucknow', 'Indore', 'Coimbatore', 'Kochi', 'Nagpur', 'Bhopal',
     'Ludhiana', 'Surat', 'Vadodara', 'Ghaziabad', 'Noida', 'Gurgaon', 'Faridabad', 'Mysore',
-    'Thiruvananthapuram', 'Visakhapatnam', 'Mumbai', 'New Delhi', 'Other'
+    'Thiruvananthapuram', 'Visakhapatnam', 'New Delhi', 'Jalandhar', 'Amritsar', 'Mohali',
+    'Patiala', 'Ambala', 'Karnal', 'Panipat', 'Kurukshetra', 'Moga', 'Bathinda', 'Hisar', 'Other'
   ],
   Canada: [
     'Toronto', 'Vancouver', 'Montreal', 'Calgary', 'Edmonton', 'Ottawa', 'Winnipeg', 'Quebec City',
     'Hamilton', 'Kitchener', 'London', 'Victoria', 'Halifax', 'Oshawa', 'Windsor', 'Saskatoon',
-    'Regina', 'Sherbrooke', 'Barrie', 'Kelowna', 'Abbotsford', 'Kingston', 'Trois-Rivières', 'Other'
+    'Regina', 'Sherbrooke', 'Barrie', 'Kelowna', 'Abbotsford', 'Kingston', 'Trois-Rivières',
+    'Mississauga', 'Brampton', 'Surrey', 'Burnaby', 'Laval', 'Markham', 'Vaughan', 'Richmond', 'Other'
   ],
   USA: [
     'New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio',
@@ -112,12 +116,49 @@ export const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Other: []
 };
 
+function countryCityList(country: string): string[] {
+  const needle = (country || '').trim().toLowerCase();
+  if (!needle) return [];
+  const key = Object.keys(CITIES_BY_COUNTRY).find((k) => k.toLowerCase() === needle);
+  return key ? CITIES_BY_COUNTRY[key] : [];
+}
+
 /** Get cities for a country; includes existing city if not in list so we don't lose custom values */
 export function getCityOptionsForCountry(country: string, existingCity?: string): string[] {
-  const list = CITIES_BY_COUNTRY[country] || [];
+  const list = countryCityList(country);
   const normalized = (existingCity || '').trim();
   if (normalized && !list.includes(normalized)) {
     return [normalized, ...list];
   }
   return list;
+}
+
+/** Blank contact country is treated as India (most agencies do not store country). */
+export function contactMatchesSelectedCountries(
+  contactCountry: string | undefined | null,
+  selectedCountries: string[]
+): boolean {
+  if (!selectedCountries.length) return true;
+  const stored = (contactCountry || '').trim().toLowerCase();
+  return selectedCountries.some((country) => {
+    const selected = (country || '').trim().toLowerCase();
+    if (!selected) return false;
+    if (!stored && selected === DEFAULT_CONTACT_COUNTRY.toLowerCase()) return true;
+    return stored.includes(selected);
+  });
+}
+
+/** Cities for one or more countries (lead filters). Extra values are kept if they belong to those countries. */
+export function getCityOptionsForCountries(countries: string[], extraCities: string[] = []): string[] {
+  const cities = new Set<string>();
+  const extras = extraCities.map((c) => (c || '').trim()).filter(Boolean);
+  if (!countries.length) {
+    extras.forEach((c) => cities.add(c));
+    return [...cities].sort((a, b) => a.localeCompare(b));
+  }
+  countries.forEach((country) => {
+    countryCityList(country).forEach((city) => cities.add(city));
+  });
+  extras.forEach((city) => cities.add(city));
+  return [...cities].sort((a, b) => a.localeCompare(b));
 }

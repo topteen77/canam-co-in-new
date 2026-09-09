@@ -43,7 +43,7 @@ const envPath = path.resolve(__dirname, '../.env');
 dotenv.config({ path: envPath });
 
 const app = express();
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5002;
 
 if (process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true') {
   app.set('trust proxy', 1);
@@ -62,9 +62,9 @@ const corsOrigins = [
     'http://localhost:3000',
     'http://127.0.0.1:5173', 
     'http://43.204.23.58:3000',
-	'http://43.204.23.58:5001',
+	'http://43.204.23.58:5002',
   'https://canam.co.in:3000/',
-  'https://canam.co.in:5001/',
+  'https://canam.co.in:5002/',
   ...(process.env.PUBLIC_SITE_ORIGIN ? [process.env.PUBLIC_SITE_ORIGIN] : []),
   ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) : []),
 ];

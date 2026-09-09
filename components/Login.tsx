@@ -14,14 +14,17 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [showEmailLogin, setShowEmailLogin] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
   const [name, setName] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
 
   const handleEmailLogin = async () => {
-    if (!email || !password) return;
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    if (!trimmedEmail || !trimmedPassword) return;
     try {
       setLoading(true);
       setError(null);
       setSuccess(null);
-      const { user } = await apiLogin(email, password);
+      const { user } = await apiLogin(trimmedEmail, trimmedPassword, rememberMe);
       setSuccess('Login successful! Redirecting...');
       onLogin(user.email);
     } catch (err: any) {
@@ -33,12 +36,14 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   const handleRegister = async () => {
-    if (!email || !password) return;
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    if (!trimmedEmail || !trimmedPassword) return;
     try {
       setLoading(true);
       setError(null);
       setSuccess(null);
-      await register(email, password, name || email.split('@')[0]);
+      await register(trimmedEmail, trimmedPassword, (name || trimmedEmail.split('@')[0]).trim());
       setSuccess('Registration successful. Awaiting approval. You can try signing in after approval.');
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Registration failed.';
@@ -74,6 +79,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             placeholder="Email address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onBlur={(e) => setEmail(e.target.value.trim())}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
           />
           <input
@@ -81,6 +87,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onBlur={(e) => setPassword(e.target.value.trim())}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
           />
           {showRegister && (
@@ -91,6 +98,17 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
+          )}
+          {!showRegister && (
+            <label className="flex items-center gap-2 text-sm text-gray-700 select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Remember me
+            </label>
           )}
           {showRegister ? (
             <button

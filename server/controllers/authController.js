@@ -13,10 +13,12 @@ export const register = async (req, res) => {
     const passwordCol = pickPasswordCol(cols);
     if (!passwordCol) return res.status(500).json({ error: 'Users table has no password column (expected password, password_hash, hashed_password, customPassword, or defaultPassword)' });
 
-    const [existing] = await db.query(`SELECT * FROM ${table} WHERE \`${emailCol}\` = ?`, [req.body.email]);
+    const [existing] = await db.query(`SELECT * FROM ${table} WHERE \`${emailCol}\` = ?`, [String(req.body.email || '').trim().toLowerCase()]);
     if (existing.length > 0) return res.status(400).json({ error: 'User already exists' });
 
-    const { email, password, name } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '').trim();
+    const name = String(req.body.name || '').trim();
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = crypto.randomUUID();
     const idCol = cols.has('id') ? 'id' : 'firebase_id';
@@ -56,7 +58,8 @@ export const login = async (req, res) => {
         return res.status(500).json({ error: 'Users table has no password column' });
     }
 
-    const { email, password } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '').trim();
     if (!db) throw new Error("Database object 'db' is undefined. Check your imports.");
 
     const [users] = await db.query(`SELECT * FROM ${table} WHERE \`${emailCol}\` = ?`, [email]);

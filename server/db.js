@@ -5,6 +5,7 @@ dotenv.config();
 // Database must be iapply_crm; create it with scripts/init-iapply_crm.sql and import dump.sql
 const db = mysql.createPool({
   host: process.env.DB_HOST || '65.0.81.36',
+  port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'phpadmin',
   password: process.env.DB_PASSWORD || '[vtvHpb-m!UDd843',
   database: process.env.DB_NAME || 'db_nod_crm',
