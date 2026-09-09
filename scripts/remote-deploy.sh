@@ -20,6 +20,12 @@ BACKUP="/tmp/canam-dist.prev"
 log() { printf '==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+export PATH="/usr/local/bin:/usr/bin:$HOME/.local/bin:$PATH"
+if [[ -s "$HOME/.nvm/nvm.sh" ]]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.nvm/nvm.sh"
+fi
+
 git_cmd() {
   if git -c "safe.directory=*" "$@"; then
     return 0
@@ -28,12 +34,19 @@ git_cmd() {
   sudo -n git -c "safe.directory=*" "$@"
 }
 
+if command -v npm >/dev/null 2>&1; then
+  NPM="$(command -v npm)"
+elif [[ -x /usr/bin/npm ]]; then
+  NPM=/usr/bin/npm
+elif [[ -x /usr/local/bin/npm ]]; then
+  NPM=/usr/local/bin/npm
+else
+  die "npm not found in PATH for user $(whoami)"
+fi
+log "using $NPM ($("$NPM" --version))"
+
 npm_cmd() {
-  if sudo -n npm --version >/dev/null 2>&1; then
-    sudo -n npm "$@"
-  else
-    npm "$@"
-  fi
+  "$NPM" "$@"
 }
 
 restore_dist() {
