@@ -51,6 +51,15 @@ sudo -n pm2 list
 
 Keep the existing root PM2 apps. Do **not** start a second copy under the `dev` user.
 
+If GitHub Actions reports `detected dubious ownership` or `sudo: a password is required` for git, run this once as `dev`:
+
+```bash
+sudo git config --system --add safe.directory /var/www/canam-co-in-new
+sudo chown -R dev:dev /var/www/canam-co-in-new
+```
+
+`.env` stays in that directory; PM2 can still run as root and read the files.
+
 ---
 
 ## GitHub secrets

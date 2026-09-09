@@ -21,11 +21,11 @@ log() { printf '==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 git_cmd() {
-  if git "$@"; then
+  if git -c "safe.directory=*" "$@"; then
     return 0
   fi
-  log "git $* failed as $(whoami); retrying with sudo"
-  sudo -n git "$@"
+  log "git $* failed as $(whoami); retrying with sudo -n"
+  sudo -n git -c "safe.directory=*" "$@"
 }
 
 npm_cmd() {

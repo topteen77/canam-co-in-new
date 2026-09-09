@@ -45,11 +45,11 @@ jobs:
             cd "$ROOT"
 
             git_cmd() {
-              if git "$@"; then
+              if git -c "safe.directory=*" "$@"; then
                 return 0
               fi
-              echo "==> git $* failed as $(whoami); retrying with sudo"
-              sudo -n git "$@"
+              echo "==> git $* failed as $(whoami); retrying with sudo -n"
+              sudo -n git -c "safe.directory=*" "$@"
             }
 
             npm_cmd() {
