@@ -14,6 +14,7 @@ import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { canMutateLead } from '../utils/leadPermissions';
 import { CONTACT_COUNTRY_OPTIONS, DEFAULT_CONTACT_COUNTRY, contactMatchesSelectedCountries, getCityOptionsForCountries } from '../utils/countriesAndCities';
+import { resolveLeadSource } from '../utils/leadVisibility';
 
 type ViewModeType = 'list' | 'board' | 'compact' | 'mobile-cards';
 
@@ -1274,50 +1275,6 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
 
 type ViewMode = 'list' | 'board' | 'compact' | 'mobile-cards';
 
-type LeadFilters = {
-  status: string[];
-  category: string[];
-  leadSource: string[];
-  accountManager: string[];
-  salesPerson: string[];
-  createdBy: string[];
-  city: string[];
-  country: string[];
-  countryInterest: string[];
-  dateCreatedFrom: string;
-  dateCreatedTo: string;
-  searchTerm: string;
-  tags: string[];
-  icpScore: { min: string; max: string };
-  followUpCount: { min: string; max: string };
-};
-
-/** True when the user is searching via the filter panel / search box (not default own-leads view). */
-function hasCrossUserSearch(filters: LeadFilters): boolean {
-  const countryIsCustom =
-    filters.country.length > 0 &&
-    !(filters.country.length === 1 && filters.country[0] === DEFAULT_CONTACT_COUNTRY);
-
-  return (
-    filters.city.length > 0 ||
-    filters.searchTerm.trim() !== '' ||
-    filters.accountManager.length > 0 ||
-    filters.salesPerson.length > 0 ||
-    filters.createdBy.length > 0 ||
-    filters.status.length > 0 ||
-    filters.leadSource.length > 0 ||
-    filters.countryInterest.length > 0 ||
-    filters.tags.length > 0 ||
-    !!filters.dateCreatedFrom ||
-    !!filters.dateCreatedTo ||
-    !!filters.icpScore.min ||
-    !!filters.icpScore.max ||
-    !!filters.followUpCount.min ||
-    !!filters.followUpCount.max ||
-    countryIsCustom
-  );
-}
-
 export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
   const getDefaultViewMode = (): ViewMode => {
     if (props.defaultViewMode) return props.defaultViewMode;
@@ -1379,8 +1336,12 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
 
   const isUserFilteredView = !props.isAdmin && props.currentUser;
   const catalogLeads = props.allLeads && props.allLeads.length > 0 ? props.allLeads : props.leads;
-  const isSearchingAllLeads = isUserFilteredView && hasCrossUserSearch(filters);
-  const sourceLeads = isSearchingAllLeads ? catalogLeads : props.leads;
+  const { sourceLeads, isSearchingAllLeads } = resolveLeadSource({
+    isAdmin: props.isAdmin || !props.currentUser,
+    assignedLeads: props.leads,
+    allLeads: props.allLeads,
+    filters,
+  });
 
   // Respect defaultViewMode from parent; else mobile-first: cards below 1024px
   useEffect(() => {

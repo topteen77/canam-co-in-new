@@ -17,6 +17,7 @@ import apiClient from './services/apiClient';
 import { restoreAuth, logout as authLogout, getStoredUser } from './services/authService';
 import { getUserDisplayName as utilGetUserDisplayName } from './utils/dataCleaning';
 import { canMutateLead } from './utils/leadPermissions';
+import { getAssignedLeads } from './utils/leadVisibility';
 import type { Lead, AttendanceRecord, MeetingCheckInRecord } from './types';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES, COUNTRY_OPTIONS } from './types';
 
@@ -190,16 +191,10 @@ const App: React.FC = () => {
   const isAdmin = ['Admin', 'SuperAdmin', 'superadmin'].includes(userRole);
   const isSubAdmin = userRole === 'SubAdmin';
   
-  const displayedLeads = useMemo(() => {
-    if (isAdmin) return leads;
-    const email = (currentUser || '').toLowerCase();
-    if (!email) return [];
-    return leads.filter(l =>
-      (l.accountManager && String(l.accountManager).toLowerCase() === email) ||
-      (l.salesPerson && String(l.salesPerson).toLowerCase() === email) ||
-      (l.createdBy && String(l.createdBy).toLowerCase() === email)
-    );
-  }, [leads, isAdmin, currentUser]);
+  const displayedLeads = useMemo(
+    () => getAssignedLeads(leads, { isAdmin, currentUser }),
+    [leads, isAdmin, currentUser]
+  );
 
   /** Pipeline = same layout as Leads but only leads with status "In Pipeline" */
   const pipelineLeads = useMemo(() =>
