@@ -1,3 +1,4 @@
+import { canMutateLead } from './leadPermissions';
 import { DEFAULT_CONTACT_COUNTRY } from './countriesAndCities';
 
 export type LeadSearchFilters = {
@@ -93,4 +94,21 @@ export function resolveLeadSource<T>(opts: {
     sourceLeads: isSearchingAllLeads ? catalogLeads : opts.assignedLeads,
     isSearchingAllLeads,
   };
+}
+
+/** Own leads first, then everyone else's — used so view-only results are visually grouped. */
+export function partitionLeadsByOwnership<T extends { accountManager?: string }>(
+  leads: T[],
+  opts: { currentUser?: string | null; isAdmin?: boolean }
+): { ownLeads: T[]; otherLeads: T[]; grouped: T[] } {
+  if (opts.isAdmin || !opts.currentUser) {
+    return { ownLeads: leads, otherLeads: [], grouped: leads };
+  }
+  const ownLeads: T[] = [];
+  const otherLeads: T[] = [];
+  leads.forEach((lead) => {
+    if (canMutateLead(lead, opts)) ownLeads.push(lead);
+    else otherLeads.push(lead);
+  });
+  return { ownLeads, otherLeads, grouped: [...ownLeads, ...otherLeads] };
 }

@@ -4,6 +4,7 @@ import {
   DEFAULT_LEAD_SEARCH_FILTERS,
   getAssignedLeads,
   hasCrossUserSearch,
+  partitionLeadsByOwnership,
   resolveLeadSource,
   type LeadSearchFilters,
 } from '../utils/leadVisibility';
@@ -168,6 +169,14 @@ const pipelineSearch = resolveLeadSource({
   filters: withFilters({ city: ['Moga'] }),
 });
 assert('pipeline city search uses full pipeline catalog', pipelineSearch.sourceLeads.map(l => l.id).sort(), ['other-moga', 'own-jalandhar', 'own-moga']);
+
+const groupedMoga = partitionLeadsByOwnership(
+  mogaView.visibleIds.map(id => leads.find(l => l.id === id)!),
+  { currentUser: AM, isAdmin: false }
+);
+assert('grouped list puts own leads first', groupedMoga.grouped.map(l => l.id), ['own-moga', 'other-moga', 'other-moga-blank-country']);
+assert('own group count for Moga search', groupedMoga.ownLeads.length, 1);
+assert('other group count for Moga search', groupedMoga.otherLeads.length, 2);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

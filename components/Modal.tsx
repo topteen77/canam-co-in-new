@@ -56,10 +56,10 @@ export const Modal: React.FC<ModalProps> = ({
       aria-labelledby="modal-title"
     >
       <div 
-        className={`modal-content bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[90vh] sm:max-h-[90vh] flex flex-col transform transition-all`}
+        className={`modal-content bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[90vh] sm:max-h-[90vh] flex flex-col transform transition-all overflow-hidden`}
         onClick={(e) => e.stopPropagation()} // Shield 3: Prevent backdrop click from firing when clicking content
       >
-        <header className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-200 flex-shrink-0 bg-white rounded-t-xl">
+        <header className="flex items-center justify-between px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-200 flex-shrink-0 bg-white rounded-t-xl sm:rounded-t-2xl z-30">
           <h2 id="modal-title" className="text-lg sm:text-xl font-bold text-slate-800 truncate pr-2">
             {title}
           </h2>
@@ -74,7 +74,7 @@ export const Modal: React.FC<ModalProps> = ({
           </button>
         </header>
         
-        <div className={`overflow-y-auto flex-1 ${noPadding ? '' : 'p-4 sm:p-6'}`}>
+        <div className={`overflow-y-auto flex-1 min-h-0 ${noPadding ? '' : 'p-4 sm:p-6'}`}>
           {children}
         </div>
       </div>

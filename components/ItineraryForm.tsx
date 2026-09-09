@@ -14,7 +14,7 @@ import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { canMutateLead } from '../utils/leadPermissions';
 import { CONTACT_COUNTRY_OPTIONS, DEFAULT_CONTACT_COUNTRY, contactMatchesSelectedCountries, getCityOptionsForCountries } from '../utils/countriesAndCities';
-import { resolveLeadSource } from '../utils/leadVisibility';
+import { resolveLeadSource, partitionLeadsByOwnership } from '../utils/leadVisibility';
 
 type ViewModeType = 'list' | 'board' | 'compact' | 'mobile-cards';
 
@@ -218,8 +218,14 @@ const LeadCard: React.FC<{
   };
   const onboardingDateStr = formatOnboardingDate(lead.onboardingDate);
 
+  const viewOnly = !canMutateLead(lead, { currentUser, isAdmin });
+
   return (
-    <div className="w-full bg-white rounded-lg shadow-lg p-3 sm:p-4 hover:shadow-xl transition-all duration-200 border border-gray-100 box-border max-w-full overflow-hidden">
+    <div className={`w-full rounded-lg shadow-lg p-3 sm:p-4 hover:shadow-xl transition-all duration-200 box-border max-w-full overflow-hidden ${
+      viewOnly
+        ? 'bg-amber-50 border-2 border-amber-300'
+        : 'bg-white border border-gray-100'
+    }`}>
       {showSelection && (
         <div className="flex items-center gap-2 mb-2">
           <input
@@ -283,8 +289,8 @@ const LeadCard: React.FC<{
             </p>
           )}
           {!canMutateLead(lead, { currentUser, isAdmin }) && (
-            <span className="text-[10px] sm:text-xs font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">
-              View only
+            <span className="text-[10px] sm:text-xs font-semibold text-amber-950 bg-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">
+              Other AM · View only
             </span>
           )}
         </div>
@@ -867,8 +873,25 @@ const MobileCardsView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLea
     <div className="w-full max-w-full overflow-hidden box-border">
       {/* Vertical Grid Container */}
       <div className="grid grid-cols-1 gap-3 sm:gap-4 mobile-cards-container box-border">
-        {leads.map(lead => (
-          <div key={lead.id} className="mobile-card w-full max-w-full box-border">
+        {leads.map((lead, index) => {
+          const isOwn = canMutateLead(lead, { currentUser, isAdmin });
+          const prevOwn = index > 0 ? canMutateLead(leads[index - 1], { currentUser, isAdmin }) : null;
+          const showOwnHeader = !isAdmin && !!currentUser && isOwn && (index === 0 || prevOwn === false);
+          const showOtherHeader = !isAdmin && !!currentUser && !isOwn && (index === 0 || prevOwn === true);
+          const hasOther = leads.some(l => !canMutateLead(l, { currentUser, isAdmin }));
+          return (
+          <React.Fragment key={lead.id}>
+            {hasOther && showOwnHeader && (
+              <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 uppercase tracking-wide">
+                Your leads
+              </div>
+            )}
+            {hasOther && showOtherHeader && (
+              <div className="px-3 py-2 rounded-lg bg-amber-100 border border-amber-300 text-xs font-semibold text-amber-900 uppercase tracking-wide">
+                Other leads — view only
+              </div>
+            )}
+          <div className="mobile-card w-full max-w-full box-border">
             <LeadCard 
               lead={lead} 
               onClick={() => onSelectLead(lead)}
@@ -884,7 +907,9 @@ const MobileCardsView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLea
               currentUser={currentUser}
             />
           </div>
-        ))}
+          </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );
@@ -1090,7 +1115,11 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
                             const checkInRecord = meetingCheckIns.find(c => c.leadId === lead.id && new Date(c.checkInTime).toDateString() === todayStr && c.username === currentUser);
 
                             return (
-                                <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
+                                <tr key={lead.id} className={`transition-colors border-l-4 ${
+                                  canMutateLead(lead, { currentUser, isAdmin })
+                                    ? 'hover:bg-slate-50 border-l-transparent'
+                                    : 'bg-amber-50 hover:bg-amber-100 border-l-amber-500'
+                                }`}>
                                     {isAdmin && (
                                         <td className="px-2 sm:px-6 py-4 whitespace-nowrap w-8 sm:w-auto">
                                             <input
@@ -1354,7 +1383,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
   }, [props.defaultViewMode]);
 
   // Filter leads based on current filters
-  const filteredLeads = sourceLeads.filter(lead => {
+  const matchedLeads = sourceLeads.filter(lead => {
     // 🟢 SAFE FIX: Pre-calculate safe arrays for filtering logic
     const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
     const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
@@ -1472,6 +1501,12 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
     }
     return true;
   });
+
+  const { ownLeads, otherLeads, grouped: groupedFilteredLeads } = partitionLeadsByOwnership(matchedLeads, {
+    currentUser: props.currentUser,
+    isAdmin: props.isAdmin,
+  });
+  const filteredLeads = isSearchingAllLeads ? groupedFilteredLeads : matchedLeads;
 
   // Pagination logic
   const totalPages = Math.ceil(filteredLeads.length / leadsPerPage);
@@ -1820,21 +1855,21 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
       
         {/* User Lead Info Panel */}
         {isUserFilteredView && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className={`border rounded-lg p-4 mb-6 ${isSearchingAllLeads ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
                 <div className="flex items-start gap-3">
                     <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className={`h-5 w-5 mt-0.5 ${isSearchingAllLeads ? 'text-amber-600' : 'text-blue-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                     </div>
                     <div>
-                        <h3 className="text-sm font-semibold text-blue-800">
+                        <h3 className={`text-sm font-semibold ${isSearchingAllLeads ? 'text-amber-900' : 'text-blue-800'}`}>
                             {isSearchingAllLeads ? 'Search results include all matching leads' : 'Your Assigned Leads'}
                         </h3>
-                        <p className="text-sm text-blue-700 mt-1">
+                        <p className={`text-sm mt-1 ${isSearchingAllLeads ? 'text-amber-800' : 'text-blue-700'}`}>
                             {isSearchingAllLeads ? (
                                 <>
-                                    You can view every lead that matches this search. You can only <strong>edit or assign</strong> leads where you are the current <strong>Account Manager</strong>.
+                                    Your leads are listed first. Other account managers’ leads appear below in a separate <strong>view-only</strong> group — you can only edit leads where you are the current Account Manager.
                                 </>
                             ) : (
                                 <>
@@ -1842,6 +1877,16 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                                 </>
                             )}
                         </p>
+                        {isSearchingAllLeads && (
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                              Your leads: {ownLeads.length}
+                            </span>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-200 text-amber-900">
+                              Other leads (view only): {otherLeads.length}
+                            </span>
+                          </div>
+                        )}
                     </div>
                 </div>
             </div>

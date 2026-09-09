@@ -612,10 +612,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Lead Details: ${lead.agencyName}`} maxWidth="max-w-6xl">
-      <div className="w-full max-w-6xl mx-auto bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-lg">
-        {/* Tab Navigation */}
-        <div className="flex border-b-2 border-slate-300 mb-4 bg-white rounded-lg p-1 shadow-sm">
+    <Modal isOpen={isOpen} onClose={onClose} title={`Lead Details: ${lead.agencyName}`} maxWidth="max-w-6xl" noPadding>
+      <div className="sticky top-0 z-20 bg-white border-b border-slate-200 shadow-[0_8px_16px_-8px_rgba(15,23,42,0.18)]">
+        <div className="flex overflow-x-auto px-3 sm:px-4 pt-2 gap-1">
           {[
             { id: 'details', label: '📋 Lead Details', icon: '📋' },
             { id: 'followups', label: '📞 Follow-ups', icon: '📞' },
@@ -624,9 +623,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-2 text-sm font-bold border-b-2 transition-all rounded-lg ${activeTab === tab.id
-                  ? 'border-indigo-500 text-indigo-600 bg-indigo-50'
-                  : 'border-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-50'
+              className={`px-3 sm:px-4 py-2 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.id
+                  ? 'border-indigo-600 text-indigo-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
                 }`}
             >
               {tab.label}
@@ -634,57 +633,56 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           ))}
         </div>
 
+        {activeTab === 'details' && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-3 sm:px-5 py-3 bg-slate-50 border-t border-slate-100">
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-bold text-slate-800 truncate">
+                🏢 {lead.agencyName}
+              </h2>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${getStatusColor(lead.status)}`}>
+                  {lead.status}
+                </span>
+                <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-purple-100 text-purple-800">
+                  ⭐ {lead.agentCategory}
+                </span>
+                {!canEdit && (
+                  <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-800">
+                    View only
+                  </span>
+                )}
+              </div>
+            </div>
+            {canEdit && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {isEditing && (
+                  <button
+                    onClick={handleSave}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 shadow-sm transition-colors"
+                  >
+                    Save Changes
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsEditing(!isEditing)}
+                  className={`px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-sm transition-colors ${
+                    isEditing
+                      ? 'bg-slate-600 hover:bg-slate-700'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
+                >
+                  {isEditing ? 'Cancel Edit' : 'Edit Lead'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="w-full bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-5">
         {/* Lead Details Tab */}
         {activeTab === 'details' && (
           <div className="space-y-4">
-            {/* Header with Status and Actions - FIXED AT TOP */}
-            <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm p-4 rounded-lg shadow-md border-2 border-indigo-200 mb-4 -mx-1 animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-800 mb-1 flex items-center gap-2">
-                      🏢 {lead.agencyName}
-                    </h2>
-                    <div className="flex items-center gap-3">
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${getStatusColor(lead.status)}`}>
-                        📊 {lead.status}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-bold bg-purple-100 text-purple-800`}>
-                        ⭐ {lead.agentCategory}
-                      </span>
-                      {!canEdit && (
-                        <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-800">
-                          View only
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {isEditing && (
-                    <button
-                      onClick={handleSave}
-                      className="px-6 py-2 text-sm font-bold text-white bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg hover:from-green-700 hover:to-emerald-700 border-2 border-green-600 shadow-lg transition-all transform hover:scale-105 flex items-center gap-2"
-                    >
-                      ✅ Save Changes
-                    </button>
-                  )}
-                  {canEdit && (
-                    <button
-                      onClick={() => setIsEditing(!isEditing)}
-                      className={`px-4 py-2 text-sm font-bold text-white rounded-lg border-2 shadow-lg transition-all transform hover:scale-105 ${
-                        isEditing 
-                          ? 'bg-gradient-to-r from-slate-600 to-slate-700 border-slate-600 hover:from-slate-700 hover:to-slate-800' 
-                          : 'bg-gradient-to-r from-indigo-600 to-blue-600 border-indigo-600 hover:from-indigo-700 hover:to-blue-700'
-                      }`}
-                    >
-                      {isEditing ? '❌ Cancel Edit' : '✏️ Edit Lead'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
             {/* Lead Information */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Basic Information */}

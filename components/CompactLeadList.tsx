@@ -4,6 +4,7 @@ import { trackCallAction, trackWhatsAppAction, trackEmailAction } from '../servi
 import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { canMutateLead } from '../utils/leadPermissions';
+import { partitionLeadsByOwnership } from '../utils/leadVisibility';
 
 interface CompactLeadListProps {
   leads: Lead[];
@@ -398,9 +399,8 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
   const [showColumnSelector, setShowColumnSelector] = useState(false);
 
   const sortedLeads = useMemo(() => {
-    if (!sortConfig) return leads;
-
-    return [...leads].sort((a, b) => {
+    const compare = (a: Lead, b: Lead) => {
+      if (!sortConfig) return 0;
       let aValue: any, bValue: any;
 
       switch (sortConfig.key) {
@@ -443,8 +443,12 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
-    });
-  }, [leads, sortConfig]);
+    };
+
+    const ordered = sortConfig ? [...leads].sort(compare) : leads;
+    if (isAdmin || !currentUser) return ordered;
+    return partitionLeadsByOwnership(ordered, { currentUser, isAdmin }).grouped;
+  }, [leads, sortConfig, isAdmin, currentUser]);
 
   const handleSort = (key: string) => {
     setSortConfig(prev => ({
@@ -528,6 +532,11 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
           </div>
           <span className="text-xs sm:text-sm text-slate-600">
             {leads.length} leads • {selectedLeads.length} selected
+            {!isAdmin && currentUser && sortedLeads.some(l => !canMutateLead(l, { currentUser, isAdmin })) && (
+              <span className="ml-2 text-amber-800 font-medium">
+                · other leads shown in amber
+              </span>
+            )}
           </span>
         </div>
         
@@ -614,16 +623,41 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
 
             {/* Table Body */}
             <tbody className="bg-white divide-y divide-slate-200">
-              {sortedLeads.map((lead) => {
+              {sortedLeads.map((lead, index) => {
                 // 🟢 SAFE FIX: Pre-calculate safe lists for this row
                 const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
                 const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
                 const firstContact = safeContacts[0] || {};
+                const isOwnLead = canMutateLead(lead, { currentUser, isAdmin });
+                const prevOwn = index > 0 ? canMutateLead(sortedLeads[index - 1], { currentUser, isAdmin }) : null;
+                const hasOtherLeads = !isAdmin && !!currentUser && sortedLeads.some(l => !canMutateLead(l, { currentUser, isAdmin }));
+                const showOwnHeader = hasOtherLeads && isOwnLead && (index === 0 || prevOwn === false);
+                const showOtherHeader = hasOtherLeads && !isOwnLead && (index === 0 || prevOwn === true);
                 
                 return (
+                  <React.Fragment key={lead.id}>
+                  {showOwnHeader && (
+                    <tr className="bg-emerald-50">
+                      <td colSpan={visibleColumns.length} className="px-3 py-1.5 text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">
+                        Your leads
+                      </td>
+                    </tr>
+                  )}
+                  {showOtherHeader && (
+                    <tr className="bg-amber-100">
+                      <td colSpan={visibleColumns.length} className="px-3 py-1.5 text-[11px] font-semibold text-amber-900 uppercase tracking-wide">
+                        Other leads — view only
+                      </td>
+                    </tr>
+                  )}
                   <tr
-                    key={lead.id}
-                    className={`hover:bg-slate-50 cursor-pointer ${selectedLeads.includes(lead.id) ? 'bg-indigo-50' : ''}`}
+                    className={`cursor-pointer border-l-4 ${
+                      selectedLeads.includes(lead.id)
+                        ? 'bg-indigo-50 border-l-indigo-500'
+                        : isOwnLead
+                          ? `hover:bg-slate-50 ${hasOtherLeads ? 'border-l-emerald-400 bg-white' : 'border-l-transparent'}`
+                          : 'bg-amber-50 hover:bg-amber-100 border-l-amber-500'
+                    }`}
                     onClick={() => onSelectLead(lead)}
                   >
                     {visibleColumns.map(column => {
@@ -680,8 +714,8 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                                 </span>
                               )}
                               {!canMutateLead(lead, { currentUser, isAdmin }) && (
-                                <span className="inline-block mr-2 px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
-                                  View only
+                                <span className="inline-block mr-2 px-1.5 py-0.5 bg-amber-200 text-amber-950 rounded-full text-xs font-semibold">
+                                  Other AM · View only
                                 </span>
                               )}
                               <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${getCategoryColor(lead.agentCategory)}`}>
@@ -1066,6 +1100,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                       );
                     })}
                   </tr>
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -1076,16 +1111,35 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
       {/* Mobile View - Field Team Optimized */}
       <div className="md:hidden mt-4">
         <div className="space-y-4">
-          {sortedLeads.map((lead) => {
+          {sortedLeads.map((lead, index) => {
              // 🟢 SAFE FIX: Pre-calculate safe lists for Mobile
              const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
              const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
              const firstContact = safeContacts[0] || {};
+             const isOwnLead = canMutateLead(lead, { currentUser, isAdmin });
+             const prevOwn = index > 0 ? canMutateLead(sortedLeads[index - 1], { currentUser, isAdmin }) : null;
+             const hasOtherLeads = !isAdmin && !!currentUser && sortedLeads.some(l => !canMutateLead(l, { currentUser, isAdmin }));
+             const showOwnHeader = hasOtherLeads && isOwnLead && (index === 0 || prevOwn === false);
+             const showOtherHeader = hasOtherLeads && !isOwnLead && (index === 0 || prevOwn === true);
              
              return (
+            <React.Fragment key={lead.id}>
+            {showOwnHeader && (
+              <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 uppercase tracking-wide">
+                Your leads
+              </div>
+            )}
+            {showOtherHeader && (
+              <div className="px-3 py-2 rounded-lg bg-amber-100 border border-amber-300 text-xs font-semibold text-amber-900 uppercase tracking-wide">
+                Other leads — view only
+              </div>
+            )}
             <div
-              key={lead.id}
-              className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-200"
+              className={`rounded-xl shadow-sm hover:shadow-md transition-all duration-200 ${
+                isOwnLead
+                  ? 'bg-white border border-slate-200'
+                  : 'bg-amber-50 border-2 border-amber-300'
+              }`}
             >
               {/* Header with Agency Name and Status */}
               <div className="p-4 border-b border-slate-100">
@@ -1119,8 +1173,8 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                       </div>
                     )}
                     {!canMutateLead(lead, { currentUser, isAdmin }) && (
-                      <span className="inline-block mt-2 px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
-                        View only
+                      <span className="inline-block mt-2 px-2 py-1 bg-amber-200 text-amber-950 rounded-full text-xs font-semibold">
+                        Other AM · View only
                       </span>
                     )}
                   </div>
@@ -1294,6 +1348,7 @@ Iapply.io`;
                 </div>
               </div>
             </div>
+            </React.Fragment>
              );
            })}
         </div>
