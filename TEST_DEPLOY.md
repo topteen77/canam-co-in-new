@@ -1,16 +1,12 @@
 # GitHub Actions deploy test (production)
 
-Manual commands that already work on the server (user **`dev`**, `/home/dev/.ssh`):
+`npm run build` on the EC2 is **killed (out of memory)**. GitHub Actions therefore:
 
-```bash
-cd /var/www/canam-co-in-new/
-sudo npm run build
-sudo pm2 start server/index.js --name new-crm-api
-sudo pm2 serve dist 3001 --spa --name new-crm-web
-```
+1. Runs `npm run build` on GitHub
+2. Copies `dist/` to the server
+3. `git pull` + `sudo npm ci` in `server/` only
+4. `sudo pm2 restart new-crm-api` and `sudo pm2 restart new-crm-web`
 
-GitHub Actions now runs that same flow over SSH after `git pull` + `npm ci`.
+If the GitHub build fails, nothing on the server changes. If unpack fails, the previous `dist/` is put back.
 
-**Fail-safe:** live `dist/` is copied aside first. If `npm run build` fails, that copy is put back and PM2 is **not** restarted, so the current site stays up.
-
-**Checked:** 2026-09-09 — main site login works (Leads Dashboard).
+SSH user: **`dev`**. Passwordless: `sudo -n npm` and `sudo -n pm2`.

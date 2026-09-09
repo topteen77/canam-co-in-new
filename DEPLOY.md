@@ -5,13 +5,13 @@ Backend PM2: **`new-crm-api`** on port **5002** (`/var/www/canam-co-in-new/serve
 
 Both processes run as **root**. Always use `sudo pm2` (`sudo pm2 list`, `sudo pm2 restart`, `sudo pm2 logs`).
 
-Pushes to `main` SSH in as **`dev`** and run the same commands you use by hand:
+Pushes to `main` SSH in as **`dev`**. Vite is **not** run on the VPS (`npm run build` is OOM-killed there). GitHub Actions builds `dist/`, copies it to the server, then:
 
 ```bash
 cd /var/www/canam-co-in-new/
-sudo npm run build
-sudo pm2 start server/index.js --name new-crm-api   # or restart if it already exists
-sudo pm2 serve dist 3001 --spa --name new-crm-web   # or restart if it already exists
+sudo npm ci   # in server/ only
+sudo pm2 restart new-crm-api          # or: sudo pm2 start server/index.js --name new-crm-api
+sudo pm2 restart new-crm-web          # or: sudo pm2 serve dist 3001 --spa --name new-crm-web
 ```
 
 ---
@@ -84,14 +84,17 @@ Environment **production** is used by the workflow.
 SSH user is **`dev`** (keys in `/home/dev/.ssh`). GitHub secrets: `DEPLOY_USER=dev`, `DEPLOY_SSH_KEY` matching that account.
 
 1. Push to `main` (or run the workflow manually).
-2. SSH as `dev` into `/var/www/canam-co-in-new`.
-3. Copy live `dist/` aside (so a failed build can be undone).
-4. `git fetch` + `git reset --hard origin/main`.
-5. `sudo npm ci` in the app and `server/`.
-6. `sudo npm run build`. **If this fails, previous `dist/` is restored and PM2 is not restarted.**
-7. `sudo pm2 restart new-crm-api` or `sudo pm2 start server/index.js --name new-crm-api`.
-8. `sudo pm2 restart new-crm-web` or `sudo pm2 serve dist 3001 --spa --name new-crm-web`.
-9. Check HTTP on port 3001.
+2. GitHub runs `npm ci` + `npm run build`. **If this fails, deploy does not run — the live site stays as-is.**
+3. `dist.tar.gz` is copied to `/tmp/canam-co-in-new/` (not into the live directory).
+4. SSH as `dev`:
+   - unpacks the archive to a staging folder and checks `index.html`
+   - copies live `dist/` aside
+   - `git fetch` + `git reset --hard origin/main`
+   - `sudo npm ci` in `server/` only (no Vite on the VPS)
+   - swaps in the new `dist/`
+   - `sudo pm2 restart new-crm-api` / `new-crm-web`
+   - checks HTTP on port 3001
+   - on failure: restores the previous `dist/`
 
 `.env` on the server is not in git and is left untouched.
 

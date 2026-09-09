@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
-# Manual production deploy — same steps GitHub Actions runs over SSH as user dev.
+# Server-side deploy after GitHub has uploaded dist.tar.gz.
+# Do not run `npm run build` here — Vite is OOM-killed on this VPS.
 #
-#   cd /var/www/canam-co-in-new
-#   sudo npm run build
-#   sudo pm2 start server/index.js --name new-crm-api
-#   sudo pm2 serve dist 3001 --spa --name new-crm-web
-#
-# If npm run build fails, previous dist/ is restored and PM2 is not restarted.
+#   DIST_TARBALL=/tmp/canam-co-in-new/dist.tar.gz ./scripts/remote-deploy.sh
 
 set -euo pipefail
 
@@ -15,40 +11,40 @@ cd "$ROOT"
 
 CRM_API_NAME="${CRM_API_NAME:-new-crm-api}"
 CRM_WEB_NAME="${CRM_WEB_NAME:-new-crm-web}"
+TARBALL="${DIST_TARBALL:-/tmp/canam-co-in-new/dist.tar.gz}"
 BACKUP="/tmp/canam-dist.prev"
+STAGING="/tmp/canam-new-dist"
 SUCCESS=0
 
 log() { printf '==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-if [[ -x /usr/bin/npm ]]; then
-  NPM=/usr/bin/npm
-elif [[ -x /usr/local/bin/npm ]]; then
-  NPM=/usr/local/bin/npm
-else
-  die "/usr/bin/npm not found"
-fi
-
-sudo_npm() {
-  sudo -n "$NPM" "$@"
-}
-
 restore_dist() {
   if [[ -d "$BACKUP" ]]; then
     log "Restoring previous dist/ — live site kept"
-    sudo -n rm -rf "$ROOT/dist"
-    sudo -n cp -a "$BACKUP" "$ROOT/dist"
+    rm -rf "$ROOT/dist"
+    cp -a "$BACKUP" "$ROOT/dist"
   fi
 }
-
 trap 'if [[ "$SUCCESS" != 1 ]]; then restore_dist; fi' EXIT
 
-[[ -d "$ROOT/.git" ]] || die "Not a git checkout: $ROOT"
-[[ -f "$ROOT/dist/index.html" ]] || die "live dist/index.html missing; refusing to deploy"
+[[ -f "$TARBALL" ]] || die "missing $TARBALL — upload dist from GitHub Actions first"
+[[ -f dist/index.html ]] || die "live dist/index.html missing; refusing to deploy"
 
-sudo -n rm -rf "$BACKUP"
-sudo -n cp -a dist "$BACKUP"
-log "Live dist backed up to $BACKUP"
+rm -rf "$STAGING"
+mkdir -p "$STAGING"
+tar -xzf "$TARBALL" -C "$STAGING"
+if [[ -f "$STAGING/dist/index.html" ]]; then
+  NEW_DIST="$STAGING/dist"
+elif [[ -f "$STAGING/index.html" ]]; then
+  NEW_DIST="$STAGING"
+else
+  die "index.html not in archive — live site unchanged"
+fi
+
+rm -rf "$BACKUP"
+cp -a dist "$BACKUP"
+log "Live dist backed up"
 
 log "git fetch/reset origin/main"
 git -c "safe.directory=*" fetch origin main
@@ -56,12 +52,12 @@ git -c "safe.directory=*" checkout main
 git -c "safe.directory=*" reset --hard origin/main
 
 log "sudo npm ci (server)"
-(cd server && sudo_npm ci)
+(cd server && sudo -n /usr/bin/npm ci)
 
-log "sudo npm run build"
-sudo_npm run build
-
-[[ -f dist/index.html ]] || die "dist/index.html missing after build"
+log "Activating new dist/"
+rm -rf dist
+cp -a "$NEW_DIST" dist
+[[ -f dist/index.html ]] || die "dist/index.html missing after swap"
 
 if sudo -n pm2 describe "$CRM_API_NAME" >/dev/null 2>&1; then
   sudo -n pm2 restart "$CRM_API_NAME" --update-env
@@ -79,12 +75,9 @@ sudo -n pm2 list
 
 web_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://127.0.0.1:3001/ || true)"
 log "Frontend :3001 HTTP $web_code"
-if [[ "$web_code" != "200" && "$web_code" != "304" ]]; then
-  sudo -n pm2 restart "$CRM_WEB_NAME" || true
-  die "frontend check failed"
-fi
+[[ "$web_code" == "200" || "$web_code" == "304" ]] || die "frontend check failed"
 
 SUCCESS=1
 trap - EXIT
-sudo -n rm -rf "$BACKUP"
+rm -rf "$BACKUP" "$STAGING"
 log "Deploy complete"

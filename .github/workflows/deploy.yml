@@ -1,10 +1,7 @@
-# SSH as GitHub secret DEPLOY_USER (production: user `dev`, keys in /home/dev/.ssh).
-# Same commands as on the server:
-#   cd /var/www/canam-co-in-new/
-#   sudo npm run build
-#   sudo pm2 start server/index.js --name new-crm-api
-#   sudo pm2 serve dist 3001 --spa --name new-crm-web
-# If the build fails or is killed, previous dist/ is restored and PM2 is not restarted.
+# SSH as user `dev` (/home/dev/.ssh).
+# Vite is built on GitHub (the EC2 OOM-kills `npm run build`).
+# Server: git pull, sudo npm ci in server/, unpack dist/, sudo pm2 restart.
+# If GitHub build fails, deploy never runs. If unpack fails, live dist/ is restored.
 name: Deploy production
 
 on:
@@ -18,13 +15,68 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: Verify dist
+        run: test -f dist/index.html
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+          retention-days: 3
+          if-no-files-found: error
+
   deploy:
     name: Deploy to server
+    needs: build
+    if: success()
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
-      - name: Pull, build, and restart PM2
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Pack dist
+        run: |
+          test -f dist/index.html
+          tar -C dist -czf dist.tar.gz .
+          tar -tzf dist.tar.gz | grep -E '^(\./)?index.html$'
+
+      - name: Upload dist to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          source: dist.tar.gz
+          target: /tmp/canam-co-in-new
+          overwrite: true
+
+      - name: Pull, unpack dist, restart PM2
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -32,7 +84,7 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
           script_stop: true
-          command_timeout: 20m
+          command_timeout: 15m
           script: |
             set -euo pipefail
             ROOT="${{ secrets.PROD_DEPLOY_PATH }}"
@@ -44,66 +96,60 @@ jobs:
             echo "==> App dir: $ROOT"
             cd "$ROOT"
 
-            if [ -x /usr/bin/npm ]; then
-              NPM=/usr/bin/npm
-            elif [ -x /usr/local/bin/npm ]; then
-              NPM=/usr/local/bin/npm
-            else
-              echo "ERROR: /usr/bin/npm not found"
-              exit 1
-            fi
-
-            if ! sudo -n "$NPM" --version >/dev/null 2>&1; then
-              echo "ERROR: GitHub Actions cannot run sudo npm (password required)."
-              echo "On the server as dev, run once:"
-              echo "echo 'dev ALL=(root) NOPASSWD: /usr/bin/pm2, /usr/local/bin/pm2, /usr/bin/npm, /usr/local/bin/npm, /usr/bin/npx, /usr/local/bin/npx, /usr/bin/node, /usr/local/bin/node' | sudo tee /etc/sudoers.d/canam-github-deploy"
-              echo "sudo chmod 440 /etc/sudoers.d/canam-github-deploy"
-              echo "sudo -n $NPM --version"
-              exit 1
-            fi
-            echo "==> sudo $NPM ($($NPM --version))"
-
-            sudo_npm() {
-              sudo -n "$NPM" "$@"
-            }
+            BACKUP="/tmp/canam-dist.prev"
+            STAGING="/tmp/canam-new-dist"
+            TARBALL="/tmp/canam-co-in-new/dist.tar.gz"
+            SUCCESS=0
 
             restore_dist() {
               if [ -d "$BACKUP" ]; then
                 echo "==> Restoring previous dist/ — live site kept"
-                sudo -n rm -rf "$ROOT/dist"
-                sudo -n cp -a "$BACKUP" "$ROOT/dist"
-                sudo -n chown -R "$(whoami):$(whoami)" "$ROOT/dist" || true
+                rm -rf "$ROOT/dist"
+                cp -a "$BACKUP" "$ROOT/dist"
               fi
             }
-
-            BACKUP="/tmp/canam-dist.prev"
-            SUCCESS=0
             trap 'if [ "$SUCCESS" != 1 ]; then restore_dist; fi' EXIT
 
-            sudo -n rm -rf "$BACKUP"
-            if [ -d dist ] && [ -f dist/index.html ]; then
-              sudo -n cp -a dist "$BACKUP"
-              echo "==> Live dist backed up to $BACKUP"
+            if [ ! -f "$TARBALL" ]; then
+              TARBALL="$(find /tmp/canam-co-in-new -name dist.tar.gz | head -1 || true)"
+            fi
+            test -f "$TARBALL" || { echo "ERROR: missing dist.tar.gz"; exit 1; }
+
+            echo "==> Unpacking $TARBALL to staging (live dist untouched)"
+            rm -rf "$STAGING"
+            mkdir -p "$STAGING"
+            tar -xzf "$TARBALL" -C "$STAGING"
+            if [ -f "$STAGING/dist/index.html" ]; then
+              NEW_DIST="$STAGING/dist"
+            elif [ -f "$STAGING/index.html" ]; then
+              NEW_DIST="$STAGING"
             else
+              echo "ERROR: index.html not in archive — live site unchanged"
+              tar -tzf "$TARBALL" | head -20
+              exit 1
+            fi
+            echo "==> New frontend build OK"
+
+            if [ ! -d dist ] || [ ! -f dist/index.html ]; then
               echo "ERROR: live dist/index.html missing; refusing to deploy"
               exit 1
             fi
+            rm -rf "$BACKUP"
+            cp -a dist "$BACKUP"
+            echo "==> Live dist backed up"
 
             echo "==> git fetch/reset origin/main"
             git -c "safe.directory=*" fetch origin main
             git -c "safe.directory=*" checkout main
             git -c "safe.directory=*" reset --hard origin/main
 
-            echo "==> sudo npm ci (server)"
-            (cd server && sudo_npm ci)
+            echo "==> sudo npm ci (server only — no Vite on EC2)"
+            (cd server && sudo -n /usr/bin/npm ci)
 
-            echo "==> sudo npm run build"
-            sudo_npm run build
-
-            if [ ! -f dist/index.html ]; then
-              echo "ERROR: dist/index.html missing after build"
-              exit 1
-            fi
+            echo "==> Activating new dist/"
+            rm -rf dist
+            cp -a "$NEW_DIST" dist
+            test -f dist/index.html
 
             echo "==> sudo pm2 new-crm-api"
             if sudo -n pm2 describe new-crm-api >/dev/null 2>&1; then
@@ -112,7 +158,7 @@ jobs:
               sudo -n pm2 start server/index.js --name new-crm-api
             fi
 
-            echo "==> sudo pm2 new-crm-web (serve dist :3001 spa)"
+            echo "==> sudo pm2 new-crm-web"
             if sudo -n pm2 describe new-crm-web >/dev/null 2>&1; then
               sudo -n pm2 restart new-crm-web
             else
@@ -125,11 +171,10 @@ jobs:
             echo "==> Frontend :3001 HTTP $web_code"
             if [ "$web_code" != "200" ] && [ "$web_code" != "304" ]; then
               echo "ERROR: frontend check failed"
-              sudo -n pm2 restart new-crm-web || true
               exit 1
             fi
 
             SUCCESS=1
             trap - EXIT
-            sudo -n rm -rf "$BACKUP"
+            rm -rf "$BACKUP" "$STAGING"
             echo "==> Deploy OK $(git rev-parse --short HEAD)"
