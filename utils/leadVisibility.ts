@@ -1,4 +1,4 @@
-import { canMutateLead } from './leadPermissions';
+import { canMutateLead, emailsMatch } from './leadPermissions';
 import { DEFAULT_CONTACT_COUNTRY } from './countriesAndCities';
 
 export type LeadSearchFilters = {
@@ -96,19 +96,79 @@ export function resolveLeadSource<T>(opts: {
   };
 }
 
-/** Own leads first, then everyone else's — used so view-only results are visually grouped. */
-export function partitionLeadsByOwnership<T extends { accountManager?: string }>(
+export type LeadRelation = 'mine' | 'createdByMe' | 'unrelated';
+
+export const LEAD_RELATION_HEADERS: Record<LeadRelation, string> = {
+  mine: 'Your leads',
+  createdByMe: 'Created by you — assigned to others',
+  unrelated: 'Other leads — not connected',
+};
+
+export function getLeadRelation(
+  lead: { accountManager?: string; createdBy?: string; salesPerson?: string } | null | undefined,
+  opts: { currentUser?: string | null; isAdmin?: boolean }
+): LeadRelation {
+  if (!lead) return 'unrelated';
+  if (opts.isAdmin) return 'mine';
+  if (canMutateLead(lead, opts)) return 'mine';
+  if (emailsMatch(lead.createdBy, opts.currentUser)) return 'createdByMe';
+  if (emailsMatch(lead.salesPerson, opts.currentUser)) return 'createdByMe';
+  return 'unrelated';
+}
+
+export function getLeadRelationBadge(
+  lead: { accountManager?: string; createdBy?: string; salesPerson?: string } | null | undefined,
+  opts: { currentUser?: string | null; isAdmin?: boolean }
+): { label: string; className: string } | null {
+  const relation = getLeadRelation(lead, opts);
+  if (relation === 'mine') return null;
+  if (relation === 'createdByMe') {
+    if (emailsMatch(lead?.createdBy, opts.currentUser)) {
+      return { label: 'Created by you', className: 'bg-sky-200 text-sky-950' };
+    }
+    return { label: 'Related · view only', className: 'bg-sky-100 text-sky-900' };
+  }
+  return { label: 'Not connected', className: 'bg-amber-200 text-amber-950' };
+}
+
+/** Own leads first, then created-by-you, then unrelated — used so groups are visually separate. */
+export function partitionLeadsByOwnership<T extends {
+  accountManager?: string;
+  createdBy?: string;
+  salesPerson?: string;
+}>(
   leads: T[],
   opts: { currentUser?: string | null; isAdmin?: boolean }
-): { ownLeads: T[]; otherLeads: T[]; grouped: T[] } {
+): {
+  ownLeads: T[];
+  createdByMeLeads: T[];
+  unrelatedLeads: T[];
+  otherLeads: T[];
+  grouped: T[];
+} {
   if (opts.isAdmin || !opts.currentUser) {
-    return { ownLeads: leads, otherLeads: [], grouped: leads };
+    return {
+      ownLeads: leads,
+      createdByMeLeads: [],
+      unrelatedLeads: [],
+      otherLeads: [],
+      grouped: leads,
+    };
   }
   const ownLeads: T[] = [];
-  const otherLeads: T[] = [];
+  const createdByMeLeads: T[] = [];
+  const unrelatedLeads: T[] = [];
   leads.forEach((lead) => {
-    if (canMutateLead(lead, opts)) ownLeads.push(lead);
-    else otherLeads.push(lead);
+    const relation = getLeadRelation(lead, opts);
+    if (relation === 'mine') ownLeads.push(lead);
+    else if (relation === 'createdByMe') createdByMeLeads.push(lead);
+    else unrelatedLeads.push(lead);
   });
-  return { ownLeads, otherLeads, grouped: [...ownLeads, ...otherLeads] };
+  return {
+    ownLeads,
+    createdByMeLeads,
+    unrelatedLeads,
+    otherLeads: [...createdByMeLeads, ...unrelatedLeads],
+    grouped: [...ownLeads, ...createdByMeLeads, ...unrelatedLeads],
+  };
 }

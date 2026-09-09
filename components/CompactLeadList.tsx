@@ -4,7 +4,7 @@ import { trackCallAction, trackWhatsAppAction, trackEmailAction } from '../servi
 import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { canMutateLead } from '../utils/leadPermissions';
-import { partitionLeadsByOwnership } from '../utils/leadVisibility';
+import { partitionLeadsByOwnership, getLeadRelation, getLeadRelationBadge, LEAD_RELATION_HEADERS } from '../utils/leadVisibility';
 
 interface CompactLeadListProps {
   leads: Lead[];
@@ -532,9 +532,9 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
           </div>
           <span className="text-xs sm:text-sm text-slate-600">
             {leads.length} leads • {selectedLeads.length} selected
-            {!isAdmin && currentUser && sortedLeads.some(l => !canMutateLead(l, { currentUser, isAdmin })) && (
-              <span className="ml-2 text-amber-800 font-medium">
-                · other leads shown in amber
+            {!isAdmin && currentUser && sortedLeads.some(l => getLeadRelation(l, { currentUser, isAdmin }) !== 'mine') && (
+              <span className="ml-2 text-slate-500 font-medium">
+                · blue = created by you · amber = not connected
               </span>
             )}
           </span>
@@ -628,36 +628,37 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                 const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
                 const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
                 const firstContact = safeContacts[0] || {};
-                const isOwnLead = canMutateLead(lead, { currentUser, isAdmin });
-                const prevOwn = index > 0 ? canMutateLead(sortedLeads[index - 1], { currentUser, isAdmin }) : null;
-                const hasOtherLeads = !isAdmin && !!currentUser && sortedLeads.some(l => !canMutateLead(l, { currentUser, isAdmin }));
-                const showOwnHeader = hasOtherLeads && isOwnLead && (index === 0 || prevOwn === false);
-                const showOtherHeader = hasOtherLeads && !isOwnLead && (index === 0 || prevOwn === true);
+                const relation = getLeadRelation(lead, { currentUser, isAdmin });
+                const prevRelation = index > 0 ? getLeadRelation(sortedLeads[index - 1], { currentUser, isAdmin }) : null;
+                const relationsOnPage = new Set(sortedLeads.map(l => getLeadRelation(l, { currentUser, isAdmin })));
+                const showGrouping = !isAdmin && !!currentUser && (relationsOnPage.has('createdByMe') || relationsOnPage.has('unrelated'));
+                const showHeader = showGrouping && relation !== prevRelation;
+                const relationBadge = getLeadRelationBadge(lead, { currentUser, isAdmin });
+                const headerClass =
+                  relation === 'mine'
+                    ? 'bg-emerald-50 text-emerald-800'
+                    : relation === 'createdByMe'
+                      ? 'bg-sky-100 text-sky-900'
+                      : 'bg-amber-100 text-amber-900';
+                const rowClass = selectedLeads.includes(lead.id)
+                  ? 'bg-indigo-50 border-l-indigo-500'
+                  : relation === 'mine'
+                    ? `hover:bg-slate-50 ${showGrouping ? 'border-l-emerald-400 bg-white' : 'border-l-transparent'}`
+                    : relation === 'createdByMe'
+                      ? 'bg-sky-50 hover:bg-sky-100 border-l-sky-500'
+                      : 'bg-amber-50 hover:bg-amber-100 border-l-amber-500';
                 
                 return (
                   <React.Fragment key={lead.id}>
-                  {showOwnHeader && (
-                    <tr className="bg-emerald-50">
-                      <td colSpan={visibleColumns.length} className="px-3 py-1.5 text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">
-                        Your leads
-                      </td>
-                    </tr>
-                  )}
-                  {showOtherHeader && (
-                    <tr className="bg-amber-100">
-                      <td colSpan={visibleColumns.length} className="px-3 py-1.5 text-[11px] font-semibold text-amber-900 uppercase tracking-wide">
-                        Other leads — view only
+                  {showHeader && (
+                    <tr className={headerClass}>
+                      <td colSpan={visibleColumns.length} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide">
+                        {LEAD_RELATION_HEADERS[relation]}
                       </td>
                     </tr>
                   )}
                   <tr
-                    className={`cursor-pointer border-l-4 ${
-                      selectedLeads.includes(lead.id)
-                        ? 'bg-indigo-50 border-l-indigo-500'
-                        : isOwnLead
-                          ? `hover:bg-slate-50 ${hasOtherLeads ? 'border-l-emerald-400 bg-white' : 'border-l-transparent'}`
-                          : 'bg-amber-50 hover:bg-amber-100 border-l-amber-500'
-                    }`}
+                    className={`cursor-pointer border-l-4 ${rowClass}`}
                     onClick={() => onSelectLead(lead)}
                   >
                     {visibleColumns.map(column => {
@@ -713,9 +714,9 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                                   AM: {getUserDisplayNameLocal(lead.accountManager)}
                                 </span>
                               )}
-                              {!canMutateLead(lead, { currentUser, isAdmin }) && (
-                                <span className="inline-block mr-2 px-1.5 py-0.5 bg-amber-200 text-amber-950 rounded-full text-xs font-semibold">
-                                  Other AM · View only
+                              {relationBadge && (
+                                <span className={`inline-block mr-2 px-1.5 py-0.5 rounded-full text-xs font-semibold ${relationBadge.className}`}>
+                                  {relationBadge.label}
                                 </span>
                               )}
                               <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded-full ${getCategoryColor(lead.agentCategory)}`}>
@@ -1116,30 +1117,34 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
              const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
              const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
              const firstContact = safeContacts[0] || {};
-             const isOwnLead = canMutateLead(lead, { currentUser, isAdmin });
-             const prevOwn = index > 0 ? canMutateLead(sortedLeads[index - 1], { currentUser, isAdmin }) : null;
-             const hasOtherLeads = !isAdmin && !!currentUser && sortedLeads.some(l => !canMutateLead(l, { currentUser, isAdmin }));
-             const showOwnHeader = hasOtherLeads && isOwnLead && (index === 0 || prevOwn === false);
-             const showOtherHeader = hasOtherLeads && !isOwnLead && (index === 0 || prevOwn === true);
+             const relation = getLeadRelation(lead, { currentUser, isAdmin });
+             const prevRelation = index > 0 ? getLeadRelation(sortedLeads[index - 1], { currentUser, isAdmin }) : null;
+             const relationsOnPage = new Set(sortedLeads.map(l => getLeadRelation(l, { currentUser, isAdmin })));
+             const showGrouping = !isAdmin && !!currentUser && (relationsOnPage.has('createdByMe') || relationsOnPage.has('unrelated'));
+             const showHeader = showGrouping && relation !== prevRelation;
+             const relationBadge = getLeadRelationBadge(lead, { currentUser, isAdmin });
+             const headerClass =
+               relation === 'mine'
+                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                 : relation === 'createdByMe'
+                   ? 'bg-sky-100 border-sky-300 text-sky-900'
+                   : 'bg-amber-100 border-amber-300 text-amber-900';
+             const cardClass =
+               relation === 'createdByMe'
+                 ? 'bg-sky-50 border-2 border-sky-300'
+                 : relation === 'unrelated'
+                   ? 'bg-amber-50 border-2 border-amber-300'
+                   : 'bg-white border border-slate-200';
              
              return (
             <React.Fragment key={lead.id}>
-            {showOwnHeader && (
-              <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 uppercase tracking-wide">
-                Your leads
-              </div>
-            )}
-            {showOtherHeader && (
-              <div className="px-3 py-2 rounded-lg bg-amber-100 border border-amber-300 text-xs font-semibold text-amber-900 uppercase tracking-wide">
-                Other leads — view only
+            {showHeader && (
+              <div className={`px-3 py-2 rounded-lg border text-xs font-semibold uppercase tracking-wide ${headerClass}`}>
+                {LEAD_RELATION_HEADERS[relation]}
               </div>
             )}
             <div
-              className={`rounded-xl shadow-sm hover:shadow-md transition-all duration-200 ${
-                isOwnLead
-                  ? 'bg-white border border-slate-200'
-                  : 'bg-amber-50 border-2 border-amber-300'
-              }`}
+              className={`rounded-xl shadow-sm hover:shadow-md transition-all duration-200 ${cardClass}`}
             >
               {/* Header with Agency Name and Status */}
               <div className="p-4 border-b border-slate-100">
@@ -1172,9 +1177,9 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                         </span>
                       </div>
                     )}
-                    {!canMutateLead(lead, { currentUser, isAdmin }) && (
-                      <span className="inline-block mt-2 px-2 py-1 bg-amber-200 text-amber-950 rounded-full text-xs font-semibold">
-                        Other AM · View only
+                    {relationBadge && (
+                      <span className={`inline-block mt-2 px-2 py-1 rounded-full text-xs font-semibold ${relationBadge.className}`}>
+                        {relationBadge.label}
                       </span>
                     )}
                   </div>

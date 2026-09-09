@@ -14,7 +14,7 @@ import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { canMutateLead } from '../utils/leadPermissions';
 import { CONTACT_COUNTRY_OPTIONS, DEFAULT_CONTACT_COUNTRY, contactMatchesSelectedCountries, getCityOptionsForCountries } from '../utils/countriesAndCities';
-import { resolveLeadSource, partitionLeadsByOwnership } from '../utils/leadVisibility';
+import { resolveLeadSource, partitionLeadsByOwnership, getLeadRelation, getLeadRelationBadge, LEAD_RELATION_HEADERS } from '../utils/leadVisibility';
 
 type ViewModeType = 'list' | 'board' | 'compact' | 'mobile-cards';
 
@@ -218,13 +218,16 @@ const LeadCard: React.FC<{
   };
   const onboardingDateStr = formatOnboardingDate(lead.onboardingDate);
 
-  const viewOnly = !canMutateLead(lead, { currentUser, isAdmin });
+  const relation = getLeadRelation(lead, { currentUser, isAdmin });
+  const relationBadge = getLeadRelationBadge(lead, { currentUser, isAdmin });
 
   return (
     <div className={`w-full rounded-lg shadow-lg p-3 sm:p-4 hover:shadow-xl transition-all duration-200 box-border max-w-full overflow-hidden ${
-      viewOnly
-        ? 'bg-amber-50 border-2 border-amber-300'
-        : 'bg-white border border-gray-100'
+      relation === 'createdByMe'
+        ? 'bg-sky-50 border-2 border-sky-300'
+        : relation === 'unrelated'
+          ? 'bg-amber-50 border-2 border-amber-300'
+          : 'bg-white border border-gray-100'
     }`}>
       {showSelection && (
         <div className="flex items-center gap-2 mb-2">
@@ -288,9 +291,9 @@ const LeadCard: React.FC<{
               {firstContact.city}
             </p>
           )}
-          {!canMutateLead(lead, { currentUser, isAdmin }) && (
-            <span className="text-[10px] sm:text-xs font-semibold text-amber-950 bg-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">
-              Other AM · View only
+          {relationBadge && (
+            <span className={`text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${relationBadge.className}`}>
+              {relationBadge.label}
             </span>
           )}
         </div>
@@ -874,21 +877,22 @@ const MobileCardsView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLea
       {/* Vertical Grid Container */}
       <div className="grid grid-cols-1 gap-3 sm:gap-4 mobile-cards-container box-border">
         {leads.map((lead, index) => {
-          const isOwn = canMutateLead(lead, { currentUser, isAdmin });
-          const prevOwn = index > 0 ? canMutateLead(leads[index - 1], { currentUser, isAdmin }) : null;
-          const showOwnHeader = !isAdmin && !!currentUser && isOwn && (index === 0 || prevOwn === false);
-          const showOtherHeader = !isAdmin && !!currentUser && !isOwn && (index === 0 || prevOwn === true);
-          const hasOther = leads.some(l => !canMutateLead(l, { currentUser, isAdmin }));
+          const relation = getLeadRelation(lead, { currentUser, isAdmin });
+          const prevRelation = index > 0 ? getLeadRelation(leads[index - 1], { currentUser, isAdmin }) : null;
+          const relationsOnPage = new Set(leads.map(l => getLeadRelation(l, { currentUser, isAdmin })));
+          const showGrouping = !isAdmin && !!currentUser && (relationsOnPage.has('createdByMe') || relationsOnPage.has('unrelated'));
+          const showHeader = showGrouping && relation !== prevRelation;
+          const headerClass =
+            relation === 'mine'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : relation === 'createdByMe'
+                ? 'bg-sky-100 border-sky-300 text-sky-900'
+                : 'bg-amber-100 border-amber-300 text-amber-900';
           return (
           <React.Fragment key={lead.id}>
-            {hasOther && showOwnHeader && (
-              <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 uppercase tracking-wide">
-                Your leads
-              </div>
-            )}
-            {hasOther && showOtherHeader && (
-              <div className="px-3 py-2 rounded-lg bg-amber-100 border border-amber-300 text-xs font-semibold text-amber-900 uppercase tracking-wide">
-                Other leads — view only
+            {showHeader && (
+              <div className={`px-3 py-2 rounded-lg border text-xs font-semibold uppercase tracking-wide ${headerClass}`}>
+                {LEAD_RELATION_HEADERS[relation]}
               </div>
             )}
           <div className="mobile-card w-full max-w-full box-border">
@@ -1116,9 +1120,11 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
 
                             return (
                                 <tr key={lead.id} className={`transition-colors border-l-4 ${
-                                  canMutateLead(lead, { currentUser, isAdmin })
+                                  getLeadRelation(lead, { currentUser, isAdmin }) === 'mine'
                                     ? 'hover:bg-slate-50 border-l-transparent'
-                                    : 'bg-amber-50 hover:bg-amber-100 border-l-amber-500'
+                                    : getLeadRelation(lead, { currentUser, isAdmin }) === 'createdByMe'
+                                      ? 'bg-sky-50 hover:bg-sky-100 border-l-sky-500'
+                                      : 'bg-amber-50 hover:bg-amber-100 border-l-amber-500'
                                 }`}>
                                     {isAdmin && (
                                         <td className="px-2 sm:px-6 py-4 whitespace-nowrap w-8 sm:w-auto">
@@ -1502,11 +1508,11 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
     return true;
   });
 
-  const { ownLeads, otherLeads, grouped: groupedFilteredLeads } = partitionLeadsByOwnership(matchedLeads, {
+  const { ownLeads, createdByMeLeads, unrelatedLeads, grouped: groupedFilteredLeads } = partitionLeadsByOwnership(matchedLeads, {
     currentUser: props.currentUser,
     isAdmin: props.isAdmin,
   });
-  const filteredLeads = isSearchingAllLeads ? groupedFilteredLeads : matchedLeads;
+  const filteredLeads = groupedFilteredLeads;
 
   // Pagination logic
   const totalPages = Math.ceil(filteredLeads.length / leadsPerPage);
@@ -1869,7 +1875,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                         <p className={`text-sm mt-1 ${isSearchingAllLeads ? 'text-amber-800' : 'text-blue-700'}`}>
                             {isSearchingAllLeads ? (
                                 <>
-                                    Your leads are listed first. Other account managers’ leads appear below in a separate <strong>view-only</strong> group — you can only edit leads where you are the current Account Manager.
+                                    Results are grouped: <strong>your leads</strong>, then leads <strong>created by you</strong> (assigned to another AM), then <strong>not connected</strong> leads. You can only edit leads where you are the current Account Manager.
                                 </>
                             ) : (
                                 <>
@@ -1882,8 +1888,11 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                             <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
                               Your leads: {ownLeads.length}
                             </span>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-200 text-sky-950">
+                              Created by you: {createdByMeLeads.length}
+                            </span>
                             <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-200 text-amber-900">
-                              Other leads (view only): {otherLeads.length}
+                              Not connected: {unrelatedLeads.length}
                             </span>
                           </div>
                         )}

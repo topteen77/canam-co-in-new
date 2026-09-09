@@ -3,6 +3,7 @@ import { contactMatchesSelectedCountries } from '../utils/countriesAndCities';
 import {
   DEFAULT_LEAD_SEARCH_FILTERS,
   getAssignedLeads,
+  getLeadRelation,
   hasCrossUserSearch,
   partitionLeadsByOwnership,
   resolveLeadSource,
@@ -22,9 +23,9 @@ const AM = 'am.moga@canam.test';
 const OTHER_AM = 'other.am@canam.test';
 
 const leads: TestLead[] = [
-  { id: 'own-moga', accountManager: AM, contacts: [{ city: 'Moga', country: 'India' }] },
+  { id: 'own-moga', accountManager: AM, createdBy: AM, contacts: [{ city: 'Moga', country: 'India' }] },
   { id: 'own-jalandhar', accountManager: AM, contacts: [{ city: 'Jalandhar', country: 'India' }] },
-  { id: 'other-moga', accountManager: OTHER_AM, contacts: [{ city: 'moga', country: 'India' }] },
+  { id: 'other-moga', accountManager: OTHER_AM, createdBy: AM, contacts: [{ city: 'moga', country: 'India' }] },
   { id: 'other-amritsar', accountManager: OTHER_AM, contacts: [{ city: 'Amritsar', country: 'India' }] },
   { id: 'other-moga-blank-country', accountManager: OTHER_AM, contacts: [{ city: 'Moga', country: '' }] },
   { id: 'other-toronto', accountManager: OTHER_AM, contacts: [{ city: 'Toronto', country: 'Canada' }] },
@@ -109,9 +110,9 @@ assert('Gold category alone is NOT a cross-user search', hasCrossUserSearch(with
 assert('custom country is a cross-user search', hasCrossUserSearch(withFilters({ country: ['Canada'] })), true);
 
 const defaultView = visibleLeads({ currentUser: AM });
-assert('default AM sees only own/sales/created leads', defaultView.visibleIds, ['own-jalandhar', 'own-moga', 'sales-own']);
+assert('default AM sees own, sales, and created-by-me leads', defaultView.visibleIds, ['other-moga', 'own-jalandhar', 'own-moga', 'sales-own']);
 assert('default AM is not in all-leads search mode', defaultView.isSearchingAllLeads, false);
-assertTrue('default AM does not see other AM Moga lead', !defaultView.visibleIds.includes('other-moga'));
+assertTrue('default AM does not see unrelated other-AM leads', !defaultView.visibleIds.includes('other-amritsar'));
 
 // --- City = Moga ---
 const mogaView = visibleLeads({ currentUser: AM, filters: withFilters({ city: ['Moga'] }) });
@@ -174,9 +175,12 @@ const groupedMoga = partitionLeadsByOwnership(
   mogaView.visibleIds.map(id => leads.find(l => l.id === id)!),
   { currentUser: AM, isAdmin: false }
 );
-assert('grouped list puts own leads first', groupedMoga.grouped.map(l => l.id), ['own-moga', 'other-moga', 'other-moga-blank-country']);
+assert('grouped list puts own, then created-by-me, then unrelated', groupedMoga.grouped.map(l => l.id), ['own-moga', 'other-moga', 'other-moga-blank-country']);
 assert('own group count for Moga search', groupedMoga.ownLeads.length, 1);
-assert('other group count for Moga search', groupedMoga.otherLeads.length, 2);
+assert('created-by-me group for Moga search', groupedMoga.createdByMeLeads.map(l => l.id), ['other-moga']);
+assert('unrelated group for Moga search', groupedMoga.unrelatedLeads.map(l => l.id), ['other-moga-blank-country']);
+assert('created-by-me relation', getLeadRelation(leads.find(l => l.id === 'other-moga'), { currentUser: AM }), 'createdByMe');
+assert('unrelated relation', getLeadRelation(leads.find(l => l.id === 'other-moga-blank-country'), { currentUser: AM }), 'unrelated');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
