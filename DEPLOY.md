@@ -67,16 +67,18 @@ Environment **production** is used by the workflow.
 
 ## How a deploy works
 
+SSH user is **`dev`** (keys in `/home/dev/.ssh`). GitHub secrets: `DEPLOY_USER=dev`, `DEPLOY_SSH_KEY` matching that account.
+
 1. Push to `main` (or run the workflow manually).
-2. GitHub installs deps and runs `npm run build`.
-3. `dist.tar.gz` is copied to `/tmp/canam-co-in-new/` on the server.
-4. SSH runs `scripts/remote-deploy.sh`, which:
+2. GitHub installs deps and runs `npm run build`. **If this fails, deploy does not run — the live site stays as-is.**
+3. `dist.tar.gz` is copied to `/tmp/canam-co-in-new/` on the server (not into the live directory).
+4. SSH as `dev` runs `scripts/remote-deploy.sh`, which:
+   - validates the new archive in a staging folder (live `dist/` is not deleted first)
    - `git fetch` + `git reset --hard origin/main`
-   - unpacks `dist/`
    - `npm ci` in the app and in `server/`
-   - `sudo pm2 restart new-crm-api`
-   - `sudo pm2 restart new-crm-web`
+   - only then swaps `dist/` and `sudo pm2 restart new-crm-api` / `new-crm-web`
    - checks HTTP on ports 3001 and 5002
+   - on any of those failures: restores the previous commit + previous `dist/` and restarts PM2
 
 `.env` on the server is not in git and is left untouched.
 
