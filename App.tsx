@@ -201,13 +201,16 @@ const App: React.FC = () => {
     );
   }, [leads, isAdmin, currentUser]);
 
-  /** Leads page: everyone can browse all leads (e.g. by city). Edit/assign is locked to the current AM. */
-  const cityBrowsableLeads = leads;
-
   /** Pipeline = same layout as Leads but only leads with status "In Pipeline" */
   const pipelineLeads = useMemo(() =>
-    cityBrowsableLeads.filter(l => l.status === 'In Pipeline'),
-    [cityBrowsableLeads]
+    displayedLeads.filter(l => l.status === 'In Pipeline'),
+    [displayedLeads]
+  );
+
+  /** Full pipeline set used only when an AM searches with filters (e.g. city). */
+  const allPipelineLeads = useMemo(() =>
+    leads.filter(l => l.status === 'In Pipeline'),
+    [leads]
   );
 
   const canViewAllDashboardData = isAdmin; 
@@ -729,7 +732,8 @@ const App: React.FC = () => {
                         <LeadsDashboard
                             key="leads"
                             defaultViewMode="compact"
-                            leads={cityBrowsableLeads}
+                            leads={displayedLeads}
+                            allLeads={leads}
                             onSelectLead={handleViewLead}
                             onAddLead={() => setAddLeadModalOpen(true)}
                             onImportLeads={() => setImportModalOpen(true)}
@@ -772,6 +776,7 @@ const App: React.FC = () => {
                                     key="pipeline"
                                     title="In Pipeline Leads"
                                     leads={pipelineLeads}
+                                    allLeads={allPipelineLeads}
                                     onSelectLead={handleViewLead}
                                     onAddLead={() => setAddLeadModalOpen(true)}
                                     onImportLeads={() => setImportModalOpen(true)}
@@ -903,7 +908,7 @@ const App: React.FC = () => {
 
         {isPlanMeetingModalOpen && (
             <PlanMeetingModal
-                leads={cityBrowsableLeads}
+                leads={displayedLeads}
                 onClose={() => setPlanMeetingModalOpen(false)}
                 onSchedule={handleAddMeeting}
             />

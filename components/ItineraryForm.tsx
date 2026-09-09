@@ -19,6 +19,8 @@ type ViewModeType = 'list' | 'board' | 'compact' | 'mobile-cards';
 
 interface LeadsDashboardProps {
   leads: Lead[];
+  /** Full lead catalog so AMs can search (e.g. by city) beyond their own assigned leads. */
+  allLeads?: Lead[];
   onSelectLead: (lead: Lead, followUpId?: string) => void;
   onAddLead: () => void;
   onImportLeads: () => void;
@@ -1272,6 +1274,50 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
 
 type ViewMode = 'list' | 'board' | 'compact' | 'mobile-cards';
 
+type LeadFilters = {
+  status: string[];
+  category: string[];
+  leadSource: string[];
+  accountManager: string[];
+  salesPerson: string[];
+  createdBy: string[];
+  city: string[];
+  country: string[];
+  countryInterest: string[];
+  dateCreatedFrom: string;
+  dateCreatedTo: string;
+  searchTerm: string;
+  tags: string[];
+  icpScore: { min: string; max: string };
+  followUpCount: { min: string; max: string };
+};
+
+/** True when the user is searching via the filter panel / search box (not default own-leads view). */
+function hasCrossUserSearch(filters: LeadFilters): boolean {
+  const countryIsCustom =
+    filters.country.length > 0 &&
+    !(filters.country.length === 1 && filters.country[0] === DEFAULT_CONTACT_COUNTRY);
+
+  return (
+    filters.city.length > 0 ||
+    filters.searchTerm.trim() !== '' ||
+    filters.accountManager.length > 0 ||
+    filters.salesPerson.length > 0 ||
+    filters.createdBy.length > 0 ||
+    filters.status.length > 0 ||
+    filters.leadSource.length > 0 ||
+    filters.countryInterest.length > 0 ||
+    filters.tags.length > 0 ||
+    !!filters.dateCreatedFrom ||
+    !!filters.dateCreatedTo ||
+    !!filters.icpScore.min ||
+    !!filters.icpScore.max ||
+    !!filters.followUpCount.min ||
+    !!filters.followUpCount.max ||
+    countryIsCustom
+  );
+}
+
 export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
   const getDefaultViewMode = (): ViewMode => {
     if (props.defaultViewMode) return props.defaultViewMode;
@@ -1332,6 +1378,9 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
   const { title = "Partner Leads" } = props;
 
   const isUserFilteredView = !props.isAdmin && props.currentUser;
+  const catalogLeads = props.allLeads && props.allLeads.length > 0 ? props.allLeads : props.leads;
+  const isSearchingAllLeads = isUserFilteredView && hasCrossUserSearch(filters);
+  const sourceLeads = isSearchingAllLeads ? catalogLeads : props.leads;
 
   // Respect defaultViewMode from parent; else mobile-first: cards below 1024px
   useEffect(() => {
@@ -1344,7 +1393,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
   }, [props.defaultViewMode]);
 
   // Filter leads based on current filters
-  const filteredLeads = props.leads.filter(lead => {
+  const filteredLeads = sourceLeads.filter(lead => {
     // 🟢 SAFE FIX: Pre-calculate safe arrays for filtering logic
     const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
     const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
@@ -1509,23 +1558,23 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
     }
   };
 
-  // Get unique values for filter dropdowns
+  // Get unique values for filter dropdowns from the full catalog so AMs can search any city/AM
   // 🟢 SAFE FIX: Prevent crashes when contacts or lists are null/empty
-  const uniqueStatuses = [...new Set(props.leads.map(lead => lead.status))];
-  const uniqueCategories = [...new Set(props.leads.map(lead => lead.agentCategory))];
-  const uniqueLeadSources = [...new Set(props.leads.map(lead => lead.leadSource || 'Website'))];
+  const uniqueStatuses = [...new Set(catalogLeads.map(lead => lead.status))];
+  const uniqueCategories = [...new Set(catalogLeads.map(lead => lead.agentCategory))];
+  const uniqueLeadSources = [...new Set(catalogLeads.map(lead => lead.leadSource || 'Website'))];
 
   // Country options: known countries plus any stored on contacts
   const uniqueCountries = [...new Set([
     ...CONTACT_COUNTRY_OPTIONS.filter((c) => c !== 'Other'),
-    ...props.leads.flatMap(lead => {
+    ...catalogLeads.flatMap(lead => {
       const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
       return safeContacts.map(c => c.country);
     }).filter(Boolean)
   ])];
 
   // City options: if a country is selected, only that country's cities (Canada → Toronto, not Jalandhar)
-  const uniqueCitiesFromLeads = [...new Set(props.leads.flatMap(lead => {
+  const uniqueCitiesFromLeads = [...new Set(catalogLeads.flatMap(lead => {
     const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
     return safeContacts.map(c => c.city);
   }).filter(Boolean))];
@@ -1533,7 +1582,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
   const uniqueCities = filters.country.length > 0
     ? getCityOptionsForCountries(
         filters.country,
-        props.leads.flatMap(lead => {
+        catalogLeads.flatMap(lead => {
           const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
           return safeContacts
             .filter(c => c.city && contactMatchesSelectedCountries(c.country, filters.country))
@@ -1542,15 +1591,15 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
       )
     : [...uniqueCitiesFromLeads].sort((a, b) => a.localeCompare(b));
 
-  const uniqueAccountManagers = [...new Set(props.leads.map(lead => lead.accountManager).filter(Boolean))];
-  const uniqueSalesPersons = [...new Set(props.leads.map(lead => lead.salesPerson).filter(Boolean))];
-  const uniqueCreatedBy = [...new Set(props.leads.map(lead => lead.createdBy).filter(Boolean))];
+  const uniqueAccountManagers = [...new Set(catalogLeads.map(lead => lead.accountManager).filter(Boolean))];
+  const uniqueSalesPersons = [...new Set(catalogLeads.map(lead => lead.salesPerson).filter(Boolean))];
+  const uniqueCreatedBy = [...new Set(catalogLeads.map(lead => lead.createdBy).filter(Boolean))];
   
-   const uniqueCountryInterests = [...new Set(props.leads.flatMap(lead => {
+   const uniqueCountryInterests = [...new Set(catalogLeads.flatMap(lead => {
       return Array.isArray(lead.countryInterest) ? lead.countryInterest : ['Canada'];
    }).filter(Boolean))];
 
-   const uniqueTags = [...new Set(props.leads.flatMap(lead => {
+   const uniqueTags = [...new Set(catalogLeads.flatMap(lead => {
      return Array.isArray(lead.tags) ? lead.tags : [];
    }).filter(Boolean))];
 
@@ -1612,7 +1661,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                 <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm flex-wrap">
                     <div className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full">
                         <span className="font-semibold">Total:</span>
-                        <span className="font-bold">{props.leads.length}</span>
+                        <span className="font-bold">{isSearchingAllLeads ? filteredLeads.length : props.leads.length}</span>
                     </div>
                            {selectedFilteredLeads.length > 0 && (
                                <div className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full">
@@ -1620,7 +1669,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                                    <span className="font-bold">{selectedFilteredLeads.length}</span>
                                </div>
                            )}
-                    {filteredLeads.length !== props.leads.length && (
+                    {filteredLeads.length !== sourceLeads.length && (
                         <div className="flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-800 rounded-full">
                             <span className="font-semibold">Filtered:</span>
                             <span className="font-bold">{filteredLeads.length}</span>
@@ -1818,9 +1867,19 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                         </svg>
                     </div>
                     <div>
-                        <h3 className="text-sm font-semibold text-blue-800">Your Assigned Leads</h3>
+                        <h3 className="text-sm font-semibold text-blue-800">
+                            {isSearchingAllLeads ? 'Search results include all matching leads' : 'Your Assigned Leads'}
+                        </h3>
                         <p className="text-sm text-blue-700 mt-1">
-                            You are seeing leads where you are assigned as <strong>Account Manager</strong>.
+                            {isSearchingAllLeads ? (
+                                <>
+                                    You can view every lead that matches this search. You can only <strong>edit or assign</strong> leads where you are the current <strong>Account Manager</strong>.
+                                </>
+                            ) : (
+                                <>
+                                    You are seeing leads where you are assigned as <strong>Account Manager</strong>. Use Filters (for example City) to view all matching leads.
+                                </>
+                            )}
                         </p>
                     </div>
                 </div>
@@ -2116,7 +2175,8 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                 {/* Search and Action Buttons */}
                 <div className="mt-6 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
                     <div className="text-sm text-slate-600">
-                        Showing {filteredLeads.length} of {props.leads.length} leads
+                        Showing {filteredLeads.length} of {sourceLeads.length} leads
+                        {isSearchingAllLeads ? ' (all matching leads — edit only your own)' : ''}
                     </div>
                     <div className="flex gap-2">
                         <button
