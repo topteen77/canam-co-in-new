@@ -1,7 +1,10 @@
 # SSH as GitHub secret DEPLOY_USER (production: user `dev`, keys in /home/dev/.ssh).
-# Fail-safe: deploy never runs unless the GitHub build succeeds. On the server,
-# remote-deploy.sh leaves the live dist/ + PM2 processes running until the new
-# archive is valid; any later failure rolls back to the previous site.
+# On the server this matches the manual commands:
+#   cd /var/www/canam-co-in-new/
+#   sudo npm run build
+#   sudo pm2 start server/index.js --name new-crm-api
+#   sudo pm2 serve dist 3001 --spa --name new-crm-web
+# If npm run build fails, previous dist/ is restored and PM2 is not restarted.
 name: Deploy production
 
 on:
@@ -15,78 +18,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build frontend
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Install server dependencies
-        working-directory: server
-        run: npm ci
-
-      - name: Build frontend
-        run: npm run build
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-
-      - name: Verify dist exists
-        run: |
-          test -f dist/index.html
-          echo "Build OK: dist/index.html present"
-
-      - name: Upload dist
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: dist
-          retention-days: 7
-          if-no-files-found: error
-
   deploy:
     name: Deploy to server
-    needs: build
-    if: success()
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 25
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download dist
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: dist
-
-      - name: Verify downloaded dist
-        run: test -f dist/index.html
-
-      - name: Pack dist
-        run: tar -czf dist.tar.gz dist
-
-      - name: Upload dist to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT }}
-          source: dist.tar.gz
-          target: /tmp/canam-co-in-new
-          overwrite: true
-
-      - name: Pull, install, and restart PM2
+      - name: Pull, build, and restart PM2
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -97,32 +35,96 @@ jobs:
           command_timeout: 20m
           script: |
             set -euo pipefail
-            DEPLOY_PATH="${{ secrets.PROD_DEPLOY_PATH }}"
-            if [ -z "$DEPLOY_PATH" ]; then
-              DEPLOY_PATH="/var/www/canam-co-in-new"
+            ROOT="${{ secrets.PROD_DEPLOY_PATH }}"
+            if [ -z "$ROOT" ]; then
+              ROOT="/var/www/canam-co-in-new"
             fi
 
-            echo "==> SSH user: $(whoami)  home=$HOME"
-            echo "==> Deploying main → $DEPLOY_PATH"
-            if [ ! -d "$DEPLOY_PATH/.git" ]; then
-              echo "ERROR: $DEPLOY_PATH is not a git checkout."
+            echo "==> SSH user: $(whoami) home=$HOME"
+            echo "==> App dir: $ROOT"
+            cd "$ROOT"
+
+            git_cmd() {
+              if git "$@"; then
+                return 0
+              fi
+              echo "==> git $* failed as $(whoami); retrying with sudo"
+              sudo -n git "$@"
+            }
+
+            npm_cmd() {
+              if sudo -n npm --version >/dev/null 2>&1; then
+                sudo -n npm "$@"
+              else
+                npm "$@"
+              fi
+            }
+
+            restore_dist() {
+              if [ -d "$BACKUP" ]; then
+                echo "==> Restoring previous dist/ — live site kept"
+                rm -rf "$ROOT/dist"
+                cp -a "$BACKUP" "$ROOT/dist"
+              fi
+            }
+
+            BACKUP="/tmp/canam-dist.prev"
+            rm -rf "$BACKUP"
+            if [ -d dist ] && [ -f dist/index.html ]; then
+              cp -a dist "$BACKUP"
+              echo "==> Live dist backed up to $BACKUP"
+            else
+              echo "ERROR: live dist/index.html missing; refusing to deploy"
               exit 1
             fi
 
-            TARBALL="/tmp/canam-co-in-new/dist.tar.gz"
-            test -f "$TARBALL" || { echo "ERROR: missing $TARBALL — live site unchanged"; exit 1; }
-            tar -tzf "$TARBALL" | grep -q 'index.html' || { echo "ERROR: archive has no index.html — live site unchanged"; exit 1; }
+            echo "==> git fetch/reset origin/main"
+            git_cmd fetch origin main
+            git_cmd checkout main
+            git_cmd reset --hard origin/main
 
-            cd "$DEPLOY_PATH"
-            git fetch origin main
-            git checkout origin/main -- scripts/remote-deploy.sh
-            chmod +x scripts/remote-deploy.sh
+            echo "==> npm ci (app)"
+            npm_cmd ci
+            echo "==> npm ci (server)"
+            (cd server && npm_cmd ci)
 
-            DIST_TARBALL="$TARBALL" \
-              BRANCH="main" \
-              CRM_API_NAME="new-crm-api" \
-              CRM_WEB_NAME="new-crm-web" \
-              ./scripts/remote-deploy.sh
+            echo "==> sudo npm run build"
+            if ! npm_cmd run build; then
+              restore_dist
+              echo "ERROR: npm run build failed — previous site restored, PM2 not restarted"
+              exit 1
+            fi
 
-            echo "==> sudo pm2 status"
+            if [ ! -f dist/index.html ]; then
+              restore_dist
+              echo "ERROR: dist/index.html missing after build — previous site restored"
+              exit 1
+            fi
+
+            echo "==> PM2 new-crm-api"
+            if sudo -n pm2 describe new-crm-api >/dev/null 2>&1; then
+              sudo -n pm2 restart new-crm-api --update-env
+            else
+              sudo -n pm2 start server/index.js --name new-crm-api
+            fi
+
+            echo "==> PM2 new-crm-web (serve dist :3001 spa)"
+            if sudo -n pm2 describe new-crm-web >/dev/null 2>&1; then
+              sudo -n pm2 restart new-crm-web
+            else
+              sudo -n pm2 serve dist 3001 --spa --name new-crm-web
+            fi
+            sudo -n pm2 save || true
             sudo -n pm2 list
+
+            web_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://127.0.0.1:3001/ || true)"
+            echo "==> Frontend :3001 HTTP $web_code"
+            if [ "$web_code" != "200" ] && [ "$web_code" != "304" ]; then
+              restore_dist
+              sudo -n pm2 restart new-crm-web || true
+              echo "ERROR: frontend check failed — previous dist restored"
+              exit 1
+            fi
+
+            rm -rf "$BACKUP"
+            echo "==> Deploy OK $(git rev-parse --short HEAD)"

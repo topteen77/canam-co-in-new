@@ -1,18 +1,16 @@
 # GitHub Actions deploy test (production)
 
-This file is a pipeline smoke test. If you can open it on the server after a `main` push, GitHub Actions reached EC2 as user **`dev`**.
+Manual commands that already work on the server (user **`dev`**, `/home/dev/.ssh`):
+
+```bash
+cd /var/www/canam-co-in-new/
+sudo npm run build
+sudo pm2 start server/index.js --name new-crm-api
+sudo pm2 serve dist 3001 --spa --name new-crm-web
+```
+
+GitHub Actions now runs that same flow over SSH after `git pull` + `npm ci`.
+
+**Fail-safe:** live `dist/` is copied aside first. If `npm run build` fails, that copy is put back and PM2 is **not** restarted, so the current site stays up.
 
 **Checked:** 2026-09-09 — main site login works (Leads Dashboard).
-
-## How production stays up if a build fails
-
-1. GitHub runs `npm ci` + `npm run build` **before** any SSH to the server.
-2. If that build fails, the **deploy job is skipped**. The live site is not touched.
-3. On the server (`/home/dev/.ssh` keys, SSH user `dev`):
-   - New `dist/` is unpacked to a staging folder and checked for `index.html`.
-   - Invalid archive → **exit, live `dist/` unchanged, PM2 not restarted**.
-   - `npm ci` / PM2 / port check failure → **git + `dist/` rolled back**, previous PM2 processes brought back.
-
-Live apps: `new-crm-web` (port 3001) and `new-crm-api` (port 5002) under `/var/www/canam-co-in-new`.
-
-See `DEPLOY.md` for secrets (`DEPLOY_USER=dev`) and one-time server setup.

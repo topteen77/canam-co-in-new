@@ -25,14 +25,16 @@ else
   log "Added GitHub Actions deploy key to ~/.ssh/authorized_keys"
 fi
 
-# Always allow the usual global pm2 binaries (root installed these).
-PM2_CMDS='/usr/bin/pm2, /usr/local/bin/pm2'
+# Passwordless sudo for the same tools used in a manual production deploy:
+#   sudo npm run build
+#   sudo pm2 start|restart|serve
+ALLOW='/usr/bin/pm2, /usr/local/bin/pm2, /usr/bin/npm, /usr/local/bin/npm, /usr/bin/npx, /usr/local/bin/npx, /usr/bin/node, /usr/local/bin/node, /usr/bin/git'
 USER_PM2="$(command -v pm2 || true)"
 if [[ -n "$USER_PM2" && "$USER_PM2" != '/usr/bin/pm2' && "$USER_PM2" != '/usr/local/bin/pm2' ]]; then
-  PM2_CMDS="$PM2_CMDS, $USER_PM2"
+  ALLOW="$ALLOW, $USER_PM2"
 fi
 
-SUDOERS_LINE="$(id -un) ALL=(root) NOPASSWD: $PM2_CMDS"
+SUDOERS_LINE="$(id -un) ALL=(root) NOPASSWD: $ALLOW"
 
 log "Installing sudoers rule for passwordless sudo pm2..."
 echo "$SUDOERS_LINE" | sudo tee "$SUDOERS_FILE" >/dev/null
