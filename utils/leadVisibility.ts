@@ -100,7 +100,7 @@ export type LeadRelation = 'mine' | 'createdByMe' | 'unrelated';
 
 export const LEAD_RELATION_HEADERS: Record<LeadRelation, string> = {
   mine: 'Your leads',
-  createdByMe: 'Created by you — assigned to others',
+  createdByMe: 'Created by you',
   unrelated: 'Other leads — not connected',
 };
 
