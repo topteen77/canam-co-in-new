@@ -1,10 +1,10 @@
 # SSH as GitHub secret DEPLOY_USER (production: user `dev`, keys in /home/dev/.ssh).
-# On the server this matches the manual commands:
+# Same commands as on the server:
 #   cd /var/www/canam-co-in-new/
 #   sudo npm run build
 #   sudo pm2 start server/index.js --name new-crm-api
 #   sudo pm2 serve dist 3001 --spa --name new-crm-web
-# If npm run build fails, previous dist/ is restored and PM2 is not restarted.
+# If the build fails or is killed, previous dist/ is restored and PM2 is not restarted.
 name: Deploy production
 
 on:
@@ -44,51 +44,45 @@ jobs:
             echo "==> App dir: $ROOT"
             cd "$ROOT"
 
-            export PATH="/usr/local/bin:/usr/bin:$HOME/.local/bin:$PATH"
-            if [ -s "$HOME/.nvm/nvm.sh" ]; then
-              # shellcheck disable=SC1091
-              . "$HOME/.nvm/nvm.sh"
-            fi
-            echo "==> PATH=$PATH"
-            echo "==> node=$(command -v node || echo MISSING) npm=$(command -v npm || echo MISSING)"
-
-            git_cmd() {
-              if git -c "safe.directory=*" "$@"; then
-                return 0
-              fi
-              echo "==> git $* failed as $(whoami); retrying with sudo -n"
-              sudo -n git -c "safe.directory=*" "$@"
-            }
-
-            if command -v npm >/dev/null 2>&1; then
-              NPM="$(command -v npm)"
-            elif [ -x /usr/bin/npm ]; then
+            if [ -x /usr/bin/npm ]; then
               NPM=/usr/bin/npm
             elif [ -x /usr/local/bin/npm ]; then
               NPM=/usr/local/bin/npm
             else
-              echo "ERROR: npm not found. Install Node.js or add npm to PATH for user $(whoami)."
-              ls -l /usr/bin/npm /usr/local/bin/npm /usr/bin/node 2>/dev/null || true
+              echo "ERROR: /usr/bin/npm not found"
               exit 1
             fi
-            echo "==> using $NPM ($("$NPM" --version))"
 
-            npm_cmd() {
-              "$NPM" "$@"
+            if ! sudo -n "$NPM" --version >/dev/null 2>&1; then
+              echo "ERROR: GitHub Actions cannot run sudo npm (password required)."
+              echo "On the server as dev, run once:"
+              echo "echo 'dev ALL=(root) NOPASSWD: /usr/bin/pm2, /usr/local/bin/pm2, /usr/bin/npm, /usr/local/bin/npm, /usr/bin/npx, /usr/local/bin/npx, /usr/bin/node, /usr/local/bin/node' | sudo tee /etc/sudoers.d/canam-github-deploy"
+              echo "sudo chmod 440 /etc/sudoers.d/canam-github-deploy"
+              echo "sudo -n $NPM --version"
+              exit 1
+            fi
+            echo "==> sudo $NPM ($($NPM --version))"
+
+            sudo_npm() {
+              sudo -n "$NPM" "$@"
             }
 
             restore_dist() {
               if [ -d "$BACKUP" ]; then
                 echo "==> Restoring previous dist/ — live site kept"
-                rm -rf "$ROOT/dist"
-                cp -a "$BACKUP" "$ROOT/dist"
+                sudo -n rm -rf "$ROOT/dist"
+                sudo -n cp -a "$BACKUP" "$ROOT/dist"
+                sudo -n chown -R "$(whoami):$(whoami)" "$ROOT/dist" || true
               fi
             }
 
             BACKUP="/tmp/canam-dist.prev"
-            rm -rf "$BACKUP"
+            SUCCESS=0
+            trap 'if [ "$SUCCESS" != 1 ]; then restore_dist; fi' EXIT
+
+            sudo -n rm -rf "$BACKUP"
             if [ -d dist ] && [ -f dist/index.html ]; then
-              cp -a dist "$BACKUP"
+              sudo -n cp -a dist "$BACKUP"
               echo "==> Live dist backed up to $BACKUP"
             else
               echo "ERROR: live dist/index.html missing; refusing to deploy"
@@ -96,36 +90,29 @@ jobs:
             fi
 
             echo "==> git fetch/reset origin/main"
-            git_cmd fetch origin main
-            git_cmd checkout main
-            git_cmd reset --hard origin/main
+            git -c "safe.directory=*" fetch origin main
+            git -c "safe.directory=*" checkout main
+            git -c "safe.directory=*" reset --hard origin/main
 
-            echo "==> npm ci (app)"
-            npm_cmd ci
-            echo "==> npm ci (server)"
-            (cd server && npm_cmd ci)
+            echo "==> sudo npm ci (server)"
+            (cd server && sudo_npm ci)
 
             echo "==> sudo npm run build"
-            if ! npm_cmd run build; then
-              restore_dist
-              echo "ERROR: npm run build failed — previous site restored, PM2 not restarted"
-              exit 1
-            fi
+            sudo_npm run build
 
             if [ ! -f dist/index.html ]; then
-              restore_dist
-              echo "ERROR: dist/index.html missing after build — previous site restored"
+              echo "ERROR: dist/index.html missing after build"
               exit 1
             fi
 
-            echo "==> PM2 new-crm-api"
+            echo "==> sudo pm2 new-crm-api"
             if sudo -n pm2 describe new-crm-api >/dev/null 2>&1; then
               sudo -n pm2 restart new-crm-api --update-env
             else
               sudo -n pm2 start server/index.js --name new-crm-api
             fi
 
-            echo "==> PM2 new-crm-web (serve dist :3001 spa)"
+            echo "==> sudo pm2 new-crm-web (serve dist :3001 spa)"
             if sudo -n pm2 describe new-crm-web >/dev/null 2>&1; then
               sudo -n pm2 restart new-crm-web
             else
@@ -137,11 +124,12 @@ jobs:
             web_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://127.0.0.1:3001/ || true)"
             echo "==> Frontend :3001 HTTP $web_code"
             if [ "$web_code" != "200" ] && [ "$web_code" != "304" ]; then
-              restore_dist
+              echo "ERROR: frontend check failed"
               sudo -n pm2 restart new-crm-web || true
-              echo "ERROR: frontend check failed — previous dist restored"
               exit 1
             fi
 
-            rm -rf "$BACKUP"
+            SUCCESS=1
+            trap - EXIT
+            sudo -n rm -rf "$BACKUP"
             echo "==> Deploy OK $(git rev-parse --short HEAD)"
