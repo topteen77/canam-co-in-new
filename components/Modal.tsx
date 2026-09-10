@@ -1,12 +1,13 @@
 import React, { useEffect } from 'react';
 
 interface ModalProps {
-  isOpen?: boolean; // Optional, defaults to true if conditionally rendered
+  isOpen?: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
   maxWidth?: string;
   noPadding?: boolean;
+  footer?: React.ReactNode;
 }
 
 export const Modal: React.FC<ModalProps> = ({ 
@@ -15,7 +16,8 @@ export const Modal: React.FC<ModalProps> = ({
   title, 
   children, 
   maxWidth = 'max-w-2xl',
-  noPadding = false
+  noPadding = false,
+  footer
 }) => {
   // Shield 1: Lock body scroll when modal is active
   useEffect(() => {
@@ -77,6 +79,11 @@ export const Modal: React.FC<ModalProps> = ({
         <div className={`overflow-y-auto flex-1 min-h-0 ${noPadding ? '' : 'p-4 sm:p-6'}`}>
           {children}
         </div>
+        {footer && (
+          <div className="flex-shrink-0 border-t border-indigo-200 bg-white z-40">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,10 +1,23 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Modal } from './Modal';
 import { ImageUploadOCR } from './ImageUploadOCR';
+import { SuggestInput } from './SuggestInput';
+import { ExtractAssignProvider, DroppableField, InputWithClear, StickyExtractTool } from './ExtractAssign';
 import { MultiSelect } from './MultiSelect';
 import { SimpleDocUpload } from './SimpleDocUpload';
 import { getUserDisplayName } from '../utils/dataCleaning';
+import {
+  inferLocationFromCity,
+  suggestAddresses,
+  suggestCities,
+  suggestCountries,
+  suggestDesignations,
+  suggestStates,
+  type LocationSuggestion
+} from '../utils/locationSuggest';
+import { DEFAULT_CONTACT_COUNTRY } from '../utils/countriesAndCities';
 import type { Lead, AgencyDocuments } from '../types';
+import type { ExtractedLeadData } from '../services/ocrService';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES } from '../types';
 
 interface AddLeadModalProps {
@@ -34,6 +47,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     email: '',
     address: '',
     city: '',
+    state: '',
+    country: DEFAULT_CONTACT_COUNTRY,
     alternateMobile: '',
     pocDesignation: '',
     status: 'New' as Lead['status'],
@@ -125,19 +140,80 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     }
   };
 
+  const applyLocationSuggestion = (item: LocationSuggestion) => {
+    setFormData((prev) => ({
+      ...prev,
+      address: item.address || prev.address,
+      city: item.city || prev.city,
+      state: item.state || prev.state,
+      country: item.country || prev.country
+    }));
+    setFormErrors((prev) => ({ ...prev, address: '', city: '', state: '', country: '' }));
+  };
+
   const handleOCRComplete = (extractedData: any) => {
-    if (extractedData.agencyName) setFormData((prev) => ({ ...prev, agencyName: extractedData.agencyName }));
-    if (extractedData.contactName) setFormData((prev) => ({ ...prev, contactName: extractedData.contactName }));
-    if (extractedData.phone) setFormData((prev) => ({ ...prev, phone: extractedData.phone }));
-    if (extractedData.email) setFormData((prev) => ({ ...prev, email: extractedData.email }));
-    if (extractedData.address) setFormData((prev) => ({ ...prev, address: extractedData.address }));
-    if (extractedData.city) setFormData((prev) => ({ ...prev, city: extractedData.city }));
-    if (extractedData.alternateMobile) setFormData((prev) => ({ ...prev, alternateMobile: extractedData.alternateMobile }));
-    if (extractedData.pocDesignation) setFormData((prev) => ({ ...prev, pocDesignation: extractedData.pocDesignation }));
-    if (extractedData.websiteLink) setFormData((prev) => ({ ...prev, websiteLink: extractedData.websiteLink }));
-    if (extractedData.remarks) setFormData((prev) => ({ ...prev, remarks: extractedData.remarks }));
+    setFormData((prev) => {
+      const next = { ...prev };
+      if (extractedData.agencyName) next.agencyName = extractedData.agencyName;
+      if (extractedData.contactName) next.contactName = extractedData.contactName;
+      if (extractedData.phone) next.phone = extractedData.phone.replace(/\D/g, '').slice(-10);
+      if (extractedData.email) next.email = extractedData.email;
+      if (extractedData.address) next.address = extractedData.address;
+      if (extractedData.city) next.city = extractedData.city;
+      if (extractedData.state) next.state = extractedData.state;
+      if (extractedData.country) next.country = extractedData.country;
+      if (extractedData.alternateMobile) next.alternateMobile = extractedData.alternateMobile.replace(/\D/g, '').slice(-10);
+      if (extractedData.pocDesignation) next.pocDesignation = extractedData.pocDesignation;
+      if (extractedData.websiteLink) next.websiteLink = extractedData.websiteLink;
+      if (extractedData.remarks) next.remarks = extractedData.remarks;
+      if (next.city && (!next.state || !next.country)) {
+        const inferred = inferLocationFromCity(next.city);
+        if (!next.country && inferred.country) next.country = inferred.country;
+        if (!next.state && inferred.state) next.state = inferred.state;
+      }
+      return next;
+    });
     setOcrError('');
   };
+
+  const handleAssignSnippet = useCallback((field: keyof ExtractedLeadData, value: string) => {
+    if (field === 'phone' || field === 'alternateMobile') {
+      const digits = value.replace(/\D/g, '').slice(-10);
+      setFormData((prev) => ({ ...prev, [field]: digits }));
+      if (formErrors[field]) setFormErrors((prev) => ({ ...prev, [field]: '' }));
+      return;
+    }
+    if (field === 'email') {
+      const email = value.trim().toLowerCase();
+      setFormData((prev) => ({ ...prev, email }));
+      if (formErrors.email) setFormErrors((prev) => ({ ...prev, email: '' }));
+      return;
+    }
+    if (field === 'city') {
+      const inferred = inferLocationFromCity(value);
+      setFormData((prev) => ({
+        ...prev,
+        city: value,
+        state: inferred.state || prev.state,
+        country: inferred.country || prev.country
+      }));
+      return;
+    }
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (formErrors[field as string]) setFormErrors((prev) => ({ ...prev, [field]: '' }));
+  }, [formErrors]);
+
+  const citySuggestions = useCallback(
+    (query: string) => suggestCities(query, formData.country),
+    [formData.country]
+  );
+  const stateSuggestions = useCallback(
+    (query: string) => suggestStates(query, formData.country),
+    [formData.country]
+  );
+  const countrySuggestions = useCallback((query: string) => suggestCountries(query), []);
+  const designationSuggestions = useCallback((query: string) => suggestDesignations(query), []);
+  const addressSuggestions = useCallback((query: string) => suggestAddresses(query), []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,6 +247,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
           email: formData.email.trim() || undefined,
           address: formData.address.trim() || undefined,
           city: formData.city.trim() || undefined,
+          state: formData.state.trim() || undefined,
+          country: formData.country.trim() || undefined,
           alternateMobile: formData.alternateMobile.trim() || undefined,
           pocName: formData.contactName.trim() || undefined,
           pocDesignation: formData.pocDesignation.trim() || undefined
@@ -186,9 +264,10 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   };
 
   return (
+    <ExtractAssignProvider onAssign={handleAssignSnippet}>
     <>
-    <Modal title="Add New Agency/Partner" onClose={onClose} maxWidth="max-w-5xl">
-      <form onSubmit={handleSubmit} className="space-y-4 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg max-h-[85vh] overflow-y-auto">
+    <Modal title="Add New Agency/Partner" onClose={onClose} maxWidth="max-w-5xl" footer={<StickyExtractTool />}>
+      <form onSubmit={handleSubmit} className="space-y-4 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg">
         {/* OCR */}
         <ImageUploadOCR onExtractComplete={handleOCRComplete} onError={setOcrError} />
         {ocrError && (
@@ -200,17 +279,21 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
 
         {/* Agency Name */}
         <div className="bg-white p-3 rounded-lg shadow-sm border border-blue-200">
-          <label htmlFor="agencyName" className="block text-sm font-bold text-slate-800 mb-1">🏢 Agency / Partner Name *</label>
-          <input
-            type="text"
-            id="agencyName"
-            value={formData.agencyName}
-            onChange={(e) => handleInputChange('agencyName', e.target.value)}
-            className={`block w-full px-3 py-2 text-sm border-2 rounded-lg focus:border-indigo-500 bg-white min-h-[44px] ${formErrors.agencyName ? 'border-red-500' : 'border-slate-300'}`}
-            placeholder="Enter agency or partner name"
-            required
-          />
-          {formErrors.agencyName && <p className="mt-1 text-xs font-medium text-red-600">⚠️ {formErrors.agencyName}</p>}
+          <DroppableField field="agencyName">
+            <label htmlFor="agencyName" className="block text-sm font-bold text-slate-800 mb-1">🏢 Agency / Partner Name *</label>
+            <InputWithClear value={formData.agencyName} onClear={() => handleInputChange('agencyName', '')}>
+              <input
+                type="text"
+                id="agencyName"
+                value={formData.agencyName}
+                onChange={(e) => handleInputChange('agencyName', e.target.value)}
+                className={`block w-full px-3 py-2 text-sm border-2 rounded-lg focus:border-indigo-500 bg-white min-h-[44px] ${formData.agencyName ? 'pr-10' : ''} ${formErrors.agencyName ? 'border-red-500' : 'border-slate-300'}`}
+                placeholder="Enter agency or partner name"
+                required
+              />
+            </InputWithClear>
+            {formErrors.agencyName && <p className="mt-1 text-xs font-medium text-red-600">⚠️ {formErrors.agencyName}</p>}
+          </DroppableField>
         </div>
 
         {/* Account Manager, Sales Person, Lead Created By */}
@@ -254,54 +337,62 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
           <h3 className="text-lg font-bold text-slate-800 mb-3">📞 Contact Information</h3>
           <div className="space-y-3">
-            <div>
+            <DroppableField field="contactName">
               <label className="block text-sm font-bold text-slate-800 mb-1">👤 Primary Contact Name</label>
-              <input
-                type="text"
-                value={formData.contactName}
-                onChange={(e) => handleInputChange('contactName', e.target.value)}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px]"
-                placeholder="Primary contact person"
-              />
-            </div>
+              <InputWithClear value={formData.contactName} onClear={() => handleInputChange('contactName', '')}>
+                <input
+                  type="text"
+                  value={formData.contactName}
+                  onChange={(e) => handleInputChange('contactName', e.target.value)}
+                  className={`block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px] ${formData.contactName ? 'pr-10' : ''}`}
+                  placeholder="Primary contact person"
+                />
+              </InputWithClear>
+            </DroppableField>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
+              <DroppableField field="phone">
                 <label className="block text-sm font-bold text-slate-800 mb-1">📱 Primary Mobile *</label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => handlePhoneChange('phone', e.target.value)}
-                  className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formErrors.phone ? 'border-red-500' : 'border-slate-300'}`}
-                  placeholder="9876543210"
-                  maxLength={10}
-                  required
-                />
+                <InputWithClear value={formData.phone} onClear={() => handleInputChange('phone', '')}>
+                  <input
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => handlePhoneChange('phone', e.target.value)}
+                    className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.phone ? 'pr-10' : ''} ${formErrors.phone ? 'border-red-500' : 'border-slate-300'}`}
+                    placeholder="9876543210"
+                    maxLength={10}
+                    required
+                  />
+                </InputWithClear>
                 {formErrors.phone && <p className="mt-1 text-xs text-red-600">⚠️ {formErrors.phone}</p>}
-              </div>
-              <div>
+              </DroppableField>
+              <DroppableField field="email">
                 <label className="block text-sm font-bold text-slate-800 mb-1">📧 Primary Email *</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleEmailChange('email', e.target.value)}
-                  className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formErrors.email ? 'border-red-500' : 'border-slate-300'}`}
-                  placeholder="contact@agency.com"
-                  required
-                />
+                <InputWithClear value={formData.email} onClear={() => handleInputChange('email', '')}>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleEmailChange('email', e.target.value)}
+                    className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.email ? 'pr-10' : ''} ${formErrors.email ? 'border-red-500' : 'border-slate-300'}`}
+                    placeholder="contact@agency.com"
+                    required
+                  />
+                </InputWithClear>
                 {formErrors.email && <p className="mt-1 text-xs text-red-600">⚠️ {formErrors.email}</p>}
-              </div>
-              <div>
+              </DroppableField>
+              <DroppableField field="alternateMobile">
                 <label className="block text-sm font-bold text-slate-800 mb-1">📱 Alternate Mobile</label>
-                <input
-                  type="tel"
-                  value={formData.alternateMobile}
-                  onChange={(e) => handlePhoneChange('alternateMobile', e.target.value)}
-                  className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formErrors.alternateMobile ? 'border-red-500' : 'border-slate-300'}`}
-                  placeholder="9876543210"
-                  maxLength={10}
-                />
+                <InputWithClear value={formData.alternateMobile} onClear={() => handleInputChange('alternateMobile', '')}>
+                  <input
+                    type="tel"
+                    value={formData.alternateMobile}
+                    onChange={(e) => handlePhoneChange('alternateMobile', e.target.value)}
+                    className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.alternateMobile ? 'pr-10' : ''} ${formErrors.alternateMobile ? 'border-red-500' : 'border-slate-300'}`}
+                    placeholder="9876543210"
+                    maxLength={10}
+                  />
+                </InputWithClear>
                 {formErrors.alternateMobile && <p className="mt-1 text-xs text-red-600">⚠️ {formErrors.alternateMobile}</p>}
-              </div>
+              </DroppableField>
             </div>
           </div>
         </div>
@@ -310,37 +401,79 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
           <h3 className="text-lg font-bold text-slate-800 mb-3">📋 Additional Details</h3>
           <div className="space-y-3">
-            <div>
+            <DroppableField field="pocDesignation">
               <label className="block text-sm font-bold text-slate-800 mb-1">💼 POC Designation</label>
-              <input
-                type="text"
+              <SuggestInput
                 value={formData.pocDesignation}
-                onChange={(e) => handleInputChange('pocDesignation', e.target.value)}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px]"
-                placeholder="Director, Manager"
+                onChange={(value) => handleInputChange('pocDesignation', value)}
+                getSuggestions={designationSuggestions}
+                placeholder="Director, Manager — start typing for suggestions"
               />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-bold text-slate-800 mb-1">🏠 Address</label>
-                <textarea
-                  value={formData.address}
-                  onChange={(e) => handleInputChange('address', e.target.value)}
-                  rows={2}
-                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px]"
-                  placeholder="Full address"
-                />
+            </DroppableField>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-3">
+                <DroppableField field="address">
+                  <label className="block text-sm font-bold text-slate-800 mb-1">🏠 Address</label>
+                  <SuggestInput
+                    multiline
+                    minChars={3}
+                    value={formData.address}
+                    onChange={(value) => handleInputChange('address', value)}
+                    onSelect={applyLocationSuggestion}
+                    getSuggestions={addressSuggestions}
+                    placeholder="Start typing for address suggestions"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Suggestions fill city, state, and country when you pick one.</p>
+                </DroppableField>
               </div>
-              <div>
+              <DroppableField field="city">
                 <label className="block text-sm font-bold text-slate-800 mb-1">🏙️ City</label>
-                <input
-                  type="text"
+                <SuggestInput
                   value={formData.city}
-                  onChange={(e) => handleInputChange('city', e.target.value)}
-                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px]"
-                  placeholder="City"
+                  onChange={(value) => {
+                    const inferred = inferLocationFromCity(value);
+                    setFormData((prev) => ({
+                      ...prev,
+                      city: value,
+                      state: inferred.state || prev.state,
+                      country: inferred.country || prev.country
+                    }));
+                  }}
+                  onSelect={(item) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      city: item.city || item.label,
+                      state: item.state || prev.state,
+                      country: item.country || prev.country
+                    }));
+                  }}
+                  getSuggestions={citySuggestions}
+                  placeholder="Start typing a city"
                 />
-              </div>
+              </DroppableField>
+              <DroppableField field="state">
+                <label className="block text-sm font-bold text-slate-800 mb-1">🏛️ State</label>
+                <SuggestInput
+                  value={formData.state}
+                  onChange={(value) => handleInputChange('state', value)}
+                  onSelect={(item) => {
+                    handleInputChange('state', item.state || item.label);
+                    if (item.country) handleInputChange('country', item.country);
+                  }}
+                  getSuggestions={stateSuggestions}
+                  placeholder="Start typing a state"
+                />
+              </DroppableField>
+              <DroppableField field="country">
+                <label className="block text-sm font-bold text-slate-800 mb-1">🌍 Country</label>
+                <SuggestInput
+                  value={formData.country}
+                  onChange={(value) => handleInputChange('country', value)}
+                  onSelect={(item) => handleInputChange('country', item.country || item.label)}
+                  getSuggestions={countrySuggestions}
+                  placeholder="Start typing a country"
+                />
+              </DroppableField>
             </div>
           </div>
         </div>
@@ -462,25 +595,29 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
               )}
               {tagError && <p className="mt-1 text-xs text-red-600">⚠️ {tagError}</p>}
             </div>
-            <div>
+            <DroppableField field="websiteLink">
               <label className="block text-sm font-bold text-slate-800 mb-1">🌐 Website / Social Media Link</label>
-              <input
-                type="url"
-                value={formData.websiteLink}
-                onChange={(e) => handleInputChange('websiteLink', e.target.value)}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px]"
-                placeholder="https://..."
-              />
-            </div>
+              <InputWithClear value={formData.websiteLink} onClear={() => handleInputChange('websiteLink', '')}>
+                <input
+                  type="url"
+                  value={formData.websiteLink}
+                  onChange={(e) => handleInputChange('websiteLink', e.target.value)}
+                  className={`block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px] ${formData.websiteLink ? 'pr-10' : ''}`}
+                  placeholder="https://..."
+                />
+              </InputWithClear>
+            </DroppableField>
             <div>
               <label className="block text-sm font-bold text-slate-800 mb-1">📝 Remarks</label>
-              <textarea
-                value={formData.remarks}
-                onChange={(e) => handleInputChange('remarks', e.target.value)}
-                rows={3}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg"
-                placeholder="Additional notes..."
-              />
+              <InputWithClear value={formData.remarks} onClear={() => handleInputChange('remarks', '')} multiline>
+                <textarea
+                  value={formData.remarks}
+                  onChange={(e) => handleInputChange('remarks', e.target.value)}
+                  rows={3}
+                  className={`block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg ${formData.remarks ? 'pr-10' : ''}`}
+                  placeholder="Additional notes..."
+                />
+              </InputWithClear>
             </div>
           </div>
         </div>
@@ -750,5 +887,6 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
       );
     })()}
     </>
+    </ExtractAssignProvider>
   );
 };
