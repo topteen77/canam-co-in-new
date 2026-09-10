@@ -21,8 +21,7 @@ export default defineConfig(({ mode }) => {
       build: {
         rollupOptions: {
           input: {
-            main: './index.html',
-            sw: './sw.js'
+            main: './index.html'
           }
         }
       }

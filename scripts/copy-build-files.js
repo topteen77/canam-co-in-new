@@ -13,8 +13,11 @@ const distPath = path.resolve(rootPath, process.env.DIST_DIR || 'dist');
 
 // Files to copy from root to dist
 const filesToCopy = [
+  { from: 'public/sw.js', to: 'sw.js' },
   { from: 'sw.js', to: 'sw.js' },
-  { from: 'manifest.json', to: 'manifest.json' }
+  { from: 'public/manifest.json', to: 'manifest.json' },
+  { from: 'manifest.json', to: 'manifest.json' },
+  { from: 'public/offline.html', to: 'offline.html' }
 ];
 
 try {

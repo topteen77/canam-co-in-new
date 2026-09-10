@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { ExtractedLeadData } from '../services/ocrService';
 import {
   extractVisitingCard,
@@ -41,6 +41,7 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const lastSourceRef = useRef<File | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [editorFile, setEditorFile] = useState<File | null>(null);
   const llmReady = isLLMConfigured();
@@ -85,6 +86,14 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
     if (typeof update.percent === 'number') setProcessingPercent(Math.max(0, Math.min(100, update.percent)));
   };
 
+  const cancelProcessing = () => {
+    abortRef.current?.abort();
+  };
+
+  useEffect(() => () => {
+    abortRef.current?.abort();
+  }, []);
+
   const processFile = async (file: File) => {
     const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (file.type && !validTypes.includes(file.type)) {
@@ -98,6 +107,9 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
 
     resetExtraction();
     onError('');
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setIsProcessing(true);
     handleProcessUpdate({ step: 'open', label: 'Opening image…', percent: 5 });
 
@@ -110,7 +122,10 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
       });
       setUploadedImage(preview);
 
-      const result = await extractVisitingCard(file, handleProcessUpdate, { skipAutoRotate: true });
+      const result = await extractVisitingCard(file, handleProcessUpdate, {
+        skipAutoRotate: true,
+        signal: controller.signal
+      });
       if (result.enhancedPreview) setUploadedImage(result.enhancedPreview);
       setExtractedText(result.rawText);
       setExtractedFields(result.fields);
@@ -134,6 +149,12 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
       onExtractComplete(result.fields);
     } catch (error) {
       console.error('Visiting card extraction error:', error);
+      if (error instanceof Error && (error.name === 'OcrCancelledError' || error.name === 'AbortError')) {
+        setProcessingStatus('Cancelled.');
+        setProcessingPercent(0);
+        setActiveStep(null);
+        return;
+      }
       if (error instanceof ImageNotClearError) {
         setQualityWarning(error.qualityIssues);
         setProcessingStatus('Stopped — image is not clearly visible.');
@@ -144,6 +165,7 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
       setProcessingStatus(`Error: ${errorMessage}`);
       onError(errorMessage);
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setIsProcessing(false);
     }
   };
@@ -155,6 +177,7 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
   };
 
   const handleRemoveImage = () => {
+    cancelProcessing();
     setUploadedImage(null);
     resetExtraction();
     setProcessingStatus('');
@@ -244,7 +267,18 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
               <p className="text-sm font-semibold text-purple-800">
                 {isProcessing ? 'Processing image…' : processingStatus}
               </p>
-              <span className="text-xs font-semibold text-purple-700">{processingPercent}%</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-purple-700">{processingPercent}%</span>
+                {isProcessing && (
+                  <button
+                    type="button"
+                    onClick={cancelProcessing}
+                    className="px-2.5 py-1 text-xs font-semibold bg-white text-red-700 border border-red-300 rounded-md min-h-[32px]"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             </div>
             <div className="h-2 bg-purple-100 rounded-full overflow-hidden mb-3">
               <div

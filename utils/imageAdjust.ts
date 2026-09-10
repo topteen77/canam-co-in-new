@@ -19,15 +19,36 @@ export type ImageAdjustments = {
   crop: CropRect;
 };
 
-export const DEFAULT_ADJUSTMENTS: ImageAdjustments = {
-  rotation: 0,
-  straighten: 0,
+export const FULL_CROP: CropRect = { x: 0, y: 0, width: 1, height: 1 };
+
+export const DEFAULT_LIGHTING = {
   brightness: 1,
   contrast: 1,
   saturate: 1,
   sharpen: 0.15,
-  crop: { x: 0.03, y: 0.03, width: 0.94, height: 0.94 }
+  straighten: 0
 };
+
+export const DEFAULT_ADJUSTMENTS: ImageAdjustments = {
+  rotation: 0,
+  ...DEFAULT_LIGHTING,
+  crop: { ...FULL_CROP }
+};
+
+export const isDefaultCrop = (crop: CropRect): boolean =>
+  Math.abs(crop.x - DEFAULT_ADJUSTMENTS.crop.x) < 0.002
+  && Math.abs(crop.y - DEFAULT_ADJUSTMENTS.crop.y) < 0.002
+  && Math.abs(crop.width - DEFAULT_ADJUSTMENTS.crop.width) < 0.002
+  && Math.abs(crop.height - DEFAULT_ADJUSTMENTS.crop.height) < 0.002;
+
+export const hasGeometryChanges = (adj: ImageAdjustments): boolean =>
+  adj.rotation !== 0 || adj.straighten !== 0 || !isDefaultCrop(adj.crop);
+
+export const hasLightingChanges = (adj: ImageAdjustments): boolean =>
+  adj.brightness !== DEFAULT_LIGHTING.brightness
+  || adj.contrast !== DEFAULT_LIGHTING.contrast
+  || adj.saturate !== DEFAULT_LIGHTING.saturate
+  || adj.sharpen !== DEFAULT_LIGHTING.sharpen;
 
 export type LoadedImage = {
   source: CanvasImageSource;
@@ -229,4 +250,42 @@ export const exportAdjustedImage = async (
     octx.putImageData(imageData, 0, 0);
   }
   return canvasToFile(out, name);
+};
+
+export const canvasToLoadedImage = (canvas: HTMLCanvasElement): LoadedImage => {
+  const copy = document.createElement('canvas');
+  copy.width = canvas.width;
+  copy.height = canvas.height;
+  const ctx = copy.getContext('2d');
+  if (!ctx) throw new Error('Canvas context not available');
+  ctx.drawImage(canvas, 0, 0);
+  return {
+    source: copy,
+    width: copy.width,
+    height: copy.height,
+    close: () => {
+      copy.width = 0;
+      copy.height = 0;
+    }
+  };
+};
+
+/** Bake the current crop/rotation (and optional lighting) into a new working image. */
+export const bakeAdjustments = async (
+  loaded: LoadedImage,
+  adj: ImageAdjustments,
+  mode: 'geometry' | 'lighting' | 'all' = 'all'
+): Promise<LoadedImage> => {
+  const next: ImageAdjustments = {
+    ...adj,
+    rotation: mode === 'lighting' ? 0 : adj.rotation,
+    straighten: mode === 'lighting' ? 0 : adj.straighten,
+    crop: mode === 'lighting' ? FULL_CROP : adj.crop,
+    brightness: mode === 'geometry' ? 1 : adj.brightness,
+    contrast: mode === 'geometry' ? 1 : adj.contrast,
+    saturate: mode === 'geometry' ? 1 : adj.saturate,
+    sharpen: mode === 'geometry' ? 0 : adj.sharpen
+  };
+  const { file } = await exportAdjustedImage(loaded, next, `visiting-card-${mode}.jpg`);
+  return loadAdjustImage(file);
 };

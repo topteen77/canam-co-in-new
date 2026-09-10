@@ -40,14 +40,60 @@ const hasUsefulFields = (fields: ExtractedLeadData): boolean =>
     fields.websiteLink
   );
 
+const isCancelledError = (error: unknown): boolean =>
+  error instanceof Error && (error.name === 'OcrCancelledError' || error.name === 'AbortError');
+
+const throwIfAborted = (signal?: AbortSignal) => {
+  if (!signal?.aborted) return;
+  const err = new Error('OCR cancelled');
+  err.name = 'OcrCancelledError';
+  throw err;
+};
+
+const abortable = async <T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> => {
+  throwIfAborted(signal);
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      const err = new Error('OCR cancelled');
+      err.name = 'OcrCancelledError';
+      reject(err);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      }
+    );
+  });
+};
+
 export const extractVisitingCard = async (
   imageFile: File,
   onStatus?: (update: ProcessUpdate) => void,
-  options?: { skipAutoRotate?: boolean }
+  options?: { skipAutoRotate?: boolean; signal?: AbortSignal }
 ): Promise<VisitingCardExtraction> => {
+  const signal = options?.signal;
+  throwIfAborted(signal);
   console.info('[Visiting card] Starting extraction for', imageFile.name || 'uploaded image');
   onStatus?.({ step: 'quality', label: 'Improving lighting and reducing shine…', percent: 8 });
-  const enhanced = await enhanceScanImage(imageFile, { skipAutoRotate: options?.skipAutoRotate });
+  const enhanced = await abortable(
+    enhanceScanImage(imageFile, { skipAutoRotate: options?.skipAutoRotate }),
+    signal
+  );
+  throwIfAborted(signal);
   onStatus?.({ step: 'quality', label: 'Checking if the image is clearly visible…', percent: 16 });
   const quality = await assessImageQuality(enhanced.file);
   const shineNote = glareMessage(enhanced.glareRatio);
@@ -72,7 +118,7 @@ export const extractVisitingCard = async (
     if (isLLMConfigured()) {
       console.info('[Visiting card] Engine: LLM (Gemini). Reading image with AI…');
       onStatus?.({ step: 'ai', label: 'Reading visiting card with AI…', percent: 35 });
-      const llm = await extractLeadFromImageWithLLM(workingFile);
+      const llm = await abortable(extractLeadFromImageWithLLM(workingFile), signal);
       onStatus?.({ step: 'map', label: 'Matching AI results to form fields…', percent: 85 });
       if (!llm.isClearlyVisible) {
         const issues = llm.qualityIssues.length
@@ -107,16 +153,19 @@ export const extractVisitingCard = async (
     console.info('[Visiting card] LLM not configured (no valid GEMINI_API_KEY). Using OCR.');
   } catch (error) {
     if (error instanceof ImageNotClearError) throw error;
+    if (isCancelledError(error)) throw error;
     console.warn('[Visiting card] LLM failed. Falling back to OCR.', error);
+    throwIfAborted(signal);
     onStatus?.({ step: 'ocr', label: 'AI unavailable. Switching to OCR…', percent: 30 });
   }
 
+  throwIfAborted(signal);
   console.info('[Visiting card] Engine: OCR (Tesseract). Extracting text…');
   onStatus?.({ step: 'ocr', label: 'Extracting text with OCR…', percent: 35 });
   const ocrService = await import('./ocrService');
   const rawText = await ocrService.extractTextFromImage(workingFile, (message, percent) => {
     onStatus?.({ step: 'ocr', label: message, percent });
-  });
+  }, signal);
   if (!rawText || rawText.trim().length < 4) {
     console.warn('[Visiting card] Engine: OCR. No readable text found.');
     throw new ImageNotClearError([

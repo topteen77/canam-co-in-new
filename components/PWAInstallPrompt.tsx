@@ -22,7 +22,6 @@ const PWAInstallPrompt: React.FC = () => {
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
-    // 🟢 SAFE FIX: Robust check for standalone mode
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
                         (window.navigator as any).standalone === true || 
                         document.referrer.includes('android-app://');
@@ -32,30 +31,33 @@ const PWAInstallPrompt: React.FC = () => {
       return;
     }
 
-    // Listen for the beforeinstallprompt event
     const handleBeforeInstallPrompt = (e: Event) => {
-      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
-      // Stash the event so it can be triggered later.
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      
-      // Check if user has dismissed prompt recently
       const dismissed = sessionStorage.getItem('pwa-prompt-dismissed');
       if (!dismissed) {
           setShowInstallPrompt(true);
       }
     };
 
-    // Listen for app installed event
     const handleAppInstalled = () => {
       setIsInstalled(true);
       setShowInstallPrompt(false);
       setDeferredPrompt(null);
-      console.log('PWA was installed');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    if (isIOS && !sessionStorage.getItem('pwa-prompt-dismissed')) {
+      const timer = window.setTimeout(() => setShowInstallPrompt(true), 1200);
+      return () => {
+        window.clearTimeout(timer);
+        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.removeEventListener('appinstalled', handleAppInstalled);
+      };
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -120,7 +122,7 @@ const PWAInstallPrompt: React.FC = () => {
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-900">Install Agent CRM</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Install Canam CRM</h3>
             <p className="text-sm text-slate-600 mt-1">
               Get quick access and a better experience by installing our app on your home screen.
             </p>

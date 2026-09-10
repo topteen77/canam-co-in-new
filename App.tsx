@@ -47,6 +47,7 @@ import { ImportResultsModal } from './components/ImportResultsModal';
 import WebsiteControlPanel from './components/WebsiteControlPanel';
 import Sidebar from './components/Sidebar';
 import MobileCacheButton from './components/MobileCacheButton';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import UpdateService from './services/updateService';
 import CompletedMeetings from './components/CompletedMeetings';
 import WebsiteSignupLeads from './components/WebsiteSignupLeads';
@@ -60,6 +61,7 @@ import {
 import { pwaNotificationService } from './services/pwaNotificationService';
 import SubdomainRouter from './components/SubdomainRouter';
 import { useSessionTimeout } from './hooks/useSessionTimeout';
+import { parseViewFromHash, syncViewHash } from './utils/appView';
 
 const CONFIGURED_SUPER_ADMINS = ['canamrakesh@gmail.com', 'manchandapranjal01@gmail.com'];
 const CONFIGURED_ADMINS = ['qs.iapply@gmail.com', 'rtsolutiontesting@gmail.com'];
@@ -69,7 +71,7 @@ const ALL_ADMIN_EMAILS = Array.from(new Set([...CONFIGURED_SUPER_ADMINS, ...CONF
 const App: React.FC = () => {
   // --- STATE ---
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [view, setView] = useState<string>('leads');
+  const [view, setView] = useState<string>(() => parseViewFromHash());
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   
   // Modals
@@ -139,6 +141,16 @@ const App: React.FC = () => {
   });
 
   // --- 1. INITIAL DATA LOADING (SQL) ---
+  useEffect(() => {
+    syncViewHash(view);
+  }, [view]);
+
+  useEffect(() => {
+    const onHashChange = () => setView(parseViewFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
   useEffect(() => {
     if (!currentUser) return;
 
@@ -382,6 +394,7 @@ const App: React.FC = () => {
   if (!currentUser) return (
     <>
       <Login onLogin={handleLogin} />
+      <PWAInstallPrompt />
       {renderTimeoutModal()}
     </>
   );
@@ -958,6 +971,7 @@ const App: React.FC = () => {
         )}
         
         <MobileCacheButton />
+        <PWAInstallPrompt />
 
         {renderTimeoutModal()}
       </div>

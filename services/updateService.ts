@@ -35,85 +35,24 @@ class UpdateService {
   }
 
   private async initializeServiceWorker(): Promise<void> {
-    if ('serviceWorker' in navigator) {
-      try {
-        console.log('🔄 Attempting to register Service Worker...');
-        
-        // First, check if the Service Worker file exists and is valid
-        const swResponse = await fetch('/sw.js?' + Date.now(), { 
-          cache: 'no-cache',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-          }
-        });
-        
-        if (!swResponse.ok) {
-          throw new Error(`Service Worker file not found: ${swResponse.status} ${swResponse.statusText}`);
-        }
-        
-        const contentType = swResponse.headers.get('content-type');
-        if (contentType && !contentType.includes('javascript')) {
-          throw new Error(`Service Worker file has incorrect content type: ${contentType}`);
-        }
-        
-        const swContent = await swResponse.text();
-        if (swContent.includes('<!DOCTYPE') || swContent.includes('<html') || swContent.trim().startsWith('<')) {
-          throw new Error('Service Worker file contains HTML instead of JavaScript');
-        }
-        
-        console.log('✅ Service Worker file validated');
-        
-        const registration = await navigator.serviceWorker.register('/sw.js', {
-          scope: '/',
-          updateViaCache: 'none' // Always check for updates
-        });
-
-        console.log('✅ Service Worker registered for auto-updates');
-
-        // Listen for service worker updates
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('🔄 New app version available');
-                this.handleUpdateAvailable();
-              } else if (newWorker.state === 'activated') {
-                console.log('✅ Service Worker activated successfully');
-              }
-            });
-          }
-        });
-
-        // Listen for service worker errors
-        registration.addEventListener('error', (event) => {
-          console.error('❌ Service Worker error:', event);
-        });
-
-        // Check for updates periodically
-        this.startPeriodicUpdateCheck();
-
-      } catch (error) {
-        console.error('❌ Service Worker registration failed:', error);
-        
-        // Try to unregister any existing broken service workers
-        try {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          if (registrations.length > 0) {
-            console.log('🧹 Unregistering broken Service Workers...');
-            await Promise.all(
-              registrations.map(registration => registration.unregister())
-            );
-            console.log('✅ Broken Service Workers unregistered');
-          }
-        } catch (unregisterError) {
-          console.warn('⚠️ Failed to unregister broken Service Workers:', unregisterError);
-        }
-      }
-    } else {
+    if (!('serviceWorker' in navigator)) {
       console.warn('⚠️ Service Worker not supported in this browser');
+      return;
+    }
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              this.handleUpdateAvailable();
+            }
+          });
+        }
+      });
+    } catch (error) {
+      console.warn('⚠️ Service Worker ready check failed:', error);
     }
   }
 

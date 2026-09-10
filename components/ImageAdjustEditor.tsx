@@ -3,9 +3,14 @@ import { createPortal } from 'react-dom';
 import {
   CARD_ASPECT,
   DEFAULT_ADJUSTMENTS,
+  DEFAULT_LIGHTING,
+  FULL_CROP,
+  bakeAdjustments,
   cardRatioCrop,
   clampCrop,
   exportAdjustedImage,
+  hasGeometryChanges,
+  hasLightingChanges,
   loadAdjustImage,
   renderAdjustedPreview,
   type CropRect,
@@ -111,6 +116,7 @@ export const ImageAdjustEditor: React.FC<ImageAdjustEditorProps> = ({ file, onCo
   const [lockCard, setLockCard] = useState(false);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState<'crop' | 'look' | null>(null);
   const [error, setError] = useState('');
   const [view, setView] = useState({ left: 0, top: 0, width: 1, height: 1 });
   const viewRef = useRef(view);
@@ -195,10 +201,8 @@ export const ImageAdjustEditor: React.FC<ImageAdjustEditorProps> = ({ file, onCo
   const rotateBy = (delta: number) => {
     setAdj((prev) => ({
       ...prev,
-      rotation: (prev.rotation + delta + 360) % 360,
-      crop: DEFAULT_ADJUSTMENTS.crop
+      rotation: (prev.rotation + delta + 360) % 360
     }));
-    setLockCard(false);
   };
 
   const snapCardRatio = () => {
@@ -206,6 +210,39 @@ export const ImageAdjustEditor: React.FC<ImageAdjustEditorProps> = ({ file, onCo
     const aspect = canvas && canvas.height ? canvas.width / canvas.height : CARD_ASPECT;
     setLockCard(true);
     update({ crop: cardRatioCrop(aspect) });
+  };
+
+  const resetCrop = () => {
+    setLockCard(false);
+    setAdj((prev) => ({ ...prev, rotation: 0, straighten: 0, crop: { ...FULL_CROP } }));
+  };
+
+  const resetLook = () => {
+    setAdj((prev) => ({ ...prev, ...DEFAULT_LIGHTING }));
+  };
+
+  const applyPartial = async (mode: 'geometry' | 'lighting') => {
+    const loaded = loadedRef.current;
+    if (!loaded || saving || busy) return;
+    if (mode === 'geometry' && !hasGeometryChanges(adj)) return;
+    if (mode === 'lighting' && !hasLightingChanges(adj)) return;
+    setBusy(mode === 'geometry' ? 'crop' : 'look');
+    setError('');
+    try {
+      const baked = await bakeAdjustments(loaded, adj, mode);
+      loaded.close();
+      loadedRef.current = baked;
+      const next = mode === 'geometry'
+        ? { ...adj, rotation: 0, straighten: 0, crop: { ...FULL_CROP } }
+        : { ...adj, ...DEFAULT_LIGHTING };
+      setAdj(next);
+      setLockCard(false);
+      redraw(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not apply that change.');
+    } finally {
+      setBusy(null);
+    }
   };
 
   const clientToNorm = (clientX: number, clientY: number) => {
@@ -282,21 +319,26 @@ export const ImageAdjustEditor: React.FC<ImageAdjustEditorProps> = ({ file, onCo
   const cropWidth = adj.crop.width * view.width;
   const cropHeight = adj.crop.height * view.height;
 
+  const canApplyCrop = hasGeometryChanges(adj) && !saving && !busy;
+  const canApplyLook = hasLightingChanges(adj) && !saving && !busy;
+  const canResetCrop = adj.rotation !== 0 || adj.straighten !== 0 || adj.crop.x !== 0 || adj.crop.y !== 0 || adj.crop.width !== 1 || adj.crop.height !== 1;
+  const canResetLook = hasLightingChanges(adj);
+
   return createPortal(
-    <div className="fixed inset-0 z-[230] bg-slate-950 flex flex-col text-white">
-      <div className="flex items-center justify-between px-3 py-2.5 flex-shrink-0 border-b border-white/10">
-        <div>
-          <p className="font-semibold">Adjust visiting card</p>
-          <p className="text-[11px] text-white/70">Crop extra area, rotate, then fix lighting before reading.</p>
+    <div className="image-adjust-editor fixed inset-0 z-[230] bg-slate-950 flex flex-col text-white">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 flex-shrink-0 border-b border-white/10">
+        <div className="min-w-0">
+          <p className="font-semibold truncate">Adjust visiting card</p>
+          <p className="text-[11px] text-white/70 hidden sm:block">Crop, rotate, or fix lighting. Apply one step at a time, then use the photo.</p>
         </div>
-        <button type="button" onClick={onCancel} className="px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px]">
+        <button type="button" onClick={onCancel} className="adjust-chip px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px] flex-shrink-0">
           Cancel
         </button>
       </div>
 
       <div
         ref={stageRef}
-        className="relative flex-1 min-h-0 overflow-hidden touch-none"
+        className="relative flex-1 min-h-0 overflow-hidden touch-none bg-black"
       >
         <canvas
           ref={previewRef}
@@ -322,7 +364,7 @@ export const ImageAdjustEditor: React.FC<ImageAdjustEditorProps> = ({ file, onCo
                   key={handle}
                   type="button"
                   aria-label={`Resize ${handle}`}
-                  className="p-0"
+                  className="p-0 adjust-handle"
                   style={{ ...handleStyle(handle), cursor: cursorFor(handle) }}
                   onPointerDown={onPointerDown(handle)}
                 />
@@ -335,106 +377,134 @@ export const ImageAdjustEditor: React.FC<ImageAdjustEditorProps> = ({ file, onCo
         )}
       </div>
 
-      <div className="flex-shrink-0 bg-slate-900 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-3 max-h-[42vh] overflow-y-auto">
-        {error && <p className="text-sm text-red-300">{error}</p>}
+      <div className="flex-shrink-0 bg-slate-900 border-t border-white/10">
+        {error && <p className="px-3 pt-2 text-sm text-red-300">{error}</p>}
 
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => rotateBy(-90)} className="px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px]">
+        <div className="px-3 pt-2 flex gap-2 overflow-x-auto">
+          <button type="button" onClick={() => rotateBy(-90)} className="adjust-chip px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px] whitespace-nowrap">
             ↺ Rotate left
           </button>
-          <button type="button" onClick={() => rotateBy(90)} className="px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px]">
+          <button type="button" onClick={() => rotateBy(90)} className="adjust-chip px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px] whitespace-nowrap">
             ↻ Rotate right
           </button>
           <button
             type="button"
             onClick={snapCardRatio}
-            className={`px-3 py-2 rounded-lg text-sm min-h-[44px] ${lockCard ? 'bg-emerald-600' : 'bg-white/10'}`}
+            className={`adjust-chip px-3 py-2 rounded-lg text-sm min-h-[44px] whitespace-nowrap ${lockCard ? 'bg-emerald-600' : 'bg-white/10'}`}
           >
             Card shape
           </button>
+        </div>
+
+        <div className="px-3 py-2 max-h-[22vh] sm:max-h-[28vh] overflow-y-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+            <label className="text-xs text-white/80">
+              Straighten {adj.straighten > 0 ? `+${adj.straighten}` : adj.straighten}°
+              <input
+                type="range"
+                min={-20}
+                max={20}
+                step={1}
+                value={adj.straighten}
+                onChange={(event) => update({ straighten: Number(event.target.value) })}
+                className="w-full accent-emerald-500"
+              />
+            </label>
+            <label className="text-xs text-white/80">
+              Brightness {Math.round(adj.brightness * 100)}%
+              <input
+                type="range"
+                min={60}
+                max={160}
+                step={1}
+                value={Math.round(adj.brightness * 100)}
+                onChange={(event) => update({ brightness: Number(event.target.value) / 100 })}
+                className="w-full accent-emerald-500"
+              />
+            </label>
+            <label className="text-xs text-white/80">
+              Contrast {Math.round(adj.contrast * 100)}%
+              <input
+                type="range"
+                min={60}
+                max={180}
+                step={1}
+                value={Math.round(adj.contrast * 100)}
+                onChange={(event) => update({ contrast: Number(event.target.value) / 100 })}
+                className="w-full accent-emerald-500"
+              />
+            </label>
+            <label className="text-xs text-white/80">
+              Color {Math.round(adj.saturate * 100)}%
+              <input
+                type="range"
+                min={50}
+                max={170}
+                step={1}
+                value={Math.round(adj.saturate * 100)}
+                onChange={(event) => update({ saturate: Number(event.target.value) / 100 })}
+                className="w-full accent-emerald-500"
+              />
+            </label>
+            <label className="text-xs text-white/80 sm:col-span-2">
+              Clarity {Math.round(adj.sharpen * 100)}%
+              <input
+                type="range"
+                min={0}
+                max={80}
+                step={1}
+                value={Math.round(adj.sharpen * 100)}
+                onChange={(event) => update({ sharpen: Number(event.target.value) / 100 })}
+                className="w-full accent-emerald-500"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2 border-t border-white/10 bg-slate-900">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={!canApplyCrop}
+              onClick={() => void applyPartial('geometry')}
+              className="adjust-chip px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px] disabled:opacity-40"
+            >
+              {busy === 'crop' ? 'Applying…' : 'Apply crop'}
+            </button>
+            <button
+              type="button"
+              disabled={!canResetCrop || !!busy}
+              onClick={resetCrop}
+              className="adjust-chip px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px] disabled:opacity-40"
+            >
+              Reset crop
+            </button>
+            <button
+              type="button"
+              disabled={!canApplyLook}
+              onClick={() => void applyPartial('lighting')}
+              className="adjust-chip px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px] disabled:opacity-40"
+            >
+              {busy === 'look' ? 'Applying…' : 'Apply look'}
+            </button>
+            <button
+              type="button"
+              disabled={!canResetLook || !!busy}
+              onClick={resetLook}
+              className="adjust-chip px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px] disabled:opacity-40"
+            >
+              Reset look
+            </button>
+          </div>
           <button
             type="button"
-            onClick={() => {
-              setLockCard(false);
-              setAdj(DEFAULT_ADJUSTMENTS);
-            }}
-            className="px-3 py-2 rounded-lg bg-white/10 text-sm min-h-[44px]"
+            disabled={!ready || saving || !!busy}
+            onClick={() => void handleConfirm()}
+            className="w-full py-3 rounded-xl bg-emerald-500 text-white font-bold disabled:opacity-50 min-h-[48px]"
           >
-            Reset
+            {saving ? 'Saving…' : 'Use this photo'}
           </button>
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-          <label className="text-xs text-white/80">
-            Straighten {adj.straighten > 0 ? `+${adj.straighten}` : adj.straighten}°
-            <input
-              type="range"
-              min={-20}
-              max={20}
-              step={1}
-              value={adj.straighten}
-              onChange={(event) => update({ straighten: Number(event.target.value) })}
-              className="w-full accent-emerald-500"
-            />
-          </label>
-          <label className="text-xs text-white/80">
-            Brightness {Math.round(adj.brightness * 100)}%
-            <input
-              type="range"
-              min={60}
-              max={160}
-              step={1}
-              value={Math.round(adj.brightness * 100)}
-              onChange={(event) => update({ brightness: Number(event.target.value) / 100 })}
-              className="w-full accent-emerald-500"
-            />
-          </label>
-          <label className="text-xs text-white/80">
-            Contrast {Math.round(adj.contrast * 100)}%
-            <input
-              type="range"
-              min={60}
-              max={180}
-              step={1}
-              value={Math.round(adj.contrast * 100)}
-              onChange={(event) => update({ contrast: Number(event.target.value) / 100 })}
-              className="w-full accent-emerald-500"
-            />
-          </label>
-          <label className="text-xs text-white/80">
-            Color {Math.round(adj.saturate * 100)}%
-            <input
-              type="range"
-              min={50}
-              max={170}
-              step={1}
-              value={Math.round(adj.saturate * 100)}
-              onChange={(event) => update({ saturate: Number(event.target.value) / 100 })}
-              className="w-full accent-emerald-500"
-            />
-          </label>
-          <label className="text-xs text-white/80 sm:col-span-2">
-            Clarity {Math.round(adj.sharpen * 100)}%
-            <input
-              type="range"
-              min={0}
-              max={80}
-              step={1}
-              value={Math.round(adj.sharpen * 100)}
-              onChange={(event) => update({ sharpen: Number(event.target.value) / 100 })}
-              className="w-full accent-emerald-500"
-            />
-          </label>
-        </div>
-
-        <button
-          type="button"
-          disabled={!ready || saving}
-          onClick={() => void handleConfirm()}
-          className="w-full py-3 rounded-xl bg-emerald-500 text-white font-bold disabled:opacity-50 min-h-[48px]"
-        >
-          {saving ? 'Saving…' : 'Use this photo'}
-        </button>
       </div>
     </div>,
     document.body
