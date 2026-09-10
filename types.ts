@@ -128,6 +128,8 @@ export interface Lead {
   countryInterest?: string[]; // e.g., ['Canada', 'UK', 'USA']
   // ICP Score (1-10)
   icpScore?: number; // Ideal Customer Profile Score (1-10)
+  trainingDate?: string;
+  trainingScore?: number;
 }
 
 export type AttendanceStatus = 'started' | 'on-break' | 'ended';

@@ -16,6 +16,7 @@ import {
   type LocationSuggestion
 } from '../utils/locationSuggest';
 import { DEFAULT_CONTACT_COUNTRY } from '../utils/countriesAndCities';
+import { IcpScoringModal } from './IcpScoringModal';
 import type { Lead, AgencyDocuments } from '../types';
 import type { ExtractedLeadData } from '../services/ocrService';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES } from '../types';
@@ -61,7 +62,9 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     potentialStudentsCount: '',
     remarks: '',
     websiteLink: '',
-    icpScore: undefined as number | undefined
+    icpScore: undefined as number | undefined,
+    trainingDate: '',
+    trainingScore: undefined as number | undefined
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [agencyDocuments, setAgencyDocuments] = useState<AgencyDocuments>({});
@@ -72,7 +75,6 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
 
   // ICP Score Modal States
   const [showIcpScoreModal, setShowIcpScoreModal] = useState(false);
-  const [showReferenceTable, setShowReferenceTable] = useState(false);
   const [categoryScores, setCategoryScores] = useState<Record<string, number | ''>>({
     'Business Profile': '',
     'Services Portfolio': '',
@@ -238,6 +240,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         icpScore: formData.icpScore ?? undefined,
         onboardingDate: formData.onboardingDate.trim() || undefined,
         applicants: formData.potentialStudentsCount.trim() || undefined,
+        trainingDate: formData.trainingDate.trim() || undefined,
+        trainingScore: formData.trainingScore ?? undefined,
         agencyDocuments: Object.keys(agencyDocuments).length ? agencyDocuments : undefined,
         contacts: [{
           id: contactId,
@@ -544,7 +548,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
                   <span>🎯</span> ICP Score (1-10)
                 </label>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="relative w-32">
                     <input
                       type="text"
@@ -557,12 +561,37 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowIcpScoreModal(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                    className="flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95"
                   >
                     <span>📊</span>
                     <span>View Scoring</span>
                   </button>
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">Training Date</label>
+                <input
+                  type="date"
+                  value={formData.trainingDate}
+                  onChange={(e) => handleInputChange('trainingDate', e.target.value)}
+                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">Training Score</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  value={formData.trainingScore !== undefined ? formData.trainingScore : ''}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    trainingScore: e.target.value === '' ? undefined : parseFloat(e.target.value)
+                  }))}
+                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px]"
+                  placeholder="0-10"
+                />
               </div>
             </div>
             <div>
@@ -646,246 +675,19 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
       </form>
     </Modal>
     
-    {showIcpScoreModal && (() => {
-      // Calculate average score
-      const scores = Object.values(categoryScores).filter(s => s !== '') as number[];
-      const average = scores.length > 0 
-        ? Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 10) / 10 
-        : null;
-      
-      const handleCategoryScoreChange = (category: string, value: string) => {
-        const numValue = value === '' ? '' : Math.max(0, Math.min(10, parseInt(value) || 0));
-        setCategoryScores(prev => ({ ...prev, [category]: numValue }));
-      };
-      
-      return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[200]" onClick={() => setShowIcpScoreModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-[95vw] w-full max-h-[95vh] mx-4 my-4 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            {/* Header */}
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">🎯</span>
-                <h2 className="text-2xl font-bold text-slate-800">ICP Scoring System</h2>
-              </div>
-              <button
-                onClick={() => setShowIcpScoreModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-3xl font-light transition-colors"
-              >
-                &times;
-              </button>
-            </div>
-            
-            {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-8 pt-4">
-              <p className="text-slate-600 mb-6 font-medium">
-                Use this scoring system to assess agencies/partners. Enter a score (0-10) for each category, and the average will be calculated automatically.
-              </p>
-
-              {/* How to Use Box */}
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 mb-8 relative">
-                <div className="flex items-start gap-3 mb-3">
-                  <span className="text-xl">💡</span>
-                  <h3 className="font-bold text-blue-900">How to Use:</h3>
-                </div>
-                <ul className="space-y-2 text-blue-800 font-medium pl-8 list-decimal">
-                  <li>Review each category and assessment parameter</li>
-                  <li>Evaluate the agency based on the scoring logic</li>
-                  <li>Enter a score (0-10) for each category in the "Your Score" column</li>
-                  <li>The average will be calculated automatically and can be applied to the ICP Score field</li>
-                </ul>
-              </div>
-
-              {/* Reference Toggle */}
-              <div className="flex justify-end mb-6">
-                <button
-                  type="button"
-                  onClick={() => setShowReferenceTable(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-md transition-all active:scale-95"
-                >
-                  <input 
-                    type="checkbox" 
-                    checked={showReferenceTable} 
-                    readOnly 
-                    className="w-4 h-4 rounded border-white/30 bg-white/20"
-                  />
-                  <span>View Reference Examples</span>
-                </button>
-              </div>
-
-              {/* 4-Column Table */}
-              <div className="overflow-hidden border border-slate-200 rounded-xl shadow-sm">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-[#E9EDF9]">
-                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 border-b border-r border-slate-200">Category</th>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 border-b border-r border-slate-200">Assessment Parameter</th>
-                      <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 border-b border-r border-slate-200">Scoring Logic (0-10)</th>
-                      <th className="px-6 py-4 text-center text-sm font-bold text-slate-700 border-b bg-[#D9E2FF] w-48">Your Score (0-10)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {[
-                      { 
-                        cat: 'Business Profile', 
-                        param: 'Business Age', 
-                        logic: ['24+ months = 10', '12-24 = 7', '6-12 = 5', '<6 = 2'] 
-                      },
-                      { 
-                        cat: 'Services Portfolio', 
-                        param: 'Main Study Destinations', 
-                        logic: ['Canada focus = 3', 'UK = 2', 'Others = 1'] 
-                      },
-                      { 
-                        cat: 'Online Presence', 
-                        param: 'Digital & Social Media Reputation', 
-                        logic: ['Strong (≥4.5 & >100 reviews) = 10', 'Moderate = 7', 'Weak = 3'] 
-                      },
-                      { 
-                        cat: 'Operational Scale', 
-                        param: 'Visa Success Cases (Last 6 months)', 
-                        logic: ['>20 = 10', '15-20 = 7', '10-15 = 5', '<10 = 3'] 
-                      },
-                      { 
-                        cat: 'Applicant Volume', 
-                        param: 'Successful Submissions', 
-                        logic: ['>50 = 10', '25-50 = 7', '<25 = 5'] 
-                      },
-                      { 
-                        cat: 'Team Strength', 
-                        param: 'Staff Count', 
-                        logic: ['Well-staffed = 10', 'Moderate = 7', 'Small = 5'] 
-                      },
-                      { 
-                        cat: 'Network Strength', 
-                        param: 'Tie-ups (Canada)', 
-                        logic: ['>10 = 10', '5-10 = 7', '<5 = 5'] 
-                      },
-                      { 
-                        cat: 'Applicant Quality', 
-                        param: 'Genuine Ratio', 
-                        logic: ['<5% fake = 10', '5-10% = 7', '10-20% = 5'] 
-                      },
-                      { 
-                        cat: 'Physical Presence', 
-                        param: 'Branches', 
-                        logic: ['Multi-city = 10', 'Single-city = 7'] 
-                      }
-                    ].map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-5 text-sm font-bold text-slate-800 border-r border-slate-100">{row.cat}</td>
-                        <td className="px-6 py-5 text-sm font-medium text-slate-600 border-r border-slate-100">{row.param}</td>
-                        <td className="px-6 py-5 text-sm text-slate-500 border-r border-slate-100">
-                          <ul className="list-disc pl-4 space-y-1">
-                            {row.logic.map((l, i) => <li key={i}>{l}</li>)}
-                          </ul>
-                        </td>
-                        <td className="px-6 py-5 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            placeholder="0-10"
-                            value={categoryScores[row.cat] || ''}
-                            onChange={(e) => handleCategoryScoreChange(row.cat, e.target.value)}
-                            className="w-24 px-3 py-2 text-center border border-slate-200 rounded-lg font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-300"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            
-            {/* Reference Table Modal */}
-            {showReferenceTable && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[210]" onClick={() => setShowReferenceTable(false)}>
-                <div className="bg-white rounded-xl shadow-2xl max-w-[90vw] w-full max-h-[85vh] mx-4 my-4 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                  <div className="bg-[#1D4ED8] text-white p-5 flex-shrink-0 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">📖</span>
-                      <h3 className="text-xl font-bold">Reference Examples</h3>
-                    </div>
-                    <button onClick={() => setShowReferenceTable(false)} className="text-white hover:text-gray-200 text-2xl font-light">×</button>
-                  </div>
-                  
-                  <div className="flex-1 overflow-y-auto p-6">
-                    <p className="text-slate-600 mb-6 font-medium">
-                      This table shows example answers and verification sources for reference. Use this as a guide when scoring each category.
-                    </p>
-                    
-                    <div className="overflow-hidden border border-slate-200 rounded-xl">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="bg-[#E9EDF9]">
-                            <th className="px-4 py-3 text-left text-sm font-bold text-slate-700 border-b border-r border-slate-200">Category</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-slate-700 border-b border-r border-slate-200">Assessment Parameter</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-slate-700 border-b border-r border-slate-200">Expected / Example Answer</th>
-                            <th className="px-4 py-3 text-left text-sm font-bold text-slate-700 border-b border-slate-200">Verification Source</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {[
-                            { cat: 'Business Profile', param: 'Business Age', ans: '6 months, 2 years, 5+ years', src: 'Zauba, Google reviews' },
-                            { cat: 'Services Portfolio', param: 'Main Study Destinations', ans: 'Canada, US, UK, Australia', src: 'Website, Social media' },
-                            { cat: 'Online Presence', param: 'Digital & Social Media Reputation', ans: 'Google rating 4.5+, 200+ reviews', src: 'Google, FB, Instagram' },
-                            { cat: 'Operational Scale', param: 'Visa Success Cases (Last 6 months)', ans: '10–30', src: 'Internal data / Ref call' },
-                            { cat: 'Applicant Volume', param: 'No. of successful submissions', ans: '25–100+', src: 'CRM / Reference' },
-                            { cat: 'Team Strength', param: 'Staff Count', ans: 'Counselors: 5-10, Visa: 2-3, Ops: 2-5', src: 'LinkedIn / Office call' },
-                            { cat: 'Network Strength', param: 'Direct / Indirect Tie-ups', ans: 'Canada: 10-20, USA: 5', src: 'Partner list / Call' },
-                            { cat: 'Applicant Quality', param: 'Genuine vs Fake Ratio', ans: '<5% fake cases', src: 'Record audit / Referral' },
-                            { cat: 'Physical Presence', param: 'Branches (India / Abroad)', ans: 'e.g., Delhi, Punjab, Dubai', src: 'Website / Call' }
-                          ].map((row, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                              <td className="px-4 py-4 text-sm font-bold text-slate-800 border-r border-slate-100">{row.cat}</td>
-                              <td className="px-4 py-4 text-sm font-medium text-slate-600 border-r border-slate-100">{row.param}</td>
-                              <td className="px-4 py-4 text-sm text-slate-600 border-r border-slate-100">{row.ans}</td>
-                              <td className="px-4 py-4 text-sm text-slate-600">{row.src}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  
-                  <div className="flex-shrink-0 border-t border-slate-100 bg-slate-50 p-4 flex justify-end">
-                    <button 
-                      onClick={() => setShowReferenceTable(false)} 
-                      className="px-8 py-2 bg-[#2563EB] hover:bg-blue-700 text-white rounded-lg font-bold shadow-md shadow-blue-200 transition-all active:scale-95"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Footer with Buttons */}
-            <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 p-4 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowIcpScoreModal(false)}
-                className="px-6 py-2 text-sm font-semibold bg-slate-400 text-white rounded-lg hover:bg-slate-500"
-              >
-                Cancel
-              </button>
-              {average !== null && average >= 1 && average <= 10 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData(prev => ({ ...prev, icpScore: Math.round(average) }));
-                    setShowIcpScoreModal(false);
-                  }}
-                  className="px-6 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  ✅ Apply Score ({Math.round(average)}/10)
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    })()}
+    {showIcpScoreModal && (
+      <IcpScoringModal
+        onClose={() => setShowIcpScoreModal(false)}
+        categoryScores={categoryScores}
+        onCategoryScoreChange={(category, value) => {
+          setCategoryScores((prev) => ({ ...prev, [category]: value }));
+        }}
+        onApply={(score) => {
+          setFormData((prev) => ({ ...prev, icpScore: score }));
+          setShowIcpScoreModal(false);
+        }}
+      />
+    )}
     </>
     </ExtractAssignProvider>
   );

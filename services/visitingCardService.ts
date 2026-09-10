@@ -1,5 +1,6 @@
 import type { ExtractedLeadData } from './ocrService';
 import { assessImageQuality } from '../utils/imageQuality';
+import { enhanceScanImage, glareMessage } from '../utils/scanEnhance';
 import { normalizeExtractedFields } from '../utils/parseVisitingCard';
 
 export type ExtractionSource = 'llm' | 'ocr';
@@ -16,6 +17,7 @@ export type VisitingCardExtraction = {
   rawText: string;
   isClearlyVisible: boolean;
   qualityIssues: string[];
+  enhancedPreview: string;
 };
 
 export class ImageNotClearError extends Error {
@@ -40,22 +42,37 @@ const hasUsefulFields = (fields: ExtractedLeadData): boolean =>
 
 export const extractVisitingCard = async (
   imageFile: File,
-  onStatus?: (update: ProcessUpdate) => void
+  onStatus?: (update: ProcessUpdate) => void,
+  options?: { skipAutoRotate?: boolean }
 ): Promise<VisitingCardExtraction> => {
   console.info('[Visiting card] Starting extraction for', imageFile.name || 'uploaded image');
-  onStatus?.({ step: 'quality', label: 'Checking if the image is clearly visible…', percent: 12 });
-  const quality = await assessImageQuality(imageFile);
+  onStatus?.({ step: 'quality', label: 'Improving lighting and reducing shine…', percent: 8 });
+  const enhanced = await enhanceScanImage(imageFile, { skipAutoRotate: options?.skipAutoRotate });
+  onStatus?.({ step: 'quality', label: 'Checking if the image is clearly visible…', percent: 16 });
+  const quality = await assessImageQuality(enhanced.file);
+  const shineNote = glareMessage(enhanced.glareRatio);
+  if (enhanced.glareRatio >= 0.22) {
+    console.warn('[Visiting card] Too much glare after enhance.', { glareRatio: enhanced.glareRatio });
+    throw new ImageNotClearError([
+      shineNote || 'Shine is covering too much of the card. Tilt the card slightly, turn off flash, and tap again.'
+    ]);
+  }
   if (!quality.isClearlyVisible) {
     console.warn('[Visiting card] Image not clearly visible. Engine not used.', quality.issues);
     throw new ImageNotClearError(quality.issues);
   }
+  if (shineNote) {
+    console.info('[Visiting card] Mild glare reduced.', { glareRatio: enhanced.glareRatio });
+  }
+
+  const workingFile = enhanced.file;
 
   try {
     const { isLLMConfigured, extractLeadFromImageWithLLM } = await import('./geminiService');
     if (isLLMConfigured()) {
       console.info('[Visiting card] Engine: LLM (Gemini). Reading image with AI…');
       onStatus?.({ step: 'ai', label: 'Reading visiting card with AI…', percent: 35 });
-      const llm = await extractLeadFromImageWithLLM(imageFile);
+      const llm = await extractLeadFromImageWithLLM(workingFile);
       onStatus?.({ step: 'map', label: 'Matching AI results to form fields…', percent: 85 });
       if (!llm.isClearlyVisible) {
         const issues = llm.qualityIssues.length
@@ -74,6 +91,8 @@ export const extractVisitingCard = async (
       console.info('[Visiting card] Engine used: LLM', {
         engine: 'LLM',
         source: 'llm',
+        glareRatio: Number(enhanced.glareRatio.toFixed(3)),
+        rotated: enhanced.rotated,
         fields
       });
       return {
@@ -81,7 +100,8 @@ export const extractVisitingCard = async (
         fields,
         rawText: llm.rawText,
         isClearlyVisible: true,
-        qualityIssues: []
+        qualityIssues: [],
+        enhancedPreview: enhanced.dataUrl
       };
     }
     console.info('[Visiting card] LLM not configured (no valid GEMINI_API_KEY). Using OCR.');
@@ -94,7 +114,7 @@ export const extractVisitingCard = async (
   console.info('[Visiting card] Engine: OCR (Tesseract). Extracting text…');
   onStatus?.({ step: 'ocr', label: 'Extracting text with OCR…', percent: 35 });
   const ocrService = await import('./ocrService');
-  const rawText = await ocrService.extractTextFromImage(imageFile, (message, percent) => {
+  const rawText = await ocrService.extractTextFromImage(workingFile, (message, percent) => {
     onStatus?.({ step: 'ocr', label: message, percent });
   });
   if (!rawText || rawText.trim().length < 4) {
@@ -110,6 +130,8 @@ export const extractVisitingCard = async (
   console.info('[Visiting card] Engine used: OCR', {
     engine: 'OCR',
     source: 'ocr',
+    glareRatio: Number(enhanced.glareRatio.toFixed(3)),
+    rotated: enhanced.rotated,
     fields
   });
   return {
@@ -117,7 +139,8 @@ export const extractVisitingCard = async (
     fields,
     rawText,
     isClearlyVisible: true,
-    qualityIssues: []
+    qualityIssues: [],
+    enhancedPreview: enhanced.dataUrl
   };
 };
 

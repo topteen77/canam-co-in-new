@@ -9,6 +9,8 @@ import {
 } from '../services/visitingCardService';
 import { isLLMConfigured } from '../services/geminiService';
 import { useExtractAssign } from './ExtractAssign';
+import { CardScanCapture } from './CardScanCapture';
+import { ImageAdjustEditor } from './ImageAdjustEditor';
 
 interface ImageUploadOCRProps {
   onExtractComplete: (data: ExtractedLeadData) => void;
@@ -17,7 +19,7 @@ interface ImageUploadOCRProps {
 
 const PROCESS_STEPS: Array<{ id: ProcessUpdate['step']; label: string }> = [
   { id: 'open', label: 'Opening image' },
-  { id: 'quality', label: 'Checking image quality' },
+  { id: 'quality', label: 'Improving scan quality' },
   { id: 'ai', label: 'Reading with AI' },
   { id: 'ocr', label: 'Reading with OCR' },
   { id: 'map', label: 'Matching fields' },
@@ -38,8 +40,34 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
   const [activeStep, setActiveStep] = useState<ProcessUpdate['step'] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const lastSourceRef = useRef<File | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [editorFile, setEditorFile] = useState<File | null>(null);
   const llmReady = isLLMConfigured();
   const assignCtx = useExtractAssign();
+
+  const openScanner = () => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      setShowScanner(true);
+      return;
+    }
+    cameraInputRef.current?.click();
+  };
+
+  const openEditor = (file: File) => {
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (file.type && !validTypes.includes(file.type)) {
+      onError('Please select a valid image file (JPG, PNG, or WebP)');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      onError('Image size should be less than 10MB');
+      return;
+    }
+    lastSourceRef.current = file;
+    onError('');
+    setEditorFile(file);
+  };
 
   const resetExtraction = () => {
     setExtractedText('');
@@ -59,7 +87,7 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
 
   const processFile = async (file: File) => {
     const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
+    if (file.type && !validTypes.includes(file.type)) {
       onError('Please select a valid image file (JPG, PNG, or WebP)');
       return;
     }
@@ -82,7 +110,8 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
       });
       setUploadedImage(preview);
 
-      const result = await extractVisitingCard(file, handleProcessUpdate);
+      const result = await extractVisitingCard(file, handleProcessUpdate, { skipAutoRotate: true });
+      if (result.enhancedPreview) setUploadedImage(result.enhancedPreview);
       setExtractedText(result.rawText);
       setExtractedFields(result.fields);
       setExtractionSource(result.source);
@@ -121,7 +150,7 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) await processFile(file);
+    if (file) openEditor(file);
     event.target.value = '';
   };
 
@@ -144,10 +173,10 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
           📸 Upload Visiting Card or Screenshot
         </h3>
         <p className="text-sm text-slate-600 mb-3">
-          Upload a visiting card, business card, or office screenshot.
+          Upload a visiting card or tap Take photo. You can crop extra area, rotate, and adjust brightness before the card is read.
           {llmReady
-            ? ' AI will read the image first and fill matching client fields. OCR is used if AI is unavailable.'
-            : ' OCR will extract the text and fill matching client fields. Add a Gemini API key to enable AI reading.'}
+            ? ' After you confirm, lighting and shine are reduced in color, then AI fills matching fields. OCR is used if AI is unavailable.'
+            : ' After you confirm, lighting and shine are reduced in color, then OCR fills matching fields. Add a Gemini API key to enable AI reading.'}
         </p>
 
         <input
@@ -192,7 +221,7 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
           <button
             type="button"
             disabled={isProcessing}
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={openScanner}
             className="px-4 py-3 bg-white text-slate-700 rounded-lg hover:bg-purple-50 font-medium text-sm border-2 border-purple-300 min-h-[44px]"
           >
             📸 Take photo
@@ -254,25 +283,45 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
                 <li key={issue}>{issue}</li>
               ))}
             </ul>
-            <button
-              type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              className="mt-3 px-3 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700"
-            >
-              Take another photo
-            </button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openScanner}
+                className="px-3 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              >
+                Take another photo
+              </button>
+              {lastSourceRef.current && (
+                <button
+                  type="button"
+                  onClick={() => lastSourceRef.current && openEditor(lastSourceRef.current)}
+                  className="px-3 py-2 text-sm font-semibold bg-white text-amber-900 rounded-lg border border-amber-400"
+                >
+                  Crop / adjust this photo
+                </button>
+              )}
+            </div>
           </div>
         )}
 
         {uploadedImage && (
           <div className="mt-4">
             <div className="bg-white p-3 rounded-lg border border-purple-200">
-              <h4 className="text-sm font-semibold text-slate-700 mb-2">Image Preview:</h4>
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">Scan preview:</h4>
               <img
                 src={uploadedImage}
                 alt="Uploaded visiting card"
                 className="max-w-full h-auto max-h-48 rounded border border-slate-200"
               />
+              {lastSourceRef.current && !isProcessing && (
+                <button
+                  type="button"
+                  onClick={() => lastSourceRef.current && openEditor(lastSourceRef.current)}
+                  className="mt-2 px-3 py-2 text-sm font-semibold bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200"
+                >
+                  Crop / rotate / adjust
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -311,6 +360,27 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
           </p>
         )}
       </div>
+      {showScanner && (
+        <CardScanCapture
+          onCapture={(file) => {
+            setShowScanner(false);
+            openEditor(file);
+          }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+      {editorFile && (
+        <ImageAdjustEditor
+          key={`${editorFile.name}-${editorFile.size}-${editorFile.lastModified}`}
+          file={editorFile}
+          onConfirm={(file) => {
+            lastSourceRef.current = file;
+            setEditorFile(null);
+            void processFile(file);
+          }}
+          onCancel={() => setEditorFile(null)}
+        />
+      )}
     </div>
   );
 };

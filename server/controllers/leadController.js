@@ -32,6 +32,8 @@ export const getAllLeads = async (req, res) => {
       createdAt: lead.createdAt || lead.created_at,
       updatedAt: lead.updatedAt || lead.updated_at,
       onboardingDate: lead.onboardingDate || lead.onboarding_date,
+      trainingDate: lead.trainingDate || lead.training_date || lead.portalTrainingDate || lead.portal_training_date || '',
+      trainingScore: lead.trainingScore ?? lead.training_score ?? null,
       
       // Parse JSON columns (handle potential naming differences)
       contacts: parseJSON(lead.contacts),

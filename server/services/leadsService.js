@@ -116,14 +116,43 @@ export const getAllLeads = async () => {
         out.tags = parseJsonField(out.tags, []);
         out.countryInterest = parseJsonField(out.countryInterest, []);
         if (out.agencyDocuments != null) out.agencyDocuments = parseJsonField(out.agencyDocuments, undefined);
-        return out;
+        return hydrateTrainingFields(out);
     });
 };
+
+function parsePortalTrainingRemarks(remarks) {
+    if (!remarks) return null;
+    if (typeof remarks === 'object' && !Array.isArray(remarks)) return remarks;
+    if (typeof remarks !== 'string') return null;
+    try {
+        const parsed = JSON.parse(remarks);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function toNumberOrUndefined(value) {
+    if (value === undefined || value === null || value === '') return undefined;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+}
+
+function hydrateTrainingFields(lead) {
+    const parsed = parsePortalTrainingRemarks(lead.portalTrainingRemarks);
+    if (!lead.trainingDate) {
+        lead.trainingDate = lead.portalTrainingDate || parsed?.trainingDoneDate || null;
+    }
+    const fromColumn = toNumberOrUndefined(lead.trainingScore);
+    const fromRemarks = toNumberOrUndefined(parsed?.ratingOfTraining);
+    lead.trainingScore = fromColumn !== undefined ? fromColumn : fromRemarks;
+    return lead;
+}
 
 const ADD_LEAD_KEYS = [
     'agencyName', 'status', 'agentCategory', 'leadSource', 'tags', 'accountManager', 'salesPerson',
     'contacts', 'followUps', 'countryInterest', 'agencyDocuments', 'remarks', 'websiteLink', 'icpScore', 'createdBy',
-    'onboardingDate', 'applicants'
+    'onboardingDate', 'applicants', 'trainingDate', 'trainingScore'
 ];
 
 export const addLead = async (lead) => {
@@ -163,6 +192,8 @@ export const addLead = async (lead) => {
         else if (key === 'createdBy') values.push(lead.createdBy || 'System');
         else if (key === 'onboardingDate') values.push(lead.onboardingDate || null);
         else if (key === 'applicants') values.push(lead.applicants || null);
+        else if (key === 'trainingDate') values.push(lead.trainingDate || null);
+        else if (key === 'trainingScore') values.push(lead.trainingScore ?? null);
         else values.push(null);
     }
     const createdAtCol = await resolveColumnName('createdAt');

@@ -22,86 +22,6 @@ export interface ExtractedLeadData {
   remarks?: string;
 }
 
-// Advanced image preprocessing for better OCR accuracy
-const preprocessImage = (imageFile: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    if (!ctx) {
-      reject(new Error('Canvas context not available'));
-      return;
-    }
-
-    img.onload = () => {
-      try {
-        // Set canvas size
-        canvas.width = img.width;
-        canvas.height = img.height;
-        
-        // Draw original image
-        ctx.drawImage(img, 0, 0);
-        
-        // Get image data
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        
-        // Apply preprocessing: Grayscale + Contrast Enhancement + Noise Reduction
-        for (let i = 0; i < data.length; i += 4) {
-          // Convert to grayscale using luminance formula
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-          
-          // Enhance contrast (increase difference between light and dark)
-          let enhanced = gray;
-          if (gray < 128) {
-            // Darken dark pixels
-            enhanced = Math.max(0, gray - 20);
-          } else {
-            // Lighten light pixels
-            enhanced = Math.min(255, gray + 20);
-          }
-          
-          // Apply threshold to make text sharper (binary threshold)
-          const threshold = 128;
-          const binary = enhanced > threshold ? 255 : 0;
-          
-          // Set RGB to grayscale value
-          data[i] = binary;     // R
-          data[i + 1] = binary; // G
-          data[i + 2] = binary; // B
-          // Alpha stays the same
-        }
-        
-        // Put processed image data back
-        ctx.putImageData(imageData, 0, 0);
-        
-        // Convert to blob and then to file
-        canvas.toBlob((blob) => {
-          if (!blob) {
-            reject(new Error('Failed to process image'));
-            return;
-          }
-          
-          // Convert blob to data URL
-    const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error('Failed to read processed image'));
-          reader.readAsDataURL(blob);
-        }, 'image/png');
-      } catch (error) {
-        reject(error);
-      }
-    };
-    
-    img.onerror = () => reject(new Error('Failed to load image'));
-    img.src = URL.createObjectURL(imageFile);
-  });
-};
-
 // Extract text from image using Tesseract.js with optimal settings
 export const extractTextFromImage = async (
   imageFile: File,
@@ -109,16 +29,8 @@ export const extractTextFromImage = async (
 ): Promise<string> => {
   let worker: any = null;
   try {
-    console.log('🔍 Starting high-accuracy OCR extraction...');
+    console.log('🔍 Starting OCR on scan-enhanced color image (no binary threshold)…');
     onProgress?.('Preparing image for text reading...', 8);
-
-    console.log('🖼️ Preprocessing image (grayscale, contrast, threshold)...');
-    const processedImageDataUrl = await preprocessImage(imageFile);
-    
-    const response = await fetch(processedImageDataUrl);
-    const blob = await response.blob();
-    const processedFile = new File([blob], imageFile.name, { type: 'image/png' });
-
     onProgress?.('Loading OCR engine...', 15);
     
     worker = await createWorker('eng', 1, {
@@ -144,8 +56,7 @@ export const extractTextFromImage = async (
     
     console.log('🔍 Recognizing text with optimized settings...');
     
-    // Perform OCR on preprocessed image
-    const { data: { text } } = await worker.recognize(processedFile);
+    const { data: { text } } = await worker.recognize(imageFile);
     
     // If first attempt yields poor results, try with different PSM mode
     let finalText = text.trim();
@@ -154,7 +65,7 @@ export const extractTextFromImage = async (
       await worker.setParameters({
         tessedit_pageseg_mode: '11', // Sparse text
       });
-      const retryResult = await worker.recognize(processedFile);
+      const retryResult = await worker.recognize(imageFile);
       if (retryResult.data.text && retryResult.data.text.length > finalText.length) {
         finalText = retryResult.data.text.trim();
         console.log('✅ Retry with alternative mode improved results');
