@@ -8,6 +8,7 @@ interface ModalProps {
   maxWidth?: string;
   noPadding?: boolean;
   footer?: React.ReactNode;
+  fullScreenOnMobile?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({ 
@@ -17,7 +18,8 @@ export const Modal: React.FC<ModalProps> = ({
   children, 
   maxWidth = 'max-w-2xl',
   noPadding = false,
-  footer
+  footer,
+  fullScreenOnMobile = false
 }) => {
   // Shield 1: Lock body scroll when modal is active
   useEffect(() => {
@@ -51,17 +53,27 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-2 sm:p-4 backdrop-blur-sm transition-opacity"
+      className={`fixed inset-0 bg-black/60 z-50 flex justify-center backdrop-blur-sm transition-opacity ${
+        fullScreenOnMobile ? 'items-stretch sm:items-center p-0 sm:p-4' : 'items-center p-2 sm:p-4'
+      }`}
       onClick={onClose} // Close when clicking the backdrop
       aria-modal="true" 
       role="dialog"
       aria-labelledby="modal-title"
     >
       <div 
-        className={`modal-content bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[90vh] sm:max-h-[90vh] flex flex-col transform transition-all overflow-hidden`}
+        className={`modal-content bg-white shadow-2xl w-full ${maxWidth} flex flex-col transform transition-all overflow-hidden ${
+          fullScreenOnMobile
+            ? 'modal-fullscreen-mobile h-[100dvh] max-h-[100dvh] rounded-none sm:rounded-2xl sm:h-auto sm:max-h-[90vh]'
+            : 'rounded-xl sm:rounded-2xl max-h-[90vh]'
+        }`}
         onClick={(e) => e.stopPropagation()} // Shield 3: Prevent backdrop click from firing when clicking content
       >
-        <header className="flex items-center justify-between px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-200 flex-shrink-0 bg-white rounded-t-xl sm:rounded-t-2xl z-30">
+        <header className={`flex items-center justify-between px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-200 flex-shrink-0 bg-white z-30 ${
+          fullScreenOnMobile
+            ? 'rounded-none sm:rounded-t-2xl pt-[max(0.75rem,env(safe-area-inset-top))]'
+            : 'rounded-t-xl sm:rounded-t-2xl'
+        }`}>
           <h2 id="modal-title" className="text-lg sm:text-xl font-bold text-slate-800 truncate pr-2">
             {title}
           </h2>
@@ -80,7 +92,7 @@ export const Modal: React.FC<ModalProps> = ({
           {children}
         </div>
         {footer && (
-          <div className="flex-shrink-0 border-t border-indigo-200 bg-white z-40">
+          <div className="flex-shrink-0 border-t border-indigo-200 bg-white z-40 pb-[max(0px,env(safe-area-inset-bottom))]">
             {footer}
           </div>
         )}

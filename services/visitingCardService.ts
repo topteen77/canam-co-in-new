@@ -94,21 +94,23 @@ export const extractVisitingCard = async (
     signal
   );
   throwIfAborted(signal);
-  onStatus?.({ step: 'quality', label: 'Checking if the image is clearly visible…', percent: 16 });
+  onStatus?.({ step: 'quality', label: 'Checking image, then reading the card…', percent: 16 });
   const quality = await assessImageQuality(enhanced.file);
   const shineNote = glareMessage(enhanced.glareRatio);
-  if (enhanced.glareRatio >= 0.22) {
-    console.warn('[Visiting card] Too much glare after enhance.', { glareRatio: enhanced.glareRatio });
-    throw new ImageNotClearError([
-      shineNote || 'Shine is covering too much of the card. Tilt the card slightly, turn off flash, and tap again.'
-    ]);
-  }
-  if (!quality.isClearlyVisible) {
-    console.warn('[Visiting card] Image not clearly visible. Engine not used.', quality.issues);
+  const qualityNotes = [
+    ...(shineNote ? [shineNote] : []),
+    ...quality.issues
+  ];
+  const tooSmall = quality.issues.some((issue) => /too small or cropped/i.test(issue));
+  if (tooSmall) {
+    console.warn('[Visiting card] Image is too small to read.', quality.issues);
     throw new ImageNotClearError(quality.issues);
   }
-  if (shineNote) {
-    console.info('[Visiting card] Mild glare reduced.', { glareRatio: enhanced.glareRatio });
+  if (qualityNotes.length) {
+    console.info('[Visiting card] Quality notes — continuing to read anyway.', {
+      glareRatio: Number(enhanced.glareRatio.toFixed(3)),
+      notes: qualityNotes
+    });
   }
 
   const workingFile = enhanced.file;
@@ -120,18 +122,11 @@ export const extractVisitingCard = async (
       onStatus?.({ step: 'ai', label: 'Reading visiting card with AI…', percent: 35 });
       const llm = await abortable(extractLeadFromImageWithLLM(workingFile), signal);
       onStatus?.({ step: 'map', label: 'Matching AI results to form fields…', percent: 85 });
-      if (!llm.isClearlyVisible) {
-        const issues = llm.qualityIssues.length
-          ? llm.qualityIssues
-          : ['The text on this image is not clearly visible. Please take another photo and try again.'];
-        console.warn('[Visiting card] Engine: LLM. Image not clearly visible.', issues);
-        throw new ImageNotClearError(issues);
-      }
       const fields = normalizeExtractedFields(llm.fields);
-      if (!hasUsefulFields(fields) && !(llm.rawText || '').trim()) {
-        throw new ImageNotClearError([
-          'No client information could be read from this image. Please take a clearer photo.'
-        ]);
+      const hasText = hasUsefulFields(fields) || Boolean((llm.rawText || '').trim());
+      if (!hasText) {
+        console.warn('[Visiting card] Engine: LLM returned no fields. Falling back to OCR.');
+        throw new Error('LLM_NO_TEXT');
       }
       onStatus?.({ step: 'done', label: 'AI finished. Filling the form…', percent: 100 });
       console.info('[Visiting card] Engine used: LLM', {
@@ -146,17 +141,16 @@ export const extractVisitingCard = async (
         fields,
         rawText: llm.rawText,
         isClearlyVisible: true,
-        qualityIssues: [],
+        qualityIssues: qualityNotes,
         enhancedPreview: enhanced.dataUrl
       };
     }
     console.info('[Visiting card] LLM not configured (no valid GEMINI_API_KEY). Using OCR.');
   } catch (error) {
-    if (error instanceof ImageNotClearError) throw error;
     if (isCancelledError(error)) throw error;
-    console.warn('[Visiting card] LLM failed. Falling back to OCR.', error);
+    console.warn('[Visiting card] LLM unavailable or empty. Falling back to OCR.', error);
     throwIfAborted(signal);
-    onStatus?.({ step: 'ocr', label: 'AI unavailable. Switching to OCR…', percent: 30 });
+    onStatus?.({ step: 'ocr', label: 'Switching to OCR…', percent: 30 });
   }
 
   throwIfAborted(signal);
@@ -188,7 +182,7 @@ export const extractVisitingCard = async (
     fields,
     rawText,
     isClearlyVisible: true,
-    qualityIssues: [],
+    qualityIssues: qualityNotes,
     enhancedPreview: enhanced.dataUrl
   };
 };

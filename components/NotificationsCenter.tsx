@@ -48,22 +48,34 @@ const statusDefinitions: Array<{ id: StatusFilter; label: string }> = [
   { id: 'snoozed', label: 'Snoozed' }
 ];
 
-const getCategoryBadgeColor = (category: NotificationCategory) => {
-  switch (category) {
-    case 'call':
-      return 'bg-green-100 text-green-700';
-    case 'email':
-      return 'bg-sky-100 text-sky-700';
-    case 'meeting':
-      return 'bg-purple-100 text-purple-700';
-    case 'assessment':
-      return 'bg-amber-100 text-amber-700';
-    case 'whatsapp':
-      return 'bg-lime-100 text-lime-700';
+const formatRelativeTime = (iso: string) => {
+  try {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return '';
+    const diffMs = Date.now() - date.getTime();
+    const mins = Math.round(Math.abs(diffMs) / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(hours / 24);
+    if (days < 14) return `${days}d ago`;
+    return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  } catch {
+    return '';
+  }
+};
+
+const getStatusChip = (status?: string) => {
+  switch (status) {
     case 'overdue':
-      return 'bg-red-100 text-red-700';
+      return { label: 'Overdue', className: 'bg-rose-50 text-rose-700 border-rose-200' };
+    case 'upcoming':
+      return { label: 'Upcoming', className: 'bg-amber-50 text-amber-800 border-amber-200' };
+    case 'active':
+      return { label: 'In progress', className: 'bg-sky-50 text-sky-800 border-sky-200' };
     default:
-      return 'bg-slate-100 text-slate-700';
+      return null;
   }
 };
 
@@ -88,6 +100,7 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // 🟢 SAFE FIX: Robust preference handling
   const safePreferences = preferences || {};
@@ -235,26 +248,15 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="px-3 py-1.5 text-sm text-indigo-600 hover:text-indigo-700 bg-indigo-50 rounded-lg flex items-center gap-1"
-              >
-                ← Back
-              </button>
-            )}
-            <h1 className="text-2xl font-bold text-slate-900">Notifications Center</h1>
-          </div>
+    <div className="page-shell px-0 space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Notifications Center</h1>
           <p className="text-sm text-slate-600 mt-1">
             Stay on top of calls, emails, meetings, and assessments. Manage reminders and mute what
             you don’t need.
           </p>
         </div>
-
         <div className="flex items-center gap-2">
           <button
             onClick={onMarkAllRead}
@@ -267,7 +269,7 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
             <button
               onClick={onOpenSettings}
               title="Notification Settings"
-              className="flex items-center justify-center p-2 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-700 transition-colors"
+              className="app-icon-btn flex items-center justify-center p-2 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-700 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -278,22 +280,22 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
         </div>
       </div>
 
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="text-sm text-slate-500">Total notifications</div>
-          <div className="mt-1 text-3xl font-bold text-slate-900">{notifications.length}</div>
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        <div className="p-3 sm:p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="text-xs sm:text-sm text-slate-500">Total notifications</div>
+          <div className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900">{notifications.length}</div>
         </div>
-        <div className="p-4 rounded-xl border border-blue-200 bg-blue-50 shadow-sm">
-          <div className="text-sm text-blue-800">Unread</div>
-          <div className="mt-1 text-3xl font-bold text-blue-900">{unreadCount}</div>
+        <div className="p-3 sm:p-4 rounded-xl border border-blue-200 bg-blue-50 shadow-sm">
+          <div className="text-xs sm:text-sm text-blue-800">Unread</div>
+          <div className="mt-1 text-2xl sm:text-3xl font-bold text-blue-900">{unreadCount}</div>
         </div>
-        <div className="p-4 rounded-xl border border-red-200 bg-red-50 shadow-sm">
-          <div className="text-sm text-red-800">Overdue follow-ups</div>
-          <div className="mt-1 text-3xl font-bold text-red-900">{categoryCounts.overdue ?? 0}</div>
+        <div className="p-3 sm:p-4 rounded-xl border border-red-200 bg-red-50 shadow-sm">
+          <div className="text-xs sm:text-sm text-red-800">Overdue follow-ups</div>
+          <div className="mt-1 text-2xl sm:text-3xl font-bold text-red-900">{categoryCounts.overdue ?? 0}</div>
         </div>
-        <div className="p-4 rounded-xl border border-purple-200 bg-purple-50 shadow-sm">
-          <div className="text-sm text-purple-800">Muted items</div>
-          <div className="mt-1 text-3xl font-bold text-purple-900">
+        <div className="p-3 sm:p-4 rounded-xl border border-purple-200 bg-purple-50 shadow-sm">
+          <div className="text-xs sm:text-sm text-purple-800">Muted items</div>
+          <div className="mt-1 text-2xl sm:text-3xl font-bold text-purple-900">
             {mutedNotificationSet.size + mutedCategoriesSet.size}
           </div>
         </div>
@@ -318,7 +320,7 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
@@ -335,7 +337,7 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search notifications..."
-            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-56"
+            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full sm:w-56"
           />
         </div>
       </div>
@@ -361,151 +363,189 @@ export const NotificationsCenter: React.FC<NotificationsCenterProps> = ({
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-2.5">
         {sortedNotifications.length === 0 ? (
-          <div className="p-10 text-center border border-dashed border-slate-300 rounded-2xl bg-slate-50">
-            <div className="text-4xl mb-2">🎉</div>
-            <p className="text-sm text-slate-600">No notifications match your filters.</p>
+          <div className="p-8 text-center border border-dashed border-slate-300 rounded-xl bg-slate-50">
+            <p className="text-sm font-medium text-slate-700">No alerts match your filters</p>
+            <p className="text-xs text-slate-500 mt-1">Try another category or clear search.</p>
           </div>
         ) : (
           sortedNotifications.map((notification) => {
             const isRead = readNotificationIds.has(notification.id);
             const isMuted =
               mutedCategoriesSet.has(notification.category) || mutedNotificationSet.has(notification.id);
-            
+
             let isSnoozed = false;
             try {
-                const snoozedUntil = snoozedMap[notification.id];
-                isSnoozed = snoozedUntil ? new Date(snoozedUntil).getTime() > now : false;
+              const snoozedUntil = snoozedMap[notification.id];
+              isSnoozed = snoozedUntil ? new Date(snoozedUntil).getTime() > now : false;
             } catch (e) {
-                // Ignore invalid date
+              // Ignore invalid date
             }
 
+            const statusChip = getStatusChip(notification.status);
+            const headline = notification.leadName || notification.title;
+            const detail = notification.description;
+            const showTitleExtra =
+              notification.leadName &&
+              notification.title &&
+              !notification.title.toLowerCase().includes(String(notification.leadName).toLowerCase());
+            const menuOpen = openMenuId === notification.id;
+
             return (
-              <div
+              <article
                 key={notification.id}
-                className="p-5 border border-slate-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow"
+                className={`alert-card ${!isRead ? 'alert-card--unread' : ''} ${
+                  notification.status === 'overdue' ? 'alert-card--overdue' : ''
+                }`}
               >
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${getCategoryBadgeColor(
-                          notification.category
-                        )}`}
-                      >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`lead-chip ${
+                        notification.category === 'call' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                        notification.category === 'email' ? 'bg-sky-50 text-sky-800 border-sky-200' :
+                        notification.category === 'meeting' ? 'bg-violet-50 text-violet-800 border-violet-200' :
+                        notification.category === 'assessment' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                        notification.category === 'whatsapp' ? 'bg-lime-50 text-lime-800 border-lime-200' :
+                        'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}>
                         {notification.category}
                       </span>
-                      <span className="text-xs text-slate-500">
-                        {new Date(notification.timestamp).toLocaleString()}
-                      </span>
-                      {notification.status === 'overdue' && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-red-100 text-red-700">
-                          Overdue
-                        </span>
-                      )}
-                      {notification.status === 'upcoming' && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700">
-                          Upcoming
-                        </span>
-                      )}
-                      {notification.status === 'active' && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-blue-100 text-blue-700">
-                          In progress
-                        </span>
+                      {statusChip && (
+                        <span className={`lead-chip ${statusChip.className}`}>{statusChip.label}</span>
                       )}
                       {isMuted && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-rose-100 text-rose-700">
-                          Muted
-                        </span>
+                        <span className="lead-chip bg-rose-50 text-rose-700 border-rose-200">Muted</span>
                       )}
                       {isSnoozed && snoozedMap[notification.id] && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-700">
-                          Snoozed until {new Date(snoozedMap[notification.id]).toLocaleTimeString()}
+                        <span className="lead-chip bg-violet-50 text-violet-800 border-violet-200">
+                          Snoozed {new Date(snoozedMap[notification.id]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )}
+                      {!isRead && (
+                        <span className="lead-chip bg-indigo-50 text-indigo-700 border-indigo-200">New</span>
+                      )}
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-900 truncate">
-                      {notification.title}
+
+                    <h3 className="mt-2 text-[15px] font-semibold text-slate-900 leading-snug break-words">
+                      {headline}
                     </h3>
-                    <p className="text-sm text-slate-600 mt-1">{notification.description}</p>
-                    {notification.leadName && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        Lead: <span className="font-medium">{notification.leadName}</span>
-                      </p>
+                    {showTitleExtra && (
+                      <p className="mt-0.5 text-xs font-medium text-slate-500">{notification.title}</p>
                     )}
+                    {detail && (
+                      <p className="mt-1 text-[13px] text-slate-600 leading-snug break-words">{detail}</p>
+                    )}
+                    <p className="mt-1.5 text-[11px] text-slate-400">
+                      {formatRelativeTime(notification.timestamp)}
+                      <span className="mx-1">·</span>
+                      {new Date(notification.timestamp).toLocaleString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-2 justify-end">
+                </div>
+
+                <div className="alert-card-actions">
+                  {notification.leadId && onNavigateToLead && (
                     <button
-                      onClick={() => {
-                        if (isRead) {
-                          onMarkUnread(notification.id);
-                        } else {
-                          onMarkRead(notification.id);
-                        }
-                      }}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-600 hover:border-slate-400 hover:text-slate-800"
+                      type="button"
+                      onClick={() => onNavigateToLead(notification.leadId!, notification.followUpId)}
+                      className="alert-action-btn alert-action-btn--primary"
                     >
-                      {isRead ? 'Mark unread' : 'Mark read'}
+                      Open lead
                     </button>
-                    {isSnoozed ? (
-                      <button
-                        onClick={() => onClearSnooze(notification.id)}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-purple-200 text-purple-700 hover:border-purple-400 hover:text-purple-800"
-                      >
-                        Resume now
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        {[10, 30, 60].map((minutes) => (
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isRead) onMarkUnread(notification.id);
+                      else onMarkRead(notification.id);
+                    }}
+                    className="alert-action-btn"
+                  >
+                    {isRead ? 'Unread' : 'Read'}
+                  </button>
+
+                  {isSnoozed ? (
+                    <button
+                      type="button"
+                      onClick={() => onClearSnooze(notification.id)}
+                      className="alert-action-btn alert-action-btn--violet"
+                    >
+                      Resume
+                    </button>
+                  ) : (
+                    <select
+                      aria-label="Snooze alert"
+                      defaultValue=""
+                      onChange={(e) => {
+                        const mins = Number(e.target.value);
+                        if (mins) onSnoozeNotification(notification.id, mins);
+                        e.target.value = '';
+                      }}
+                      className="alert-action-btn alert-action-btn--select"
+                    >
+                      <option value="" disabled>
+                        Snooze
+                      </option>
+                      <option value="10">10 min</option>
+                      <option value="30">30 min</option>
+                      <option value="60">60 min</option>
+                    </select>
+                  )}
+
+                  <div className="relative ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuId(menuOpen ? null : notification.id)}
+                      className="alert-action-btn"
+                      aria-label="More actions"
+                      aria-expanded={menuOpen}
+                    >
+                      More
+                    </button>
+                    {menuOpen && (
+                      <div className="absolute right-0 bottom-full mb-1 z-20 min-w-[9rem] rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          onClick={() => {
+                            if (isMuted) onUnmuteNotification(notification.id);
+                            else onMuteNotification(notification.id);
+                            setOpenMenuId(null);
+                          }}
+                        >
+                          {isMuted ? 'Unmute' : 'Mute'}
+                        </button>
+                        {onDismissNotification && (
                           <button
-                            key={minutes}
-                            onClick={() => onSnoozeNotification(notification.id, minutes)}
-                            className="px-2.5 py-1 text-[11px] font-semibold rounded-lg border border-purple-200 text-purple-700 hover:border-purple-400 hover:text-purple-800"
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm text-rose-600 hover:bg-rose-50"
+                            onClick={() => {
+                              onDismissNotification(notification.id);
+                              setOpenMenuId(null);
+                            }}
                           >
-                            Snooze {minutes}m
+                            Delete
                           </button>
-                        ))}
+                        )}
                       </div>
-                    )}
-                    <button
-                      onClick={() => {
-                        if (isMuted) {
-                          onUnmuteNotification(notification.id);
-                        } else {
-                          onMuteNotification(notification.id);
-                        }
-                      }}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 text-rose-600 hover:border-rose-400 hover:text-rose-700"
-                    >
-                      {isMuted ? 'Unmute' : 'Mute'}
-                    </button>
-                    {notification.leadId && onNavigateToLead && (
-                      <button
-                        onClick={() => onNavigateToLead(notification.leadId!, notification.followUpId)}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-indigo-200 text-indigo-600 hover:border-indigo-400 hover:text-indigo-700"
-                      >
-                        Open lead
-                      </button>
-                    )}
-                    {onDismissNotification && (
-                      <button
-                        onClick={() => onDismissNotification(notification.id)}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-500 hover:border-red-200 hover:text-red-600"
-                        title="Delete notification"
-                      >
-                        Delete
-                      </button>
                     )}
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })
         )}
       </div>
     </div>
   );
+
 };
 
 export default NotificationsCenter;

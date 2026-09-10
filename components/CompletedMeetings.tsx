@@ -205,6 +205,26 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
     }
   };
 
+  const formatDuration = (minutes?: number | null) => {
+    if (!minutes || minutes <= 0) return null;
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
+  const shortPlace = (address?: string) => {
+    if (!address) return '';
+    const parts = address
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .filter((part, index, arr) => part.toLowerCase() !== arr[index - 1]?.toLowerCase())
+      .filter((part) => !/^\d{4,6}$/.test(part) && !/^india$/i.test(part));
+    if (parts.length <= 2) return parts.join(', ');
+    return `${parts[0]}, ${parts[parts.length - 1]}`;
+  };
+
   const getOutcomeColor = (outcome: string) => {
     if (!outcome) return 'bg-blue-100 text-blue-800';
     switch (outcome) {
@@ -239,35 +259,32 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Completed Meetings</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Completed Meetings</h2>
           <p className="text-sm text-slate-600 mt-1">
-            View and manage completed meeting records with photos and remarks
+            Photos, remarks, and outcomes from finished meetings
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold">
-              Total: {(Array.isArray(meetingCheckIns) ? meetingCheckIns : []).filter(m => {
-                const hasCheckOutTime = m.checkOutTime && m.checkOutTime.trim() !== '';
-                return m.meetingStatus === 'completed' || hasCheckOutTime;
-              }).length}
-            </span>
-            {filteredMeetings.length !== (Array.isArray(meetingCheckIns) ? meetingCheckIns : []).filter(m => {
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold text-sm">
+            Total: {(Array.isArray(meetingCheckIns) ? meetingCheckIns : []).filter(m => {
               const hasCheckOutTime = m.checkOutTime && m.checkOutTime.trim() !== '';
               return m.meetingStatus === 'completed' || hasCheckOutTime;
-            }).length && (
-                <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full font-semibold">
-                  Filtered: {filteredMeetings.length}
-                </span>
-              )}
-          </div>
+            }).length}
+          </span>
+          {filteredMeetings.length !== (Array.isArray(meetingCheckIns) ? meetingCheckIns : []).filter(m => {
+            const hasCheckOutTime = m.checkOutTime && m.checkOutTime.trim() !== '';
+            return m.meetingStatus === 'completed' || hasCheckOutTime;
+          }).length && (
+              <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full font-semibold text-sm">
+                Filtered: {filteredMeetings.length}
+              </span>
+            )}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50"
+            className="app-icon-btn flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 min-h-[44px]"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z" />
@@ -392,234 +409,301 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
             <p className="text-slate-500">Try adjusting your filters or check back later for new meetings.</p>
           </div>
         ) : (
-          filteredMeetings.map((meeting) => (
-            <div key={`${meeting.username}-${meeting.date}-${meeting.checkInTime}`} className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-semibold text-slate-900">
+          filteredMeetings.map((meeting) => {
+            const allPhotos = [...(meeting.checkInPhotos || []), ...(meeting.completionPhotos || [])];
+            const endLocation = Array.isArray(meeting.completionPhotoMetadata)
+              ? meeting.completionPhotoMetadata[0]?.location
+              : undefined;
+            const durationLabel = formatDuration(meeting.meetingDuration);
+            const timeRange = `${formatTime(meeting.checkInTime)}${meeting.checkOutTime ? ` – ${formatTime(meeting.checkOutTime)}` : ' – Ongoing'}`;
+            const endPlace =
+              endLocation?.address
+                ? shortPlace(endLocation.address)
+                : endLocation?.latitude != null && endLocation?.longitude != null
+                  ? `${Number(endLocation.latitude).toFixed(5)}, ${Number(endLocation.longitude).toFixed(5)}`
+                  : meeting.checkOutTime
+                    ? 'Not available'
+                    : null;
+
+            return (
+            <div
+              key={`${meeting.username}-${meeting.date}-${meeting.checkInTime}`}
+              className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-indigo-200 transition-shadow"
+            >
+              <div className="flex gap-3">
+                {allPhotos[0] ? (
+                  <button
+                    type="button"
+                    onClick={() => openPhotoModal(allPhotos, 0)}
+                    className="relative w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] rounded-xl overflow-hidden border border-slate-200 shrink-0"
+                    aria-label={`Open ${allPhotos.length} photo${allPhotos.length === 1 ? '' : 's'}`}
+                  >
+                    <img src={allPhotos[0]} alt="" className="w-full h-full object-cover" />
+                    {allPhotos.length > 1 && (
+                      <span className="absolute bottom-1 right-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        +{allPhotos.length - 1}
+                      </span>
+                    )}
+                  </button>
+                ) : null}
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-[15px] sm:text-base font-semibold text-slate-900 leading-snug">
                       {meeting.leadName || 'Unknown Lead'}
                     </h3>
                     {meeting.meetingOutcome && (
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getOutcomeColor(meeting.meetingOutcome)}`}>
+                      <span className={`shrink-0 px-2 py-0.5 text-[11px] font-semibold rounded-full ${getOutcomeColor(meeting.meetingOutcome)}`}>
                         {meeting.meetingOutcome.charAt(0).toUpperCase() + meeting.meetingOutcome.slice(1).replace('_', ' ')}
                       </span>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600">
-                    <div>
-                      <span className="font-medium">Date:</span> {formatDate(meeting.date)}
-                    </div>
-                    <div>
-                      <span className="font-medium">Time:</span> {formatTime(meeting.checkInTime)} - {meeting.checkOutTime ? formatTime(meeting.checkOutTime) : 'Ongoing'}
-                    </div>
-                    <div>
-                      <span className="font-medium">User:</span> {getUserDisplayName(meeting.username)}
-                    </div>
-                    <div>
-                      <span className="font-medium">Duration:</span> {meeting.meetingDuration ? `${meeting.meetingDuration} minutes` : 'N/A'}
-                    </div>
-                    {/* Location Links with Safety Checks */}
-                    {meeting.location && (
-                      <>
-                        <div>
-                          <span className="font-medium">Start Location:</span>{' '}
-                          {meeting.location.address ? (
-                            <a
-                              href={`https://www.google.com/maps?q=${meeting.location.latitude},${meeting.location.longitude}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-1"
-                            >
-                              {meeting.location.address}
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                              </svg>
-                            </a>
-                          ) : (
-                            <span className="text-slate-500">N/A</span>
-                          )}
-                        </div>
-                        {/* End Location Check */}
-                        {(meeting.completionPhotoMetadata &&
-                          Array.isArray(meeting.completionPhotoMetadata) &&
-                          meeting.completionPhotoMetadata.length > 0 &&
-                          meeting.completionPhotoMetadata[0]?.location) ? (
-                          <div>
-                            <span className="font-medium">End Location:</span>{' '}
-                            <a
-                              href={`https://www.google.com/maps?q=${meeting.completionPhotoMetadata[0].location.latitude},${meeting.completionPhotoMetadata[0].location.longitude}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-1"
-                            >
-                              {meeting.completionPhotoMetadata[0].location.address ||
-                                `${meeting.completionPhotoMetadata[0].location.latitude.toFixed(6)}, ${meeting.completionPhotoMetadata[0].location.longitude.toFixed(6)}`
-                              }
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                              </svg>
-                            </a>
-                          </div>
-                        ) : meeting.checkOutTime ? (
-                          <div>
-                            <span className="font-medium">End Location:</span>{' '}
-                            <span className="text-slate-500">Not available</span>
-                          </div>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
-                </div>
+                  <p className="mt-1 text-sm font-medium text-slate-800">
+                    {formatDate(meeting.date)} · {timeRange}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {getUserDisplayName(meeting.username)}
+                    {durationLabel ? ` · ${durationLabel}` : ''}
+                  </p>
 
-                <div className="flex items-center gap-2">
-                  {/* Photos Button */}
-                  {((meeting.checkInPhotos || []).length > 0 || (meeting.completionPhotos || []).length > 0) && (
-                    <button
-                      onClick={() => {
-                        const allPhotos = [...(meeting.checkInPhotos || []), ...(meeting.completionPhotos || [])];
-                        openPhotoModal(allPhotos);
-                      }}
-                      className="flex items-center gap-1 px-3 py-1 text-sm text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+                  {meeting.location?.address && (
+                    <a
+                      href={`https://www.google.com/maps?q=${meeting.location.latitude},${meeting.location.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={meeting.location.address}
+                      className="mt-2 flex items-center gap-1.5 text-sm text-indigo-700 hover:text-indigo-900 min-w-0"
                     >
-                      📸 Photos ({(meeting.checkInPhotos?.length || 0) + (meeting.completionPhotos?.length || 0)})
-                    </button>
+                      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="truncate">{shortPlace(meeting.location.address)}</span>
+                    </a>
                   )}
 
-                  {/* View Details Button */}
-                  <button
-                    onClick={() => setSelectedMeeting(meeting)}
-                    className="flex items-center gap-1 px-3 py-1 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-md hover:bg-indigo-100"
-                  >
-                    👁️ View Details
-                  </button>
-                </div>
-              </div>
+                  {endPlace && (
+                    <p className="mt-0.5 pl-5 text-xs text-slate-500 truncate" title={endLocation?.address || endPlace}>
+                      End: {endPlace}
+                    </p>
+                  )}
 
-              {/* Meeting Notes */}
-              {meeting.notes && (
-                <div className="mt-4 p-3 bg-slate-50 rounded-md">
-                  <h4 className="text-sm font-medium text-slate-700 mb-2">Meeting Notes:</h4>
-                  <p className="text-sm text-slate-600 whitespace-pre-wrap">{meeting.notes}</p>
-                </div>
-              )}
+                  {meeting.notes && (
+                    <p className="mt-2 text-sm text-slate-700 line-clamp-2">
+                      {meeting.notes}
+                    </p>
+                  )}
 
-              {/* Photos Preview */}
-              {((meeting.checkInPhotos || []).length > 0 || (meeting.completionPhotos || []).length > 0) && (
-                <div className="mt-4">
-                  <h4 className="text-sm font-medium text-slate-700 mb-2">Photos:</h4>
-                  <div className="flex gap-2 flex-wrap">
-                    {(meeting.checkInPhotos || []).map((photo, index) => (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {allPhotos.length > 0 && (
                       <button
-                        key={`checkin-${index}`}
-                        onClick={() => openPhotoModal(meeting.checkInPhotos || [], index)}
-                        className="w-16 h-16 rounded-md overflow-hidden border border-slate-200 hover:border-blue-300"
+                        type="button"
+                        onClick={() => openPhotoModal(allPhotos)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
                       >
-                        <img src={photo} alt={`Check-in photo ${index + 1}`} className="w-full h-full object-cover" />
+                        📸 Photos ({allPhotos.length})
                       </button>
-                    ))}
-                    {(meeting.completionPhotos || []).map((photo, index) => (
-                      <button
-                        key={`completion-${index}`}
-                        onClick={() => openPhotoModal(meeting.completionPhotos || [], index)}
-                        className="w-16 h-16 rounded-md overflow-hidden border border-slate-200 hover:border-blue-300"
-                      >
-                        <img src={photo} alt={`Completion photo ${index + 1}`} className="w-full h-full object-cover" />
-                      </button>
-                    ))}
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMeeting(meeting)}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-md hover:bg-indigo-100"
+                    >
+                      👁️ View Details
+                    </button>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
 
       {/* Meeting Details Modal */}
       {selectedMeeting && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-slate-900">Meeting Details</h3>
-                <button
-                  onClick={() => setSelectedMeeting(null)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+        <div
+          className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[80] p-0 sm:p-4"
+          onClick={() => setSelectedMeeting(null)}
+        >
+          <div
+            className="bg-white rounded-t-2xl sm:rounded-xl max-w-lg w-full max-h-[92dvh] overflow-y-auto shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-4 py-3.5 sm:px-5 border-b border-slate-200 bg-white pt-[max(0.75rem,env(safe-area-inset-top))]">
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Meeting Details</p>
+                <h3 className="mt-0.5 text-[17px] sm:text-lg font-semibold text-slate-900 leading-snug break-words">
+                  {selectedMeeting.leadName || 'Unknown Lead'}
+                </h3>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {selectedMeeting.meetingStatus && (
+                    <span className="lead-chip bg-sky-50 text-sky-800 border-sky-200">
+                      {String(selectedMeeting.meetingStatus).charAt(0).toUpperCase() + String(selectedMeeting.meetingStatus).slice(1)}
+                    </span>
+                  )}
+                  {selectedMeeting.meetingOutcome && (
+                    <span className={`lead-chip ${getOutcomeColor(selectedMeeting.meetingOutcome)}`}>
+                      {selectedMeeting.meetingOutcome.charAt(0).toUpperCase() + selectedMeeting.meetingOutcome.slice(1).replace('_', ' ')}
+                    </span>
+                  )}
+                </div>
               </div>
+              <button
+                onClick={() => setSelectedMeeting(null)}
+                className="app-icon-btn p-2 min-h-[44px] min-w-[44px] text-slate-400 hover:text-slate-600 flex-shrink-0"
+                aria-label="Close details"
+              >
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="font-medium text-slate-700">Lead:</span>
-                    <p className="text-slate-900">{selectedMeeting.leadName || 'Unknown Lead'}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-slate-700">User:</span>
-                    <p className="text-slate-900">{getUserDisplayName(selectedMeeting.username)}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-slate-700">Date:</span>
-                    <p className="text-slate-900">{formatDate(selectedMeeting.date)}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-slate-700">Duration:</span>
-                    <p className="text-slate-900">{selectedMeeting.meetingDuration ? `${selectedMeeting.meetingDuration} minutes` : 'N/A'}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-slate-700">Outcome:</span>
-                    <p className="text-slate-900">{selectedMeeting.meetingOutcome || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <span className="font-medium text-slate-700">Status:</span>
-                    <p className="text-slate-900">{selectedMeeting.meetingStatus || 'N/A'}</p>
+            <div className="p-4 sm:p-5 space-y-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <section className="rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-1">
+                <div className="meeting-detail-row">
+                  <div className="meeting-detail-label">User</div>
+                  <div className="meeting-detail-value font-medium">{getUserDisplayName(selectedMeeting.username)}</div>
+                </div>
+                <div className="meeting-detail-row">
+                  <div className="meeting-detail-label">Date</div>
+                  <div className="meeting-detail-value">{formatDate(selectedMeeting.date)}</div>
+                </div>
+                <div className="meeting-detail-row">
+                  <div className="meeting-detail-label">Time</div>
+                  <div className="meeting-detail-value">
+                    {formatTime(selectedMeeting.checkInTime)}
+                    {selectedMeeting.checkOutTime ? ` – ${formatTime(selectedMeeting.checkOutTime)}` : ' – Ongoing'}
                   </div>
                 </div>
-
-                {selectedMeeting.notes && (
-                  <div>
-                    <span className="font-medium text-slate-700">Notes:</span>
-                    <p className="text-slate-900 mt-1 whitespace-pre-wrap">{selectedMeeting.notes}</p>
+                <div className="meeting-detail-row">
+                  <div className="meeting-detail-label">Duration</div>
+                  <div className="meeting-detail-value font-medium">
+                    {formatDuration(selectedMeeting.meetingDuration) || 'N/A'}
+                  </div>
+                </div>
+                {selectedMeeting.meetingType && (
+                  <div className="meeting-detail-row">
+                    <div className="meeting-detail-label">Type</div>
+                    <div className="meeting-detail-value">{selectedMeeting.meetingType}</div>
                   </div>
                 )}
+              </section>
 
-                {((selectedMeeting.checkInPhotos || []).length > 0 || (selectedMeeting.completionPhotos || []).length > 0) && (
-                  <div>
-                    <span className="font-medium text-slate-700">Photos:</span>
-                    <div className="mt-2 grid grid-cols-4 gap-2">
-                      {(selectedMeeting.checkInPhotos || []).map((photo, index) => (
-                        <button
-                          key={`checkin-${index}`}
-                          onClick={() => {
-                            const allPhotos = [...(selectedMeeting.checkInPhotos || []), ...(selectedMeeting.completionPhotos || [])];
-                            openPhotoModal(allPhotos, index);
-                          }}
-                          className="aspect-square rounded-md overflow-hidden border border-slate-200 hover:border-blue-300"
+              {(selectedMeeting.location || selectedMeeting.checkOutTime) && (
+                <section className="space-y-2">
+                  {selectedMeeting.location?.address && (
+                    <div className="meeting-info-panel meeting-info-panel--ok">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 mb-1.5">Start Location</p>
+                      <p className="text-[13px] leading-snug text-emerald-900 break-words">{selectedMeeting.location.address}</p>
+                      {selectedMeeting.location.latitude != null && selectedMeeting.location.longitude != null && (
+                        <a
+                          href={`https://www.google.com/maps?q=${selectedMeeting.location.latitude},${selectedMeeting.location.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex mt-2.5 min-h-[36px] items-center text-xs font-semibold text-indigo-700 underline"
                         >
-                          <img src={photo} alt={`Check-in photo ${index + 1}`} className="w-full h-full object-cover" />
-                        </button>
-                      ))}
-                      {(selectedMeeting.completionPhotos || []).map((photo, index) => (
-                        <button
-                          key={`completion-${index}`}
-                          onClick={() => {
-                            const allPhotos = [...(selectedMeeting.checkInPhotos || []), ...(selectedMeeting.completionPhotos || [])];
-                            openPhotoModal(allPhotos, (selectedMeeting.checkInPhotos?.length || 0) + index);
-                          }}
-                          className="aspect-square rounded-md overflow-hidden border border-slate-200 hover:border-blue-300"
-                        >
-                          <img src={photo} alt={`Completion photo ${index + 1}`} className="w-full h-full object-cover" />
-                        </button>
-                      ))}
+                          Open in Maps
+                        </a>
+                      )}
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                  {(() => {
+                    const endLoc = Array.isArray(selectedMeeting.completionPhotoMetadata)
+                      ? selectedMeeting.completionPhotoMetadata[0]?.location
+                      : undefined;
+                    if (endLoc?.address || (endLoc?.latitude != null && endLoc?.longitude != null)) {
+                      return (
+                        <div className="meeting-info-panel meeting-info-panel--ok">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 mb-1.5">End Location</p>
+                          <p className="text-[13px] leading-snug text-emerald-900 break-words">
+                            {endLoc.address ||
+                              `${Number(endLoc.latitude).toFixed(6)}, ${Number(endLoc.longitude).toFixed(6)}`}
+                          </p>
+                          {endLoc.latitude != null && endLoc.longitude != null && (
+                            <a
+                              href={`https://www.google.com/maps?q=${endLoc.latitude},${endLoc.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex mt-2.5 min-h-[36px] items-center text-xs font-semibold text-indigo-700 underline"
+                            >
+                              Open in Maps
+                            </a>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (selectedMeeting.checkOutTime) {
+                      return (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">End Location</p>
+                          <p className="text-[13px] text-slate-500">Not available</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </section>
+              )}
+
+              {selectedMeeting.notes && (
+                <section>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Notes</p>
+                  <p className="rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[13px] leading-relaxed text-slate-800 whitespace-pre-wrap break-words">
+                    {selectedMeeting.notes}
+                  </p>
+                </section>
+              )}
+
+              {((selectedMeeting.checkInPhotos || []).length > 0 || (selectedMeeting.completionPhotos || []).length > 0) && (
+                <section>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Photos</p>
+                  {(selectedMeeting.checkInPhotos || []).length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-slate-500 mb-1.5">Check-in</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(selectedMeeting.checkInPhotos || []).map((photo, index) => (
+                          <button
+                            type="button"
+                            key={`checkin-${index}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const allPhotos = [...(selectedMeeting.checkInPhotos || []), ...(selectedMeeting.completionPhotos || [])];
+                              openPhotoModal(allPhotos, index);
+                            }}
+                            className="aspect-square rounded-lg overflow-hidden border border-slate-200 hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                          >
+                            <img src={photo} alt={`Check-in photo ${index + 1}`} className="w-full h-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(selectedMeeting.completionPhotos || []).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 mb-1.5">Completion</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(selectedMeeting.completionPhotos || []).map((photo, index) => (
+                          <button
+                            type="button"
+                            key={`completion-${index}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const allPhotos = [...(selectedMeeting.checkInPhotos || []), ...(selectedMeeting.completionPhotos || [])];
+                              openPhotoModal(allPhotos, (selectedMeeting.checkInPhotos?.length || 0) + index);
+                            }}
+                            className="aspect-square rounded-lg overflow-hidden border border-slate-200 hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                          >
+                            <img src={photo} alt={`Completion photo ${index + 1}`} className="w-full h-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
             </div>
           </div>
         </div>
@@ -627,13 +711,24 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
 
       {/* Photo Modal */}
       {showPhotoModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-          <div className="relative max-w-4xl max-h-[90vh] w-full h-full flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 bg-black/85 flex items-center justify-center z-[100] p-3"
+          onClick={closePhotoModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo preview"
+        >
+          <div
+            className="relative max-w-4xl max-h-[90dvh] w-full h-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
+              type="button"
               onClick={closePhotoModal}
-              className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+              className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 min-h-[44px] min-w-[44px] rounded-full bg-black/50 text-white hover:bg-black/70 flex items-center justify-center"
+              aria-label="Close photo"
             >
-              <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -643,30 +738,34 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
                 <img
                   src={selectedPhotos[currentPhotoIndex]}
                   alt={`Photo ${currentPhotoIndex + 1}`}
-                  className="max-w-full max-h-full object-contain"
+                  className="max-w-full max-h-[80dvh] object-contain rounded-lg"
                 />
 
                 {selectedPhotos.length > 1 && (
                   <>
                     <button
+                      type="button"
                       onClick={prevPhoto}
-                      className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white hover:text-gray-300"
+                      className="absolute left-1 sm:left-4 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] rounded-full bg-black/50 text-white hover:bg-black/70 flex items-center justify-center"
+                      aria-label="Previous photo"
                     >
-                      <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                       </svg>
                     </button>
 
                     <button
+                      type="button"
                       onClick={nextPhoto}
-                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white hover:text-gray-300"
+                      className="absolute right-1 sm:right-4 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] rounded-full bg-black/50 text-white hover:bg-black/70 flex items-center justify-center"
+                      aria-label="Next photo"
                     >
-                      <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </button>
 
-                    <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-sm">
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-white text-sm">
                       {currentPhotoIndex + 1} of {selectedPhotos.length}
                     </div>
                   </>

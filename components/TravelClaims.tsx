@@ -463,12 +463,12 @@ const TravelClaims: React.FC<TravelClaimsProps> = ({ currentUser, isAdmin }) => 
   }
 
   return (
-    <div className="p-6 bg-white rounded-lg shadow-lg">
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
+    <div className="page-shell px-0 py-1 sm:p-6 bg-white rounded-lg shadow-lg">
+      <div className="mb-4 sm:mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">🚗 Travel Claims</h2>
-            <p className="text-gray-600">Automatic distance calculation and trip tracking (₹9/km)</p>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-1 sm:mb-2">Travel Claims</h2>
+            <p className="text-sm sm:text-base text-gray-600">Automatic distance calculation and trip tracking (₹9/km)</p>
           </div>
         </div>
       </div>
@@ -604,7 +604,7 @@ const TravelClaims: React.FC<TravelClaimsProps> = ({ currentUser, isAdmin }) => 
           </div>
 
       {/* Monthly Summary */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
         <div className="bg-blue-50 p-4 rounded-lg">
           <div className="text-2xl font-bold text-blue-600">{monthTotals.totalTrips}</div>
           <div className="text-sm text-blue-800">Total Trips</div>
@@ -628,7 +628,7 @@ const TravelClaims: React.FC<TravelClaimsProps> = ({ currentUser, isAdmin }) => 
         <div className="mb-6">
                     <button
             onClick={createClaim}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
             📋 Create Travel Claim for {selectedMonth}
                     </button>

@@ -50,30 +50,31 @@ const Calendar: React.FC<{
   };
 
   return (
-    <div className="bg-white p-4 rounded-xl shadow-lg border border-slate-200">
-      <div className="flex justify-between items-center mb-4">
+    <div className="bg-white p-3 sm:p-4 rounded-xl shadow-sm sm:shadow-lg border border-slate-200">
+      <div className="flex justify-between items-center mb-3 sm:mb-4">
         <button
           onClick={() => changeMonth(-1)}
-          className="p-2 rounded-full hover:bg-slate-100 text-slate-600"
+          className="app-icon-btn p-2 min-h-[44px] min-w-[44px] rounded-full hover:bg-slate-100 text-slate-600"
           aria-label="Previous month"
         >
           &larr;
         </button>
-        <h3 className="font-bold text-lg text-slate-800">
+        <h3 className="font-bold text-base sm:text-lg text-slate-800">
           {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
         </h3>
         <button
           onClick={() => changeMonth(1)}
-          className="p-2 rounded-full hover:bg-slate-100 text-slate-600"
+          className="app-icon-btn p-2 min-h-[44px] min-w-[44px] rounded-full hover:bg-slate-100 text-slate-600"
           aria-label="Next month"
         >
           &rarr;
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-sm">
+      <div className="grid grid-cols-7 gap-0.5 sm:gap-1 text-center text-xs sm:text-sm">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-          <div key={day} className="font-medium text-slate-500">
-            {day}
+          <div key={day} className="font-medium text-slate-500 py-1">
+            <span className="sm:hidden">{day.slice(0, 1)}</span>
+            <span className="hidden sm:inline">{day}</span>
           </div>
         ))}
         {blanks.map((_, i) => (
@@ -87,7 +88,7 @@ const Calendar: React.FC<{
             <button
               key={day.toISOString()}
               onClick={() => onDateSelect(isSelected ? null : day)}
-              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors relative
+              className={`app-icon-btn w-full aspect-square max-h-11 sm:max-h-none sm:w-9 sm:h-9 sm:aspect-auto mx-auto flex items-center justify-center rounded-full transition-colors relative
                 ${isSelected ? 'bg-indigo-600 text-white' : ''}
                 ${!isSelected && isToday ? 'bg-indigo-100 text-indigo-700' : ''}
                 ${!isSelected && !isToday ? 'hover:bg-slate-100 text-slate-700' : ''}
@@ -177,12 +178,15 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <h2 className="text-3xl font-bold text-slate-800">Your Meetings</h2>
+    <div className="space-y-4 sm:space-y-8">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+        <div>
+          <h2 className="text-xl sm:text-3xl font-bold text-slate-800">Your Meetings</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Tap a date on the calendar to see that day’s agenda.</p>
+        </div>
         <button
           onClick={onPlanNewMeeting}
-          className="flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
+          className="flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
         >
           <PlusIcon className="h-4 w-4" /> Plan a New Meeting
         </button>
@@ -195,7 +199,7 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
       />
 
       <div>
-        <h3 className="text-xl font-bold text-slate-800 mb-4">
+        <h3 className="text-lg sm:text-xl font-bold text-slate-800 mb-3 sm:mb-4">
           {selectedDate
             ? `Agenda for ${selectedDate.toLocaleDateString()}`
             : 'Upcoming Meetings'}
@@ -205,11 +209,11 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
             {filteredMeetings.map((meeting) => (
               <li
                 key={meeting.id}
-                className="p-4 bg-white rounded-lg border border-slate-200 shadow-sm"
+                className="p-3 sm:p-4 bg-white rounded-lg border border-slate-200 shadow-sm"
               >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-semibold text-slate-900">{meeting.agencyName}</p>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900 break-words">{meeting.agencyName}</p>
                     <p className="text-sm text-slate-600">
                       {new Date(meeting.date).toLocaleString([], {
                         dateStyle: 'medium',
@@ -222,7 +226,7 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                       </p>
                     )}
                   </div>
-                  <div className="text-right">
+                  <div className="text-left sm:text-right flex-shrink-0">
                     <span
                       className={`px-2 py-1 text-xs font-medium rounded-full ${
                         meeting.status === 'Done'
@@ -236,13 +240,13 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                 </div>
 
                 {meeting.status === 'Planned' && !meeting.isCheckIn && editingMeeting?.id !== meeting.id && (
-                  <div className="mt-4 text-right">
+                  <div className="mt-3 sm:mt-4 sm:text-right">
                     <button
                       onClick={() => {
                         setEditingMeeting({ ...meeting, leadId: meeting.leadId });
                         setRemarks(meeting.notes || '');
                       }}
-                      className="px-3 py-1 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
+                      className="w-full sm:w-auto min-h-[44px] px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
                     >
                       Complete Meeting
                     </button>
@@ -261,16 +265,16 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                       className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                       placeholder="How did the meeting go?"
                     />
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                       <button
                         onClick={() => setEditingMeeting(null)}
-                        className="px-3 py-1 text-sm font-medium text-slate-700 bg-slate-200 rounded-md"
+                        className="min-h-[44px] px-3 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-lg"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={() => handleMarkAsDone(meeting)}
-                        className="px-3 py-1 text-sm font-medium text-white bg-green-600 rounded-md"
+                        className="min-h-[44px] px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg"
                       >
                         Mark as Done
                       </button>
@@ -281,8 +285,8 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
             ))}
           </ul>
         ) : (
-          <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-slate-200">
-            <h3 className="text-xl font-semibold text-slate-700">No Meetings Scheduled</h3>
+          <div className="text-center py-8 sm:py-12 bg-white rounded-xl shadow-sm border border-slate-200 px-4">
+            <h3 className="text-lg sm:text-xl font-semibold text-slate-700">No Meetings Scheduled</h3>
             <p className="text-slate-500 mt-2">
               {selectedDate
                 ? 'There are no meetings on this date.'

@@ -94,18 +94,18 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
   };
 
   return (
-    <Modal title="Plan a New Meeting" onClose={onClose}>
+    <Modal title="Plan a New Meeting" onClose={onClose} fullScreenOnMobile maxWidth="max-w-lg">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="lead-search" className="block text-sm font-medium text-slate-700 mb-1">
-            Agency / Partner <span className="text-red-500">*</span>
+        <div className="meeting-field">
+          <label htmlFor="lead-search">
+            Agency / Partner <span className="text-rose-500 normal-case tracking-normal">*</span>
           </label>
           <div className="relative overflow-visible">
             <div className="relative">
               <input
                 id="lead-search"
                 type="text"
-                placeholder="Search agency/partner by name or city..."
+                placeholder="Search by name or city..."
                 value={inputDisplayValue}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -113,7 +113,6 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
                   setDropdownOpen(true);
                 }}
                 onFocus={() => setDropdownOpen(true)}
-                className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 autoComplete="off"
               />
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-slate-400">
@@ -124,7 +123,7 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
             </div>
             {showSuggestions && (
               <ul
-                className="mt-1 w-full max-h-48 overflow-auto rounded-md border border-slate-300 bg-white shadow-lg py-1"
+                className="mt-1 w-full max-h-48 overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg py-1 z-20 relative"
                 role="listbox"
               >
                 {filteredLeads.length === 0 ? (
@@ -137,8 +136,8 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
                       key={lead.id}
                       role="option"
                       aria-selected={selectedLeadId === lead.id}
-                      className={`px-3 py-2 text-sm cursor-pointer ${
-                        selectedLeadId === lead.id ? 'bg-indigo-50' : 'hover:bg-slate-100'
+                      className={`px-3 py-2.5 text-sm cursor-pointer ${
+                        selectedLeadId === lead.id ? 'bg-indigo-50' : 'hover:bg-slate-50'
                       }`}
                       onMouseDown={(e) => {
                         e.preventDefault();
@@ -147,14 +146,9 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
                         setDropdownOpen(false);
                       }}
                     >
-                      <div className="font-medium text-slate-900">{lead.agencyName}</div>
+                      <div className="font-medium text-slate-900 break-words">{lead.agencyName}</div>
                       {city ? (
-                        <div className="flex items-center gap-1 mt-0.5 text-xs text-slate-500">
-                          <svg className="h-3 w-3 text-red-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                          </svg>
-                          {city}
-                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500">{city}</div>
                       ) : null}
                     </li>
                     );
@@ -165,10 +159,8 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
           </div>
         </div>
 
-        <div>
-          <label htmlFor="meeting-date" className="block text-sm font-medium text-slate-700">
-            Date & Time
-          </label>
+        <div className="meeting-field">
+          <label htmlFor="meeting-date">Date & Time</label>
           <input
             id="meeting-date"
             type="datetime-local"
@@ -176,14 +168,11 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
             onChange={(e) => setDate(e.target.value)}
             min={new Date().toISOString().slice(0, 16)}
             required
-            className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
           />
         </div>
 
-        <div>
-          <label htmlFor="meeting-duration" className="block text-sm font-medium text-slate-700">
-            Duration (minutes)
-          </label>
+        <div className="meeting-field">
+          <label htmlFor="meeting-duration">Duration (minutes)</label>
           <input
             id="meeting-duration"
             type="number"
@@ -192,53 +181,31 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
             step={15}
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
-            className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
           />
         </div>
 
-        <div>
-          <label htmlFor="meeting-notes" className="block text-sm font-medium text-slate-700">
-            Notes / Agenda
-          </label>
+        <div className="meeting-field">
+          <label htmlFor="meeting-notes">Notes / Agenda</label>
           <textarea
             id="meeting-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
             placeholder="e.g., Discuss partnership agreement..."
           />
         </div>
 
-        {/* Google Integration - commented out for now
-        <div className="border-t border-slate-200 pt-4 space-y-3">
-          <div className="text-sm font-medium text-slate-700 mb-2">Google Integration</div>
-          <div className="flex items-center">
-            <input
-              id="enable-google-calendar"
-              type="checkbox"
-              disabled
-              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
-            />
-            <label htmlFor="enable-google-calendar" className="ml-2 block text-sm text-slate-700">
-              Add to Google Calendar
-            </label>
-          </div>
-          <p className="text-xs text-slate-500 ml-6">Sign in with Google to use Calendar and Meet integration.</p>
-        </div>
-        */}
-
-        <div className="flex justify-end gap-3 pt-4">
+        <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200"
+            className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
           >
             Schedule Meeting
           </button>

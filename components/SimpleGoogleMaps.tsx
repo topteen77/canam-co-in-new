@@ -673,21 +673,20 @@ const SimpleGoogleMaps: React.FC<SimpleGoogleMapsProps> = ({ isAdmin: propIsAdmi
   }, [showTeamMembers, teamMembers, propIsAdmin, currentUser]);
 
   return (
-    <div className="h-screen flex flex-col">
-      {/* Compact Header */}
-      <div className="bg-white shadow-sm border-b border-slate-200 p-4 flex-shrink-0">
-        <div className="flex items-center justify-between mb-2">
+    <div className="h-[calc(100dvh-5.5rem)] min-h-[28rem] flex flex-col">
+      <div className="bg-white shadow-sm border-b border-slate-200 p-3 sm:p-4 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
           <div>
-            <h2 className="text-xl font-bold text-slate-800">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-800">
               {propIsAdmin ? 'Team Members Live Location' : 'My Location'}
             </h2>
             <p className="text-sm text-slate-600 mt-1">
-              {propIsAdmin ? '📍 Shows current and last known locations' : '📍 Your location tracking'}
+              {propIsAdmin ? 'Shows current and last known locations' : 'Your location tracking'}
             </p>
           </div>
           <button
             onClick={() => setIsControlsCollapsed(!isControlsCollapsed)}
-            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm transition-colors"
+            className="app-icon-btn px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm transition-colors min-h-[40px] w-full sm:w-auto"
           >
             {isControlsCollapsed ? '📋 Show Controls' : '📋 Hide Controls'}
           </button>

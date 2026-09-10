@@ -477,133 +477,165 @@ Continue?
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Admin Panel</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-slate-600">
-            {hasAdminAccess ? `${effectiveCurrentUser} (Company Admin)` : effectiveCurrentUser}
-          </span>
-          {!hasAdminAccess && onLogout && (
-            <button onClick={onLogout} className="px-3 py-1.5 text-sm bg-slate-200 rounded-md">Sign out</button>
-          )}
+    <div className="page-shell px-0 space-y-3 sm:space-y-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between px-0.5">
+        <div>
+          <h2 className="text-lg sm:text-xl font-semibold text-slate-900">Admin Panel</h2>
+          <p className="text-xs sm:text-sm text-slate-500 truncate">
+            {hasAdminAccess ? `${effectiveCurrentUser} · Company Admin` : effectiveCurrentUser}
+          </p>
         </div>
+        {!hasAdminAccess && onLogout && (
+          <button onClick={onLogout} className="self-start px-3 py-1.5 text-sm bg-slate-200 rounded-md">Sign out</button>
+        )}
       </div>
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
+      <div className="chip-scroll flex sm:hidden">
+        <button type="button" onClick={() => setActiveTab('users')} className={`chip-btn app-chip ${activeTab === 'users' ? 'app-chip--active' : ''}`}>👥 Users</button>
+        <button type="button" onClick={() => setActiveTab('company-management')} className={`chip-btn app-chip ${activeTab === 'company-management' ? 'app-chip--active' : ''}`}>🏢 Companies</button>
+        <button type="button" onClick={() => setActiveTab('costs')} className={`chip-btn app-chip ${activeTab === 'costs' ? 'app-chip--active' : ''}`}>💰 Costs</button>
+        <button type="button" onClick={() => setActiveTab('usage')} className={`chip-btn app-chip ${activeTab === 'usage' ? 'app-chip--active' : ''}`}>👥 Usage</button>
+      </div>
+      <div className="hidden sm:block border-b border-gray-200">
         <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'users'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            👥 User Management
-          </button>
-          <button
-            onClick={() => setActiveTab('company-management')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'company-management'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            🏢 Company Management
-          </button>
-          <button
-            onClick={() => setActiveTab('costs')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'costs'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            💰 Cost Calculator
-          </button>
-          <button
-            onClick={() => setActiveTab('usage')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'usage'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            👥 User Usage Tracker
-          </button>
+          <button onClick={() => setActiveTab('users')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'users' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>👥 User Management</button>
+          <button onClick={() => setActiveTab('company-management')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'company-management' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>🏢 Company Management</button>
+          <button onClick={() => setActiveTab('costs')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'costs' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>💰 Cost Calculator</button>
+          <button onClick={() => setActiveTab('usage')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'usage' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>👥 User Usage Tracker</button>
         </nav>
       </div>
 
-      {/* Tab Content */}
       {activeTab === 'users' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">User Management</h3>
-            <div className="flex items-center gap-2">
+        <div className="space-y-3 sm:space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900">User Management</h3>
+
+            {/* Desktop: compact original toolbar */}
+            <div className="hidden sm:flex flex-wrap items-center gap-2">
               <button
+                type="button"
                 onClick={createUserManually}
-                className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
+                className="admin-toolbar-btn px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
               >
                 ➕ Add User
               </button>
               <button
+                type="button"
                 onClick={generatePasswordsForAllUsers}
                 disabled={generatingPasswords}
-                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                className="admin-toolbar-btn px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
                 {generatingPasswords ? '⏳ Generating...' : '🔑 Generate Passwords'}
               </button>
-              
               <button
+                type="button"
                 onClick={fixNakulAndAkashPasswords}
-                className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
+                className="admin-toolbar-btn px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
               >
                 🔧 Fix Nakul & Akash
               </button>
-              
               <button
+                type="button"
                 onClick={() => {
                   console.log('🔍 ALL USERS DEBUG INFO:');
                   console.log(`Total users: ${users.length}`);
-                  // 🟢 SAFE FIX: Ensure users is an array before forEach
                   const safeUsers = Array.isArray(users) ? users : [];
                   safeUsers.forEach((user, index) => {
                     console.log(`${index + 1}. ${user.name || 'No name'} (${user.email}) - Status: ${user.status || 'No status'} - Role: ${user.role || 'No role'}`);
                   });
-                  
-                  // Find Nakul specifically
                   const nakul = safeUsers.find(u => (u.name || '').toLowerCase().includes('nakul') || (u.email || '').toLowerCase().includes('nakul'));
-                  if (nakul) {
-                    console.log('🎯 NAKUL FOUND:', nakul);
-                  } else {
-                    console.log('❌ NAKUL NOT FOUND in user list');
-                  }
-                  
+                  if (nakul) console.log('🎯 NAKUL FOUND:', nakul);
+                  else console.log('❌ NAKUL NOT FOUND in user list');
                   alert(`Found ${safeUsers.length} users total. Check console for detailed list. Nakul ${nakul ? 'FOUND' : 'NOT FOUND'}.`);
                 }}
-                className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                className="admin-toolbar-btn px-3 py-1.5 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700"
               >
                 🔍 Debug All Users
               </button>
-              
               <button
+                type="button"
                 onClick={cleanCorruptedDataInDatabase}
-                className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
+                className="admin-toolbar-btn px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
                 title="Clean JSON strings in email/name fields"
               >
                 🧹 Clean Corrupted Data
               </button>
-              
               <button
+                type="button"
                 onClick={activateAllPendingUsers}
-                className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700"
+                className="admin-toolbar-btn px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700"
                 title="Activate all pending users as Account Manager"
               >
                 ✅ Activate All Pending
               </button>
             </div>
+          </div>
+
+          {/* Mobile: new coloured actions + More */}
+          <div className="grid grid-cols-2 gap-2 sm:hidden">
+            <button
+              type="button"
+              onClick={createUserManually}
+              className="admin-action-btn admin-action-btn--primary"
+            >
+              ➕ Add User
+            </button>
+            <button
+              type="button"
+              onClick={generatePasswordsForAllUsers}
+              disabled={generatingPasswords}
+              className="admin-action-btn admin-action-btn--sky disabled:opacity-50"
+            >
+              {generatingPasswords ? '⏳ Generating…' : '🔑 Generate Passwords'}
+            </button>
+            <button
+              type="button"
+              onClick={activateAllPendingUsers}
+              className="admin-action-btn admin-action-btn--success"
+              title="Activate all pending users as Account Manager"
+            >
+              ✅ Activate Pending
+            </button>
+            <details className="admin-tools col-span-2">
+              <summary className="admin-action-btn admin-action-btn--ghost cursor-pointer list-none">
+                More
+              </summary>
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={fixNakulAndAkashPasswords}
+                  className="admin-action-btn admin-action-btn--danger"
+                >
+                  🔧 Fix Nakul & Akash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    console.log('🔍 ALL USERS DEBUG INFO:');
+                    console.log(`Total users: ${users.length}`);
+                    const safeUsers = Array.isArray(users) ? users : [];
+                    safeUsers.forEach((user, index) => {
+                      console.log(`${index + 1}. ${user.name || 'No name'} (${user.email}) - Status: ${user.status || 'No status'} - Role: ${user.role || 'No role'}`);
+                    });
+                    const nakul = safeUsers.find(u => (u.name || '').toLowerCase().includes('nakul') || (u.email || '').toLowerCase().includes('nakul'));
+                    if (nakul) console.log('🎯 NAKUL FOUND:', nakul);
+                    else console.log('❌ NAKUL NOT FOUND in user list');
+                    alert(`Found ${safeUsers.length} users total. Check console for detailed list. Nakul ${nakul ? 'FOUND' : 'NOT FOUND'}.`);
+                  }}
+                  className="admin-action-btn admin-action-btn--violet"
+                >
+                  🔍 Debug All Users
+                </button>
+                <button
+                  type="button"
+                  onClick={cleanCorruptedDataInDatabase}
+                  className="admin-action-btn admin-action-btn--danger"
+                  title="Clean JSON strings in email/name fields"
+                >
+                  🧹 Clean Corrupted Data
+                </button>
+              </div>
+            </details>
           </div>
 
           {loading ? (
@@ -612,27 +644,114 @@ Continue?
               <p className="text-gray-600 mt-2">Loading users...</p>
             </div>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Password</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {users
-                      .map((u) => (
+            <>
+              {/* Mobile cards */}
+              <div className="space-y-2.5 md:hidden pb-16">
+                {(Array.isArray(users) ? users : []).map((u) => {
+                  const displayName = getUserDisplayName(u.email || '') || u.name || 'Unnamed';
+                  const email = cleanCorruptedData(u.email || '');
+                  return (
+                    <article
+                      key={u.id}
+                      className={`admin-user-card ${u.role === 'Admin' ? 'admin-user-card--admin' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h4 className="text-[15px] font-semibold text-slate-900 break-words leading-snug">
+                            {displayName}
+                            {u.role === 'Admin' ? ' · Admin' : ''}
+                          </h4>
+                          <p className="mt-0.5 text-[12px] text-slate-500 break-all">{email}</p>
+                        </div>
+                        <span className={`lead-chip shrink-0 ${
+                          u.status === 'Active' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                          u.status === 'Inactive' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                          'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
+                          {u.status || 'Inactive'}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <span className={`lead-chip ${
+                          u.role === 'Admin' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                          u.role === 'SubAdmin' ? 'bg-sky-50 text-sky-800 border-sky-200' :
+                          u.role === 'Account Manager' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                          u.role === 'Sales' ? 'bg-violet-50 text-violet-800 border-violet-200' :
+                          u.role === 'Operations' ? 'bg-orange-50 text-orange-800 border-orange-200' :
+                          'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {u.role || 'Pending'}
+                        </span>
+                      </div>
+
+                      <div className="mt-2.5 rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Password</p>
+                        {u.defaultPassword ? (
+                          <div className="mt-1 flex items-center gap-2 min-w-0">
+                            <code className="text-[12px] font-mono text-slate-800 truncate">{u.defaultPassword}</code>
+                            <button
+                              type="button"
+                              onClick={() => navigator.clipboard.writeText(u.defaultPassword!)}
+                              className="admin-action-btn admin-action-btn--sky shrink-0 !w-auto !min-h-[32px] !px-2.5"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-[12px] text-rose-600 font-medium">Not set</span>
+                            <button type="button" onClick={() => fixUserPassword(u)} className="admin-action-btn admin-action-btn--danger !w-auto !min-h-[32px] !px-2.5">
+                              Fix
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="admin-user-actions">
+                        <button
+                          type="button"
+                          onClick={() => updateUser(u.id, { status: u.status === 'Active' ? 'Inactive' : 'Active' })}
+                          className={`admin-action-btn ${u.status === 'Active' ? 'admin-action-btn--deactivate' : 'admin-action-btn--activate'}`}
+                        >
+                          {u.status === 'Active' ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <button type="button" onClick={() => resetUserPassword(u)} className="admin-action-btn admin-action-btn--orange">
+                          Reset Password
+                        </button>
+                        <button type="button" onClick={() => editUserRole(u)} className="admin-action-btn admin-action-btn--sky">
+                          Edit Role
+                        </button>
+                        <button type="button" onClick={() => loginAsUser(u)} className="admin-action-btn admin-action-btn--violet">
+                          Login as User
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden md:block bg-white rounded-lg shadow overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Password</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {users.map((u) => (
                         <tr key={u.id} className={`text-sm ${u.role === 'Admin' ? 'bg-yellow-50 border-yellow-200' : ''}`}>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-1">
                               {getUserDisplayName(u.email || '')}
-                              {u.role === 'Admin' && <span className="text-yellow-600" title="Admin User">👑</span>}
+                              {u.role === 'Admin' && <span className="text-yellow-600" title="Admin User">★</span>}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-gray-900">{cleanCorruptedData(u.email || '')}</td>
@@ -650,8 +769,8 @@ Continue?
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-2 py-1 rounded-full text-xs ${
-                              u.status === 'Active' ? 'bg-green-100 text-green-800' : 
-                              u.status === 'Inactive' ? 'bg-red-100 text-red-800' : 
+                              u.status === 'Active' ? 'bg-green-100 text-green-800' :
+                              u.status === 'Inactive' ? 'bg-red-100 text-red-800' :
                               'bg-gray-100 text-gray-800'
                             }`}>
                               {u.status || 'Inactive'}
@@ -685,12 +804,12 @@ Continue?
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <button
                                 onClick={() => updateUser(u.id, { status: u.status === 'Active' ? 'Inactive' : 'Active' })}
                                 className={`px-2 py-1 text-xs rounded ${
-                                  u.status === 'Active' 
-                                    ? 'bg-red-100 text-red-800 hover:bg-red-200' 
+                                  u.status === 'Active'
+                                    ? 'bg-red-100 text-red-800 hover:bg-red-200'
                                     : 'bg-green-100 text-green-800 hover:bg-green-200'
                                 }`}
                               >
@@ -716,47 +835,37 @@ Continue?
                           </td>
                         </tr>
                       ))}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            </>
           )}
-
-          <div className="text-xs text-slate-500">
-            Tip: Use the lists above to manage active users and approve pending ones.
-          </div>
         </div>
       )}
 
-      {/* Cost Calculator Tab */}
       {activeTab === 'costs' && (
-        <div>
-          <div className="p-4 text-center">
-            <h3 className="text-lg font-semibold text-gray-600">Cost Calculator</h3>
-            <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
-          </div>
+        <div className="p-4 text-center rounded-xl border border-slate-200 bg-white">
+          <h3 className="text-lg font-semibold text-gray-600">Cost Calculator</h3>
+          <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
         </div>
       )}
 
-      {/* Company Management Tab */}
       {activeTab === 'company-management' && (
         <div>
-          {console.log('🏢 Company Management tab is rendering!')}
           <CompanyManagement />
         </div>
       )}
 
-      {/* User Usage Tracker Tab */}
       {activeTab === 'usage' && (
-        <div>
-          <div className="p-4 text-center">
-            <h3 className="text-lg font-semibold text-gray-600">User Usage Tracker</h3>
-            <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
-          </div>
+        <div className="p-4 text-center rounded-xl border border-slate-200 bg-white">
+          <h3 className="text-lg font-semibold text-gray-600">User Usage Tracker</h3>
+          <p className="text-sm text-gray-500 mt-2">Coming soon...</p>
         </div>
       )}
     </div>
   );
+
 };
 
 export default AdminUsers;

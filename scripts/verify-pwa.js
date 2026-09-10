@@ -85,6 +85,10 @@ if (/user-scalable\s*=\s*no/.test(html) || /maximum-scale\s*=\s*1/.test(html)) {
 }
 if (html.includes('apple-touch-icon.png')) ok('apple-touch-icon present');
 else fail('missing apple-touch-icon');
+if (html.includes('app-splash')) ok('loading splash markup present');
+else fail('index.html missing splash screen');
+if (html.includes('apple-touch-startup-image')) ok('apple splash images linked');
+else fail('missing apple-touch-startup-image');
 
 const sw = (read('public/sw.js') || read('sw.js'))?.toString('utf8') || '';
 if (sw.includes("addEventListener('install'") && sw.includes("addEventListener('fetch'")) {

@@ -126,8 +126,8 @@ export interface Lead {
   agencyDocuments?: AgencyDocuments;
   // Country interest (ordered array - highest to lowest priority)
   countryInterest?: string[]; // e.g., ['Canada', 'UK', 'USA']
-  // ICP Score (1-10)
-  icpScore?: number; // Ideal Customer Profile Score (1-10)
+  // ICP Score (0-10)
+  icpScore?: number; // Ideal Customer Profile Score (0-10)
   trainingDate?: string;
   trainingScore?: number;
 }

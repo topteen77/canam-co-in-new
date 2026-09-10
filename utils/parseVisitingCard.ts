@@ -22,8 +22,46 @@ export const ASSIGNABLE_FIELDS: Array<{ key: keyof ExtractedLeadData; label: str
   { key: 'state', label: 'State' },
   { key: 'country', label: 'Country' },
   { key: 'alternateMobile', label: 'Alternate Mobile' },
-  { key: 'websiteLink', label: 'Website' }
+  { key: 'websiteLink', label: 'Website' },
+  { key: 'remarks', label: 'Remarks' }
 ];
+
+export const buildOcrFieldOptions = (
+  field: keyof ExtractedLeadData,
+  extraction: { text: string; fields: ExtractedLeadData }
+): Array<{ value: string; label: string }> => {
+  const suggested = String(extraction.fields[field] || '').trim();
+  const tokens = tokenizeExtractedText(extraction.text, extraction.fields);
+  const seen = new Set<string>();
+  const options: Array<{ value: string; label: string }> = [];
+
+  const push = (raw: string, labelPrefix?: string) => {
+    const value = formatSnippetForField(field, raw);
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) return;
+    seen.add(key);
+    options.push({
+      value,
+      label: labelPrefix ? `${labelPrefix}: ${value}` : value
+    });
+  };
+
+  if (suggested) push(suggested, 'Suggested');
+
+  const relevant = tokens.filter((token) => {
+    if (field === 'email') return token.includes('@');
+    if (field === 'phone' || field === 'alternateMobile') return (token.replace(/\D/g, '').length >= 8);
+    if (field === 'websiteLink') return /https?:|www\.|\.(com|in|net|org|io)\b/i.test(token);
+    return true;
+  });
+
+  relevant.forEach((token) => push(token));
+  if (options.length <= 1) {
+    tokens.forEach((token) => push(token));
+  }
+
+  return options.slice(0, 20);
+};
 
 export const normalizePhoneDigits = (value: string): string => {
   const digits = (value || '').replace(/\D/g, '');

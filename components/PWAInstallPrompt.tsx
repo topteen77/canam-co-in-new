@@ -115,11 +115,7 @@ const PWAInstallPrompt: React.FC = () => {
       <div className="bg-white rounded-lg shadow-lg border border-slate-200 p-4">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0">
-            <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
-            </div>
+            <img src="/icon-192x192.png" alt="Canam CRM" className="w-10 h-10 rounded-lg bg-white object-contain border border-slate-200" />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-slate-900">Install Canam CRM</h3>

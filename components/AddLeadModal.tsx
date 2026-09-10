@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Modal } from './Modal';
 import { ImageUploadOCR } from './ImageUploadOCR';
 import { SuggestInput } from './SuggestInput';
-import { ExtractAssignProvider, DroppableField, InputWithClear, StickyExtractTool } from './ExtractAssign';
+import { ExtractAssignProvider, DroppableField, InputWithClear, LabelWithOcr, OcrInputRow, StickyExtractTool } from './ExtractAssign';
 import { MultiSelect } from './MultiSelect';
 import { SimpleDocUpload } from './SimpleDocUpload';
 import { getUserDisplayName } from '../utils/dataCleaning';
@@ -16,7 +16,7 @@ import {
   type LocationSuggestion
 } from '../utils/locationSuggest';
 import { DEFAULT_CONTACT_COUNTRY } from '../utils/countriesAndCities';
-import { IcpScoringModal } from './IcpScoringModal';
+import { IcpScoringModal, clampIcpScore } from './IcpScoringModal';
 import type { Lead, AgencyDocuments } from '../types';
 import type { ExtractedLeadData } from '../services/ocrService';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES } from '../types';
@@ -270,8 +270,26 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   return (
     <ExtractAssignProvider onAssign={handleAssignSnippet}>
     <>
-    <Modal title="Add New Agency/Partner" onClose={onClose} maxWidth="max-w-5xl" footer={<StickyExtractTool />}>
-      <form onSubmit={handleSubmit} className="space-y-4 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg">
+    <Modal
+      title="Add New Agency/Partner"
+      onClose={onClose}
+      maxWidth="max-w-5xl"
+      fullScreenOnMobile
+      footer={(
+        <div>
+          <StickyExtractTool />
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 p-3 bg-white">
+            <button type="button" onClick={onClose} className="px-6 py-2.5 min-h-[44px] text-sm font-bold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 border-2 border-slate-300">
+              ❌ Cancel
+            </button>
+            <button type="submit" form="add-lead-form" disabled={isSubmitting} className={`px-6 py-2.5 min-h-[44px] text-sm font-bold text-white rounded-lg border-2 shadow-lg ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 border-indigo-600'}`}>
+              {isSubmitting ? '⏳ Adding Lead...' : '✅ Add Lead'}
+            </button>
+          </div>
+        </div>
+      )}
+    >
+      <form id="add-lead-form" onSubmit={handleSubmit} className="space-y-4 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg">
         {/* OCR */}
         <ImageUploadOCR onExtractComplete={handleOCRComplete} onError={setOcrError} />
         {ocrError && (
@@ -284,57 +302,22 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         {/* Agency Name */}
         <div className="bg-white p-3 rounded-lg shadow-sm border border-blue-200">
           <DroppableField field="agencyName">
-            <label htmlFor="agencyName" className="block text-sm font-bold text-slate-800 mb-1">🏢 Agency / Partner Name *</label>
-            <InputWithClear value={formData.agencyName} onClear={() => handleInputChange('agencyName', '')}>
-              <input
-                type="text"
-                id="agencyName"
-                value={formData.agencyName}
-                onChange={(e) => handleInputChange('agencyName', e.target.value)}
-                className={`block w-full px-3 py-2 text-sm border-2 rounded-lg focus:border-indigo-500 bg-white min-h-[44px] ${formData.agencyName ? 'pr-10' : ''} ${formErrors.agencyName ? 'border-red-500' : 'border-slate-300'}`}
-                placeholder="Enter agency or partner name"
-                required
-              />
-            </InputWithClear>
+            <LabelWithOcr field="agencyName" htmlFor="agencyName">🏢 Agency / Partner Name *</LabelWithOcr>
+            <OcrInputRow field="agencyName">
+              <InputWithClear value={formData.agencyName} onClear={() => handleInputChange('agencyName', '')}>
+                <input
+                  type="text"
+                  id="agencyName"
+                  value={formData.agencyName}
+                  onChange={(e) => handleInputChange('agencyName', e.target.value)}
+                  className={`block w-full px-3 py-2 text-sm border-2 rounded-lg focus:border-indigo-500 bg-white min-h-[44px] ${formData.agencyName ? 'pr-10' : ''} ${formErrors.agencyName ? 'border-red-500' : 'border-slate-300'}`}
+                  placeholder="Enter agency or partner name"
+                  required
+                />
+              </InputWithClear>
+            </OcrInputRow>
             {formErrors.agencyName && <p className="mt-1 text-xs font-medium text-red-600">⚠️ {formErrors.agencyName}</p>}
           </DroppableField>
-        </div>
-
-        {/* Account Manager, Sales Person, Lead Created By */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-3 rounded-lg shadow-sm border border-blue-200">
-            <label className="block text-sm font-bold text-slate-800 mb-1">👤 Account Manager</label>
-            <select
-              value={formData.accountManager}
-              onChange={(e) => handleInputChange('accountManager', e.target.value)}
-              className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
-            >
-              <option value="">Select (Optional)</option>
-              {currentUser && <option value={currentUser}>Me ({getUserDisplayName(currentUser)})</option>}
-              {availableUsers.map((u) => <option key={u.id} value={u.email}>{u.name} - {u.role}</option>)}
-            </select>
-          </div>
-          <div className="bg-white p-3 rounded-lg shadow-sm border border-blue-200">
-            <label className="block text-sm font-bold text-slate-800 mb-1">💼 Sales Person</label>
-            <select
-              value={formData.salesPerson}
-              onChange={(e) => handleInputChange('salesPerson', e.target.value)}
-              className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
-            >
-              <option value="">Select (Optional)</option>
-              {currentUser && <option value={currentUser}>Me ({getUserDisplayName(currentUser)})</option>}
-              {availableUsers.map((u) => <option key={u.id} value={u.email}>{u.name} - {u.role}</option>)}
-            </select>
-          </div>
-          <div className="bg-white p-3 rounded-lg shadow-sm border border-blue-200">
-            <label className="block text-sm font-bold text-slate-800 mb-1">✍️ Lead Created By</label>
-            <input
-              type="text"
-              value={currentUser ? getUserDisplayName(currentUser) : ''}
-              disabled
-              className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-slate-100 min-h-[44px]"
-            />
-          </div>
         </div>
 
         {/* Contact Information */}
@@ -342,59 +325,67 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
           <h3 className="text-lg font-bold text-slate-800 mb-3">📞 Contact Information</h3>
           <div className="space-y-3">
             <DroppableField field="contactName">
-              <label className="block text-sm font-bold text-slate-800 mb-1">👤 Primary Contact Name</label>
-              <InputWithClear value={formData.contactName} onClear={() => handleInputChange('contactName', '')}>
-                <input
-                  type="text"
-                  value={formData.contactName}
-                  onChange={(e) => handleInputChange('contactName', e.target.value)}
-                  className={`block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px] ${formData.contactName ? 'pr-10' : ''}`}
-                  placeholder="Primary contact person"
-                />
-              </InputWithClear>
+              <LabelWithOcr field="contactName">👤 Primary Contact Name</LabelWithOcr>
+              <OcrInputRow field="contactName">
+                <InputWithClear value={formData.contactName} onClear={() => handleInputChange('contactName', '')}>
+                  <input
+                    type="text"
+                    value={formData.contactName}
+                    onChange={(e) => handleInputChange('contactName', e.target.value)}
+                    className={`block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px] ${formData.contactName ? 'pr-10' : ''}`}
+                    placeholder="Primary contact person"
+                  />
+                </InputWithClear>
+              </OcrInputRow>
             </DroppableField>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <DroppableField field="phone">
-                <label className="block text-sm font-bold text-slate-800 mb-1">📱 Primary Mobile *</label>
-                <InputWithClear value={formData.phone} onClear={() => handleInputChange('phone', '')}>
-                  <input
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => handlePhoneChange('phone', e.target.value)}
-                    className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.phone ? 'pr-10' : ''} ${formErrors.phone ? 'border-red-500' : 'border-slate-300'}`}
-                    placeholder="9876543210"
-                    maxLength={10}
-                    required
-                  />
-                </InputWithClear>
+                <LabelWithOcr field="phone">📱 Primary Mobile *</LabelWithOcr>
+                <OcrInputRow field="phone">
+                  <InputWithClear value={formData.phone} onClear={() => handleInputChange('phone', '')}>
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) => handlePhoneChange('phone', e.target.value)}
+                      className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.phone ? 'pr-10' : ''} ${formErrors.phone ? 'border-red-500' : 'border-slate-300'}`}
+                      placeholder="9876543210"
+                      maxLength={10}
+                      required
+                    />
+                  </InputWithClear>
+                </OcrInputRow>
                 {formErrors.phone && <p className="mt-1 text-xs text-red-600">⚠️ {formErrors.phone}</p>}
               </DroppableField>
               <DroppableField field="email">
-                <label className="block text-sm font-bold text-slate-800 mb-1">📧 Primary Email *</label>
-                <InputWithClear value={formData.email} onClear={() => handleInputChange('email', '')}>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => handleEmailChange('email', e.target.value)}
-                    className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.email ? 'pr-10' : ''} ${formErrors.email ? 'border-red-500' : 'border-slate-300'}`}
-                    placeholder="contact@agency.com"
-                    required
-                  />
-                </InputWithClear>
+                <LabelWithOcr field="email">📧 Primary Email *</LabelWithOcr>
+                <OcrInputRow field="email">
+                  <InputWithClear value={formData.email} onClear={() => handleInputChange('email', '')}>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => handleEmailChange('email', e.target.value)}
+                      className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.email ? 'pr-10' : ''} ${formErrors.email ? 'border-red-500' : 'border-slate-300'}`}
+                      placeholder="contact@agency.com"
+                      required
+                    />
+                  </InputWithClear>
+                </OcrInputRow>
                 {formErrors.email && <p className="mt-1 text-xs text-red-600">⚠️ {formErrors.email}</p>}
               </DroppableField>
               <DroppableField field="alternateMobile">
-                <label className="block text-sm font-bold text-slate-800 mb-1">📱 Alternate Mobile</label>
-                <InputWithClear value={formData.alternateMobile} onClear={() => handleInputChange('alternateMobile', '')}>
-                  <input
-                    type="tel"
-                    value={formData.alternateMobile}
-                    onChange={(e) => handlePhoneChange('alternateMobile', e.target.value)}
-                    className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.alternateMobile ? 'pr-10' : ''} ${formErrors.alternateMobile ? 'border-red-500' : 'border-slate-300'}`}
-                    placeholder="9876543210"
-                    maxLength={10}
-                  />
-                </InputWithClear>
+                <LabelWithOcr field="alternateMobile">📱 Alternate Mobile</LabelWithOcr>
+                <OcrInputRow field="alternateMobile">
+                  <InputWithClear value={formData.alternateMobile} onClear={() => handleInputChange('alternateMobile', '')}>
+                    <input
+                      type="tel"
+                      value={formData.alternateMobile}
+                      onChange={(e) => handlePhoneChange('alternateMobile', e.target.value)}
+                      className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.alternateMobile ? 'pr-10' : ''} ${formErrors.alternateMobile ? 'border-red-500' : 'border-slate-300'}`}
+                      placeholder="9876543210"
+                      maxLength={10}
+                    />
+                  </InputWithClear>
+                </OcrInputRow>
                 {formErrors.alternateMobile && <p className="mt-1 text-xs text-red-600">⚠️ {formErrors.alternateMobile}</p>}
               </DroppableField>
             </div>
@@ -406,77 +397,87 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
           <h3 className="text-lg font-bold text-slate-800 mb-3">📋 Additional Details</h3>
           <div className="space-y-3">
             <DroppableField field="pocDesignation">
-              <label className="block text-sm font-bold text-slate-800 mb-1">💼 POC Designation</label>
-              <SuggestInput
-                value={formData.pocDesignation}
-                onChange={(value) => handleInputChange('pocDesignation', value)}
-                getSuggestions={designationSuggestions}
-                placeholder="Director, Manager — start typing for suggestions"
-              />
+              <LabelWithOcr field="pocDesignation">💼 POC Designation</LabelWithOcr>
+              <OcrInputRow field="pocDesignation">
+                <SuggestInput
+                  value={formData.pocDesignation}
+                  onChange={(value) => handleInputChange('pocDesignation', value)}
+                  getSuggestions={designationSuggestions}
+                  placeholder="Director, Manager — start typing for suggestions"
+                />
+              </OcrInputRow>
             </DroppableField>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="md:col-span-3">
                 <DroppableField field="address">
-                  <label className="block text-sm font-bold text-slate-800 mb-1">🏠 Address</label>
-                  <SuggestInput
-                    multiline
-                    minChars={3}
-                    value={formData.address}
-                    onChange={(value) => handleInputChange('address', value)}
-                    onSelect={applyLocationSuggestion}
-                    getSuggestions={addressSuggestions}
-                    placeholder="Start typing for address suggestions"
-                  />
+                  <LabelWithOcr field="address">🏠 Address</LabelWithOcr>
+                  <OcrInputRow field="address">
+                    <SuggestInput
+                      multiline
+                      minChars={3}
+                      value={formData.address}
+                      onChange={(value) => handleInputChange('address', value)}
+                      onSelect={applyLocationSuggestion}
+                      getSuggestions={addressSuggestions}
+                      placeholder="Start typing for address suggestions"
+                    />
+                  </OcrInputRow>
                   <p className="mt-1 text-xs text-slate-500">Suggestions fill city, state, and country when you pick one.</p>
                 </DroppableField>
               </div>
               <DroppableField field="city">
-                <label className="block text-sm font-bold text-slate-800 mb-1">🏙️ City</label>
-                <SuggestInput
-                  value={formData.city}
-                  onChange={(value) => {
-                    const inferred = inferLocationFromCity(value);
-                    setFormData((prev) => ({
-                      ...prev,
-                      city: value,
-                      state: inferred.state || prev.state,
-                      country: inferred.country || prev.country
-                    }));
-                  }}
-                  onSelect={(item) => {
-                    setFormData((prev) => ({
-                      ...prev,
-                      city: item.city || item.label,
-                      state: item.state || prev.state,
-                      country: item.country || prev.country
-                    }));
-                  }}
-                  getSuggestions={citySuggestions}
-                  placeholder="Start typing a city"
-                />
+                <LabelWithOcr field="city">🏙️ City</LabelWithOcr>
+                <OcrInputRow field="city">
+                  <SuggestInput
+                    value={formData.city}
+                    onChange={(value) => {
+                      const inferred = inferLocationFromCity(value);
+                      setFormData((prev) => ({
+                        ...prev,
+                        city: value,
+                        state: inferred.state || prev.state,
+                        country: inferred.country || prev.country
+                      }));
+                    }}
+                    onSelect={(item) => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        city: item.city || item.label,
+                        state: item.state || prev.state,
+                        country: item.country || prev.country
+                      }));
+                    }}
+                    getSuggestions={citySuggestions}
+                    placeholder="Start typing a city"
+                  />
+                </OcrInputRow>
               </DroppableField>
               <DroppableField field="state">
-                <label className="block text-sm font-bold text-slate-800 mb-1">🏛️ State</label>
-                <SuggestInput
-                  value={formData.state}
-                  onChange={(value) => handleInputChange('state', value)}
-                  onSelect={(item) => {
-                    handleInputChange('state', item.state || item.label);
-                    if (item.country) handleInputChange('country', item.country);
-                  }}
-                  getSuggestions={stateSuggestions}
-                  placeholder="Start typing a state"
-                />
+                <LabelWithOcr field="state">🏛️ State</LabelWithOcr>
+                <OcrInputRow field="state">
+                  <SuggestInput
+                    value={formData.state}
+                    onChange={(value) => handleInputChange('state', value)}
+                    onSelect={(item) => {
+                      handleInputChange('state', item.state || item.label);
+                      if (item.country) handleInputChange('country', item.country);
+                    }}
+                    getSuggestions={stateSuggestions}
+                    placeholder="Start typing a state"
+                  />
+                </OcrInputRow>
               </DroppableField>
               <DroppableField field="country">
-                <label className="block text-sm font-bold text-slate-800 mb-1">🌍 Country</label>
-                <SuggestInput
-                  value={formData.country}
-                  onChange={(value) => handleInputChange('country', value)}
-                  onSelect={(item) => handleInputChange('country', item.country || item.label)}
-                  getSuggestions={countrySuggestions}
-                  placeholder="Start typing a country"
-                />
+                <LabelWithOcr field="country">🌍 Country</LabelWithOcr>
+                <OcrInputRow field="country">
+                  <SuggestInput
+                    value={formData.country}
+                    onChange={(value) => handleInputChange('country', value)}
+                    onSelect={(item) => handleInputChange('country', item.country || item.label)}
+                    getSuggestions={countrySuggestions}
+                    placeholder="Start typing a country"
+                  />
+                </OcrInputRow>
               </DroppableField>
             </div>
           </div>
@@ -546,7 +547,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
-                  <span>🎯</span> ICP Score (1-10)
+                  <span>🎯</span> ICP Score (0-10)
                 </label>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="relative w-32">
@@ -554,7 +555,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                       type="text"
                       value={formData.icpScore !== undefined ? formData.icpScore : ''}
                       readOnly
-                      placeholder="1-10"
+                      placeholder="0-10"
                       className="block w-full px-4 py-2 text-sm border-2 border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:outline-none"
                     />
                   </div>
@@ -625,29 +626,70 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
               {tagError && <p className="mt-1 text-xs text-red-600">⚠️ {tagError}</p>}
             </div>
             <DroppableField field="websiteLink">
-              <label className="block text-sm font-bold text-slate-800 mb-1">🌐 Website / Social Media Link</label>
-              <InputWithClear value={formData.websiteLink} onClear={() => handleInputChange('websiteLink', '')}>
-                <input
-                  type="url"
-                  value={formData.websiteLink}
-                  onChange={(e) => handleInputChange('websiteLink', e.target.value)}
-                  className={`block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px] ${formData.websiteLink ? 'pr-10' : ''}`}
-                  placeholder="https://..."
-                />
-              </InputWithClear>
+              <LabelWithOcr field="websiteLink">🌐 Website / Social Media Link</LabelWithOcr>
+              <OcrInputRow field="websiteLink">
+                <InputWithClear value={formData.websiteLink} onClear={() => handleInputChange('websiteLink', '')}>
+                  <input
+                    type="url"
+                    value={formData.websiteLink}
+                    onChange={(e) => handleInputChange('websiteLink', e.target.value)}
+                    className={`block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px] ${formData.websiteLink ? 'pr-10' : ''}`}
+                    placeholder="https://..."
+                  />
+                </InputWithClear>
+              </OcrInputRow>
             </DroppableField>
-            <div>
-              <label className="block text-sm font-bold text-slate-800 mb-1">📝 Remarks</label>
-              <InputWithClear value={formData.remarks} onClear={() => handleInputChange('remarks', '')} multiline>
-                <textarea
-                  value={formData.remarks}
-                  onChange={(e) => handleInputChange('remarks', e.target.value)}
-                  rows={3}
-                  className={`block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg ${formData.remarks ? 'pr-10' : ''}`}
-                  placeholder="Additional notes..."
-                />
-              </InputWithClear>
-            </div>
+            <DroppableField field="remarks">
+              <LabelWithOcr field="remarks">📝 Remarks</LabelWithOcr>
+              <OcrInputRow field="remarks">
+                <InputWithClear value={formData.remarks} onClear={() => handleInputChange('remarks', '')} multiline>
+                  <textarea
+                    value={formData.remarks}
+                    onChange={(e) => handleInputChange('remarks', e.target.value)}
+                    rows={3}
+                    className={`block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg ${formData.remarks ? 'pr-10' : ''}`}
+                    placeholder="Additional notes..."
+                  />
+                </InputWithClear>
+              </OcrInputRow>
+            </DroppableField>
+          </div>
+        </div>
+
+        {/* Account Manager, Sales Person, Lead Created By */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-3 rounded-lg shadow-sm border border-blue-200">
+            <label className="block text-sm font-bold text-slate-800 mb-1">👤 Account Manager</label>
+            <select
+              value={formData.accountManager}
+              onChange={(e) => handleInputChange('accountManager', e.target.value)}
+              className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+            >
+              <option value="">Select (Optional)</option>
+              {currentUser && <option value={currentUser}>Me ({getUserDisplayName(currentUser)})</option>}
+              {availableUsers.map((u) => <option key={u.id} value={u.email}>{u.name} - {u.role}</option>)}
+            </select>
+          </div>
+          <div className="bg-white p-3 rounded-lg shadow-sm border border-blue-200">
+            <label className="block text-sm font-bold text-slate-800 mb-1">💼 Sales Person</label>
+            <select
+              value={formData.salesPerson}
+              onChange={(e) => handleInputChange('salesPerson', e.target.value)}
+              className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+            >
+              <option value="">Select (Optional)</option>
+              {currentUser && <option value={currentUser}>Me ({getUserDisplayName(currentUser)})</option>}
+              {availableUsers.map((u) => <option key={u.id} value={u.email}>{u.name} - {u.role}</option>)}
+            </select>
+          </div>
+          <div className="bg-white p-3 rounded-lg shadow-sm border border-blue-200">
+            <label className="block text-sm font-bold text-slate-800 mb-1">✍️ Lead Created By</label>
+            <input
+              type="text"
+              value={currentUser ? getUserDisplayName(currentUser) : ''}
+              disabled
+              className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-slate-100 min-h-[44px]"
+            />
           </div>
         </div>
 
@@ -662,16 +704,6 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
             <SimpleDocUpload leadId="new-lead" documentType="mou" documentLabel="MOU" currentDocument={agencyDocuments.mou} onUploadComplete={(doc) => handleDocumentUpload('mou', doc)} currentUser={currentUser ?? ''} />
           </div>
         </div>
-
-        {/* Buttons */}
-        <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4">
-          <button type="button" onClick={onClose} className="px-6 py-2.5 min-h-[44px] text-sm font-bold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 border-2 border-slate-300">
-            ❌ Cancel
-          </button>
-          <button type="submit" disabled={isSubmitting} className={`px-6 py-2.5 min-h-[44px] text-sm font-bold text-white rounded-lg border-2 shadow-lg ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 border-indigo-600'}`}>
-            {isSubmitting ? '⏳ Adding Lead...' : '✅ Add Lead'}
-          </button>
-        </div>
       </form>
     </Modal>
     
@@ -683,7 +715,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
           setCategoryScores((prev) => ({ ...prev, [category]: value }));
         }}
         onApply={(score) => {
-          setFormData((prev) => ({ ...prev, icpScore: score }));
+          setFormData((prev) => ({ ...prev, icpScore: clampIcpScore(score) }));
           setShowIcpScoreModal(false);
         }}
       />

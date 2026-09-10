@@ -12,6 +12,7 @@ import { MultiSelect } from './MultiSelect';
 import { trackCallAction, trackWhatsAppAction, trackEmailAction } from '../services/ctaTrackingService';
 import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
+import { IcpScoringModal, clampIcpScore, emptyIcpCategoryScores, parseIcpScoreInput } from './IcpScoringModal';
 import { canMutateLead } from '../utils/leadPermissions';
 import { CONTACT_COUNTRY_OPTIONS, DEFAULT_CONTACT_COUNTRY, contactMatchesSelectedCountries, getCityOptionsForCountries } from '../utils/countriesAndCities';
 import { resolveLeadSource, partitionLeadsByOwnership, getLeadRelation, getLeadRelationBadge, LEAD_RELATION_HEADERS } from '../utils/leadVisibility';
@@ -166,45 +167,17 @@ const LeadCard: React.FC<{
 }> = ({ lead, onClick, onOpenFollowUps, onOpenRemarks, isSelected, onToggleSelection, showSelection, isAdmin, availableUsers, onAssignLead, currentUser, onUpdateLead }) => {
   const [showEmailTemplateModal, setShowEmailTemplateModal] = useState(false);
   const [showIcpScoreModal, setShowIcpScoreModal] = useState(false);
-  const [showReferenceTable, setShowReferenceTable] = useState(false);
-  const [categoryScores, setCategoryScores] = useState<{[key: string]: number | ''}>({
-    'Business Profile': '',
-    'Services Portfolio': '',
-    'Online Presence': '',
-    'Operational Scale': '',
-    'Applicant Volume': '',
-    'Team Strength': '',
-    'Network Strength': '',
-    'Applicant Quality': '',
-    'Physical Presence': ''
-  });
+  const [categoryScores, setCategoryScores] = useState(emptyIcpCategoryScores);
 
   // 🟢 SAFE FIX: Pre-calculate safe arrays
   const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
   const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
   const safeTags = Array.isArray(lead.tags) ? lead.tags : [];
-  const firstContact = safeContacts[0] || { firstName: 'No', lastName: 'Contact', phone: '', email: '', city: '', country: '', role: '' };
+  const firstContact = safeContacts[0] || { name: '', phone: '', email: '', city: '', country: '', role: '' };
 
-  // Get category color
-  const getCategoryColor = (category: string) => {
-    const colors = {
-      'Platinum': 'bg-gradient-to-r from-gray-300 to-gray-500 text-white',
-      'Diamond': 'bg-gradient-to-r from-cyan-300 to-cyan-500 text-white',
-      'Gold': 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white',
-      'Silver': 'bg-gradient-to-r from-gray-200 to-gray-400 text-gray-800',
-      'Bronze': 'bg-gradient-to-r from-orange-400 to-orange-600 text-white',
-      'Beginner': 'bg-gradient-to-r from-green-400 to-green-600 text-white',
-    };
-    return colors[category as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-  };
-
-  // Calculate meetings done count
   const meetingsDoneCount = safeFollowUps.filter(fu => fu.type === 'Meeting' && fu.status === 'Done').length;
-  
-  // Get POC name from contacts
   const pocContact = safeContacts.find(c => (c.role || '').toLowerCase().includes('poc')) || firstContact;
   const pocName = pocContact?.pocName || pocContact?.name || 'N/A';
-  const displayName = lead.agencyName || `${firstContact.firstName} ${firstContact.lastName}`;
   
   // Format onboarding date
   const formatOnboardingDate = (dateStr?: string) => {
@@ -220,14 +193,40 @@ const LeadCard: React.FC<{
 
   const relation = getLeadRelation(lead, { currentUser, isAdmin });
   const relationBadge = getLeadRelationBadge(lead, { currentUser, isAdmin });
+  const contactName = (firstContact.name || '').trim();
+  const upcomingFollowUps = safeFollowUps
+    .filter((fu) => fu.status === 'Planned' || fu.status === 'Pending')
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const nextFollowUp = upcomingFollowUps[0] || null;
+  const nextIsOverdue = nextFollowUp ? isMissedFollowUp(nextFollowUp) : false;
+  const formatWhen = (iso: string) => {
+    const date = new Date(iso);
+    const datePart = date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    const timePart = date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    return `${datePart} · ${timePart}`;
+  };
+  const icpValue = lead.icpScore;
+  const icpChipClass =
+    icpValue === undefined || icpValue === null
+      ? 'bg-slate-100 text-slate-500 border-slate-200'
+      : icpValue <= 3
+        ? 'bg-rose-50 text-rose-700 border-rose-200'
+        : icpValue <= 6
+          ? 'bg-amber-50 text-amber-800 border-amber-200'
+          : 'bg-emerald-50 text-emerald-800 border-emerald-200';
+  const nextActionTone = !nextFollowUp
+    ? 'bg-slate-50 border-slate-200'
+    : nextIsOverdue
+      ? 'bg-rose-50 border-rose-200'
+      : 'bg-indigo-50 border-indigo-100';
 
   return (
-    <div className={`w-full rounded-lg shadow-lg p-3 sm:p-4 hover:shadow-xl transition-all duration-200 box-border max-w-full overflow-hidden ${
+    <div className={`w-full rounded-xl shadow-sm p-3.5 sm:p-4 hover:shadow-md transition-all duration-200 box-border max-w-full overflow-hidden ${
       relation === 'createdByMe'
-        ? 'bg-sky-50 border-2 border-sky-300'
+        ? 'bg-sky-50 border border-sky-200'
         : relation === 'unrelated'
-          ? 'bg-amber-50 border-2 border-amber-300'
-          : 'bg-white border border-gray-100'
+          ? 'bg-amber-50 border border-amber-200'
+          : 'bg-white border border-slate-200'
     }`}>
       {showSelection && (
         <div className="flex items-center gap-2 mb-2">
@@ -247,176 +246,136 @@ const LeadCard: React.FC<{
           </div>
         </div>
       )}
-      <button onClick={onClick} className="w-full text-left">
-        <div className="flex justify-between items-start mb-3">
-          <div className="flex-1 min-w-0 pr-2">
-            <h3 className="font-bold text-slate-800 text-base sm:text-lg leading-tight mb-2 break-words">{lead.agencyName}</h3>
-            {/* Lead Category and ICP Score - Smaller size */}
-            <div className="mb-2 flex items-center gap-1 sm:gap-1.5 flex-wrap">
-              <span className={`inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${getCategoryColor(lead.agentCategory)}`}>
-                {lead.agentCategory}
-              </span>
-              {lead.icpScore !== undefined && lead.icpScore !== null ? (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowIcpScoreModal(true);
-                  }}
-                  className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 text-indigo-800 hover:bg-indigo-200 cursor-pointer transition-colors whitespace-nowrap"
-                  title="Click to view ICP Score details"
-                >
-                  🎯 {lead.icpScore}/10
-                </button>
-              ) : (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowIcpScoreModal(true);
-                  }}
-                  className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer transition-colors whitespace-nowrap"
-                  title="Click to set ICP Score"
-                >
-                  🎯 NA
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {/* Phone and City Row */}
-        <div className="flex items-center justify-between mb-2 gap-2">
-          <p className="text-sm font-medium text-slate-700 break-all min-w-0 flex-1">{firstContact.phone}</p>
-          {firstContact.city && (
-            <p className="text-xs sm:text-sm text-slate-500 bg-blue-50 px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
-              {firstContact.city}
-            </p>
-          )}
+      <div
+        onClick={onClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        className="w-full text-left cursor-pointer"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-semibold text-[15px] sm:text-base text-slate-900 leading-snug break-words min-w-0">
+            {lead.agencyName}
+          </h3>
           {relationBadge && (
-            <span className={`text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${relationBadge.className}`}>
+            <span className={`lead-chip whitespace-nowrap ${relationBadge.className}`}>
               {relationBadge.label}
             </span>
           )}
         </div>
-        
-        {/* Account Manager and Sales Person */}
-        <div className="space-y-1 mb-3">
-          {lead.accountManager && (
-            <p className="text-xs text-slate-500 break-words">
-              <span className="font-medium">Account Manager:</span> <span className="break-words">{getUserDisplayName(lead.accountManager, availableUsers || [])}</span>
-            </p>
-          )}
-          {lead.salesPerson && (
-            <p className="text-xs text-slate-500 break-words">
-              <span className="font-medium">Sales Person:</span> <span className="break-words">{getUserDisplayName(lead.salesPerson, availableUsers || [])}</span>
-            </p>
-          )}
-        </div>
-    
-    {/* Tags with ICP Score integrated */}
-    <div className="mt-2 flex flex-wrap gap-1 items-center">
-      {safeTags.map(tag => (
-        <span key={tag} className="px-2 py-0.5 text-xs font-medium bg-slate-200 text-slate-700 rounded-full break-words">{tag}</span>
-      ))}
-    </div>
-    
-    {/* Follow-up and Next Action Information - Clickable */}
-    <div 
-      className="mt-2 p-2 bg-slate-50 rounded-md cursor-pointer hover:bg-slate-100 transition-colors"
-      onClick={(e) => {
-        e.stopPropagation();
-        if (onOpenFollowUps) {
-          onOpenFollowUps();
-        } else {
-          onClick();
-        }
-      }}
-    >
-      <div className="text-xs font-medium text-slate-700 mb-1">Follow-ups & Next Action</div>
-      <div className="text-xs text-slate-600 break-words">
-        <div className="mb-1">
-          <span className="font-medium">{safeFollowUps.length} follow-up{safeFollowUps.length !== 1 ? 's' : ''}</span>
+
+        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+          <span className={`lead-chip whitespace-nowrap ${categoryColors[lead.agentCategory] || 'bg-slate-100 text-slate-700'}`}>
+            {lead.agentCategory}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowIcpScoreModal(true);
+            }}
+            className={`lead-chip whitespace-nowrap ${icpChipClass}`}
+            title={icpValue == null ? 'Set ICP score' : 'View ICP score details'}
+          >
+            ICP {icpValue == null ? '—' : `${icpValue}/10`}
+          </button>
           {meetingsDoneCount > 0 && (
-            <span className="ml-2 text-xs font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
-              📅 {meetingsDoneCount} Meeting{meetingsDoneCount !== 1 ? 's' : ''} Done
+            <span className="lead-chip bg-emerald-50 text-emerald-700 border-emerald-200">
+              {meetingsDoneCount} meeting{meetingsDoneCount !== 1 ? 's' : ''} done
             </span>
           )}
-          {safeFollowUps.length > 0 && (
-            <div className="mt-1">
-              {safeFollowUps.slice(0, 2).map((followUp, index) => {
-                const date = new Date(followUp.date);
-                const missed = isMissedFollowUp(followUp);
-                return (
-                  <div key={index} className={`text-xs break-words ${missed ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-                    {followUp.type} - {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                );
-              })}
-              {safeFollowUps.length > 2 && (
-                <div className="text-xs text-slate-400">
-                  +{safeFollowUps.length - 2} more
-                </div>
-              )}
+        </div>
+
+        <dl className="mt-3 space-y-1.5">
+          {firstContact.phone && (
+            <div className="flex items-baseline gap-2">
+              <dt className="lead-fact-label">Phone</dt>
+              <dd className="min-w-0 text-[13px] font-semibold text-slate-800 tabular-nums break-all">
+                {firstContact.phone}
+                {contactName && contactName !== 'No Contact' && (
+                  <span className="ml-1.5 font-normal text-slate-500">· {contactName}</span>
+                )}
+              </dd>
             </div>
           )}
-        </div>
-        <div>
-          <span className="font-medium">Next Action:</span>
-          {(() => {
-            if (safeFollowUps.length === 0) {
-              return <span className="text-slate-400 ml-1">No follow-ups</span>;
+          {firstContact.city && (
+            <div className="flex items-baseline gap-2">
+              <dt className="lead-fact-label">City</dt>
+              <dd className="min-w-0 text-[13px] text-slate-700 break-words">{firstContact.city}</dd>
+            </div>
+          )}
+          {lead.accountManager && (
+            <div className="flex items-baseline gap-2">
+              <dt className="lead-fact-label">AM</dt>
+              <dd className="min-w-0 text-[13px] text-slate-700 break-words">
+                {getUserDisplayName(lead.accountManager, availableUsers || [])}
+              </dd>
+            </div>
+          )}
+          {lead.salesPerson && (
+            <div className="flex items-baseline gap-2">
+              <dt className="lead-fact-label">Sales</dt>
+              <dd className="min-w-0 text-[13px] text-slate-700 break-words">
+                {getUserDisplayName(lead.salesPerson, availableUsers || [])}
+              </dd>
+            </div>
+          )}
+        </dl>
+
+        {safeTags.length > 0 && (
+          <div className="mt-2.5 flex flex-wrap gap-1">
+            {safeTags.map((tag) => (
+              <span key={tag} className="lead-chip bg-slate-100 text-slate-600 border-slate-200">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div
+          className={`lead-next-action mt-3 border ${nextActionTone}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onOpenFollowUps) {
+              onOpenFollowUps();
+            } else {
+              onClick();
             }
-            
-            // Find the next upcoming follow-up
-            const upcomingFollowUps = safeFollowUps
-              .filter(fu => fu.status === 'Planned' || fu.status === 'Pending')
-              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-            
-            if (upcomingFollowUps.length > 0) {
-              const nextFollowUp = upcomingFollowUps[0];
-              const date = new Date(nextFollowUp.date);
-              const missed = isMissedFollowUp(nextFollowUp);
-              return (
-                <div className="mt-1">
-                  <div className="text-xs font-medium text-slate-800 break-words">
-                    {nextFollowUp.type}
-                  </div>
-                  <div className={`text-xs ${missed ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-                    {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-              );
-            }
-            
-            // If no upcoming follow-ups, show the most recent one
-            const recentFollowUp = [...safeFollowUps]
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-            
-            if (recentFollowUp) {
-              const date = new Date(recentFollowUp.date);
-              const missed = isMissedFollowUp(recentFollowUp);
-              return (
-                <div className="mt-1">
-                  <div className="text-xs font-medium text-slate-800 break-words">
-                    {recentFollowUp.type}
-                  </div>
-                  <div className={`text-xs ${missed ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-                    {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-              );
-            }
-            
-            return <span className="text-slate-400 ml-1">No follow-ups</span>;
-          })()}
+          }}
+        >
+          {!nextFollowUp ? (
+            <>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Next action</div>
+              <div className="mt-0.5 text-[13px] text-slate-500">No follow-up planned</div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <span className={`text-[11px] font-semibold uppercase tracking-wide ${nextIsOverdue ? 'text-rose-600' : 'text-indigo-600'}`}>
+                  {nextIsOverdue ? 'Overdue' : 'Next action'}
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  {safeFollowUps.length} follow-up{safeFollowUps.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="mt-1 text-[14px] font-semibold text-slate-900">{nextFollowUp.type}</div>
+              <div className={`text-[12px] ${nextIsOverdue ? 'text-rose-600 font-medium' : 'text-slate-600'}`}>
+                {formatWhen(nextFollowUp.date)}
+              </div>
+            </>
+          )}
         </div>
       </div>
-    </div>
-      </button>
     
       {/* CTA Buttons for Mobile Cards - At Bottom */}
     {firstContact.phone && (
-      <div className="mt-4 sm:mt-5 pt-3 border-t border-gray-100">
-        <div className="flex flex-wrap sm:flex-nowrap gap-2 justify-stretch">
+      <div className="mt-3 pt-3 border-t border-slate-100">
+        <div className="flex gap-2">
         {firstContact.phone && (
           <button
             onClick={(e) => {
@@ -435,10 +394,10 @@ const LeadCard: React.FC<{
               }
               window.open(`tel:${firstContact.phone}`, '_self');
             }}
-            className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 shadow-sm transition-all duration-200 whitespace-nowrap"
+            className="lead-card-cta flex-1 min-w-0 flex items-center justify-center gap-1.5 px-2 py-2 text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
             title={`Call ${firstContact.phone}`}
           >
-            <PhoneIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+            <PhoneIcon className="w-4 h-4 flex-shrink-0" />
             <span>Call</span>
           </button>
         )}
@@ -476,10 +435,10 @@ Iapply.io`;
                 alert('Invalid phone number. Please ensure the phone number has a valid format.');
               }
             }}
-            className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white bg-green-500 rounded-lg hover:bg-green-600 shadow-sm transition-all duration-200 whitespace-nowrap"
+            className="lead-card-cta flex-1 min-w-0 flex items-center justify-center gap-1.5 px-2 py-2 text-white bg-green-500 rounded-lg hover:bg-green-600"
             title={`WhatsApp ${firstContact.phone}`}
           >
-            <WhatsAppIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+            <WhatsAppIcon className="w-4 h-4 flex-shrink-0" />
             <span>WhatsApp</span>
           </button>
         )}
@@ -503,10 +462,10 @@ Iapply.io`;
                 }
                 setShowEmailTemplateModal(true);
               }}
-              className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition-all duration-200 whitespace-nowrap"
+              className="lead-card-cta flex-1 min-w-0 flex items-center justify-center gap-1.5 px-2 py-2 text-white bg-sky-600 rounded-lg hover:bg-sky-700"
               title={`Email ${firstContact.email}`}
             >
-              <MailIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+              <MailIcon className="w-4 h-4 flex-shrink-0" />
               <span>Email</span>
             </button>
             {currentUser && (
@@ -593,12 +552,11 @@ Iapply.io`;
                 }
               });
             }}
-            className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
+            className="lead-chip bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
             title="Assign Lead"
           >
             Assign
           </button>
-          {/* Clickable Remarks */}
           {lead.remarks && (
             <button
               onClick={(e) => {
@@ -609,241 +567,62 @@ Iapply.io`;
                   onClick();
                 }
               }}
-              className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 cursor-pointer max-w-[200px] truncate"
+              className="lead-chip bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 max-w-[220px] truncate"
               title={`Remarks: ${lead.remarks}`}
             >
-              💬 Remarks: {lead.remarks.length > 30 ? lead.remarks.substring(0, 30) + '...' : lead.remarks}
+              Remarks: {lead.remarks.length > 30 ? lead.remarks.substring(0, 30) + '...' : lead.remarks}
             </button>
           )}
         </div>
       )}
       
-      {/* ICP Score Modal - Same as CompactLeadList */}
-      {showIcpScoreModal && (() => {
-        // Calculate average score
-        const scores = Object.values(categoryScores).filter(s => s !== '') as number[];
-        const average = scores.length > 0 
-          ? Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 10) / 10 
-          : null;
-        
-        const handleCategoryScoreChange = (category: string, value: string) => {
-          const numValue = value === '' ? '' : Math.max(0, Math.min(10, parseInt(value) || 0));
-          setCategoryScores(prev => ({ ...prev, [category]: numValue }));
-        };
-        
-        return (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]" onClick={() => setShowIcpScoreModal(false)}>
-            <div className="bg-white rounded-xl shadow-2xl max-w-[95vw] w-full max-h-[95vh] mx-4 my-4 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              {/* Lead Details Banner */}
-              <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-6 flex-shrink-0">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1">
-                    <h2 className="text-2xl font-bold mb-2">{lead.agencyName}</h2>
-                    <div className="flex flex-wrap gap-3 items-center">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">Status:</span>
-                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-medium">{lead.status}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">Category:</span>
-                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-medium">{lead.agentCategory}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">Current ICP Score:</span>
-                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold">
-                          {lead.icpScore !== undefined && lead.icpScore !== null ? `${lead.icpScore}/10` : 'Not Set'}
-                        </span>
-                      </div>
-                      {firstContact.name && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">Contact:</span>
-                          <span className="text-sm">{firstContact.name}</span>
-                          {firstContact.phone && (
-                            <span className="text-sm">• {firstContact.phone}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowIcpScoreModal(false)}
-                    className="text-white hover:text-gray-200 text-3xl font-bold ml-4"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-              
-              {/* Modal Content - Same table structure as CompactLeadList */}
-              <div className="flex-1 overflow-y-auto p-6">
-                <div className="mb-4">
-                  <p className="text-sm text-slate-600 mb-4">
-                    Use this scoring system to assess agencies/partners. Enter a score (0-10) for each category, and the average will be calculated automatically.
-                  </p>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <p className="text-sm font-semibold text-blue-800 mb-2">💡 How to Use:</p>
-                    <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
-                      <li>Review each category and assessment parameter</li>
-                      <li>Evaluate the agency based on the scoring logic</li>
-                      <li>Enter a score (0-10) for each category in the "Your Score" column</li>
-                      <li>The average will be calculated automatically and can be applied to the ICP Score field</li>
-                    </ol>
-                  </div>
-                  {average !== null && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-                      <p className="text-sm font-semibold text-green-800">
-                        📊 Calculated Average: <span className="text-lg font-bold text-green-900">{average.toFixed(1)}/10</span>
-                        {average >= 1 && average <= 10 && (
-                          <span className="ml-2 text-xs">(Rounded: {Math.round(average)}/10)</span>
-                        )}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="mb-4 flex justify-end">
-                  <button
-                    onClick={() => setShowReferenceTable(true)}
-                    className="px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    📖 View Reference Examples
-                  </button>
-                </div>
-                
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse border border-slate-300 text-sm">
-                    <thead>
-                      <tr className="bg-indigo-100">
-                        <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Category</th>
-                        <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Assessment Parameter</th>
-                        <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Scoring Logic (0–10)</th>
-                        <th className="border border-slate-300 px-3 py-2 text-center font-bold text-slate-800 bg-indigo-200">Your Score (0-10)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {/* All 9 categories with inputs - same as CompactLeadList */}
-                      <tr className="bg-white">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Business Profile</td>
-                        <td className="border border-slate-300 px-3 py-2">Business Age</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>24+ months = 10</li>
-                            <li>12–24 = 7</li>
-                            <li>6–12 = 5</li>
-                            <li>&lt;6 = 2</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Business Profile']}
-                            onChange={(e) => handleCategoryScoreChange('Business Profile', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                      {/* ... other rows omitted for brevity, keeping same logic ... */}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              
-              {/* Reference Table Modal */}
-              {showReferenceTable && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110]" onClick={() => setShowReferenceTable(false)}>
-                  <div className="bg-white rounded-xl shadow-2xl max-w-[90vw] w-full max-h-[85vh] mx-4 my-4 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                    <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 flex-shrink-0 flex justify-between items-center">
-                      <h3 className="text-xl font-bold">📖 Reference Examples</h3>
-                      <button
-                        onClick={() => setShowReferenceTable(false)}
-                        className="text-white hover:text-gray-200 text-2xl font-bold"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-6">
-                      <p className="text-sm text-slate-600 mb-4">
-                        This table shows example answers and verification sources for reference. Use this as a guide when scoring each category.
-                      </p>
-                      {/* Reference table content */}
-                    </div>
-                    <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 p-4 flex justify-end">
-                      <button
-                        onClick={() => setShowReferenceTable(false)}
-                        className="px-6 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Footer with Buttons */}
-              <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 p-4 flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setCategoryScores({
-                      'Business Profile': '',
-                      'Services Portfolio': '',
-                      'Online Presence': '',
-                      'Operational Scale': '',
-                      'Applicant Volume': '',
-                      'Team Strength': '',
-                      'Network Strength': '',
-                      'Applicant Quality': '',
-                      'Physical Presence': ''
-                    });
-                    setShowIcpScoreModal(false);
-                  }}
-                  className="px-6 py-2 text-sm font-semibold bg-slate-400 text-white rounded-lg hover:bg-slate-500 transition-colors"
-                >
-                  Close
-                </button>
-                {average !== null && average >= 1 && average <= 10 && canMutateLead(lead, { currentUser, isAdmin }) && (
-                  <button
-                    onClick={async () => {
-                      if (!canMutateLead(lead, { currentUser, isAdmin })) {
-                        alert('You can view this lead but only the current Account Manager can edit it.');
-                        return;
-                      }
-                      if (onUpdateLead) {
-                        try {
-                          await onUpdateLead(lead.id, { icpScore: Math.round(average) });
-                          alert(`✅ ICP Score updated to ${Math.round(average)}/10`);
-                          setShowIcpScoreModal(false);
-                          setCategoryScores({
-                            'Business Profile': '',
-                            'Services Portfolio': '',
-                            'Online Presence': '',
-                            'Operational Scale': '',
-                            'Applicant Volume': '',
-                            'Team Strength': '',
-                            'Network Strength': '',
-                            'Applicant Quality': '',
-                            'Physical Presence': ''
-                          });
-                        } catch (error) {
-                          alert(`❌ Failed to update ICP Score: ${error}`);
-                        }
-                      } else {
-                        alert(`ICP Score would be updated to ${Math.round(average)}/10. Please update the lead manually.`);
-                        setShowIcpScoreModal(false);
-                      }
-                    }}
-                    className="px-6 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    ✅ Apply Score ({Math.round(average)}/10)
-                  </button>
+      {showIcpScoreModal && (
+        <IcpScoringModal
+          onClose={() => {
+            setShowIcpScoreModal(false);
+            setCategoryScores(emptyIcpCategoryScores());
+          }}
+          categoryScores={categoryScores}
+          onCategoryScoreChange={(category, value) => {
+            setCategoryScores((prev) => ({ ...prev, [category]: value }));
+          }}
+          applyDisabled={!canMutateLead(lead, { currentUser, isAdmin })}
+          onApply={async (score) => {
+            const nextScore = clampIcpScore(score);
+            if (!canMutateLead(lead, { currentUser, isAdmin })) {
+              alert('You can view this lead but only the current Account Manager can edit it.');
+              return;
+            }
+            if (!onUpdateLead) {
+              alert(`ICP Score would be updated to ${nextScore}/10. Please update the lead manually.`);
+              setShowIcpScoreModal(false);
+              return;
+            }
+            try {
+              await onUpdateLead(lead.id, { icpScore: nextScore });
+              alert(`ICP Score updated to ${nextScore}/10`);
+              setShowIcpScoreModal(false);
+              setCategoryScores(emptyIcpCategoryScores());
+            } catch (error) {
+              alert(`Failed to update ICP Score: ${error}`);
+            }
+          }}
+          banner={(
+            <div className="bg-indigo-600 text-white rounded-xl p-3 sm:p-4 mb-3">
+              <p className="font-bold text-lg truncate">{lead.agencyName}</p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs sm:text-sm">
+                <span className="px-2 py-1 bg-white/20 rounded-full">{lead.status}</span>
+                {lead.agentCategory && (
+                  <span className="px-2 py-1 bg-white/20 rounded-full">{lead.agentCategory}</span>
                 )}
+                <span className="px-2 py-1 bg-white/20 rounded-full font-semibold">
+                  Current: {lead.icpScore !== undefined && lead.icpScore !== null ? `${lead.icpScore}/10` : 'Not set'}
+                </span>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          )}
+        />
+      )}
     </div>
   );
 };
@@ -943,7 +722,7 @@ const BoardView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | '
   }
 
   return (
-  <div className="flex gap-6 overflow-x-auto pb-4 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
+  <div className="flex gap-6 overflow-x-auto pb-4 -mx-1.5 sm:-mx-4 lg:-mx-8 px-1.5 sm:px-4 lg:px-8">
     {LEAD_STATUSES.map(status => (
       <div key={status} className="flex-shrink-0 w-72 bg-slate-200 rounded-xl p-3">
         <div className="flex justify-between items-center mb-4">
@@ -1474,9 +1253,9 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
     // ICP Score Filter
     if (filters.icpScore.min || filters.icpScore.max) {
       const icpScore = lead.icpScore || 0;
-      const minScore = filters.icpScore.min ? parseInt(filters.icpScore.min) : 0;
-      const maxScore = filters.icpScore.max ? parseInt(filters.icpScore.max) : 10;
-      
+      const minScore = filters.icpScore.min ? clampIcpScore(parseInt(filters.icpScore.min, 10)) : 0;
+      const maxScore = filters.icpScore.max ? clampIcpScore(parseInt(filters.icpScore.max, 10)) : 10;
+
       if (icpScore < minScore || icpScore > maxScore) return false;
     }
 
@@ -1682,7 +1461,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 flex-wrap">
                 <button 
                     onClick={() => setShowFilters(!showFilters)} 
-                    className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50 min-h-[36px] sm:min-h-0"
+                    className="app-icon-btn flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50 min-h-[36px]"
                 >
                     <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z" />
@@ -1694,7 +1473,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                 <div className="flex flex-col gap-1 relative">
                     <button 
                         onClick={() => setShowSearchModal(true)} 
-                        className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border-2 border-green-500 rounded-md hover:bg-green-50 shadow-md relative min-h-[36px] sm:min-h-0"
+                        className="app-icon-btn flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border-2 border-green-500 rounded-md hover:bg-green-50 shadow-md relative min-h-[36px]"
                     >
                         <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1708,7 +1487,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                     <button 
                         onClick={() => setViewMode('mobile-cards')} 
                         aria-label="Mobile cards view"
-                        className={`p-1.5 rounded-md transition-colors w-full sm:w-auto ${
+                        className={`app-icon-btn p-1.5 rounded-md transition-colors w-full sm:w-auto ${
                             viewMode === 'mobile-cards' 
                                 ? 'bg-white shadow text-blue-600' 
                                 : 'hover:bg-slate-100 text-slate-600'
@@ -1722,7 +1501,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                     <button 
                         onClick={() => setViewMode('compact')} 
                         aria-label="Compact view"
-                        className={`p-1.5 rounded-md transition-colors w-full sm:w-auto ${
+                        className={`app-icon-btn p-1.5 rounded-md transition-colors w-full sm:w-auto ${
                             viewMode === 'compact' 
                                 ? 'bg-white shadow text-blue-600' 
                                 : 'hover:bg-slate-100 text-slate-600'
@@ -1736,7 +1515,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                     <button 
                         onClick={() => setViewMode('board')} 
                         aria-label="Board view"
-                        className={`p-1.5 rounded-md transition-colors w-full sm:w-auto ${
+                        className={`app-icon-btn p-1.5 rounded-md transition-colors w-full sm:w-auto ${
                             viewMode === 'board' 
                                 ? 'bg-white shadow text-blue-600' 
                                 : 'hover:bg-slate-100 text-slate-600'
@@ -1746,15 +1525,15 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                         <Squares2x2Icon className="h-5 w-5 mx-auto" />
                     </button>
                 </div>
-                <button onClick={props.onImportLeads} className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50 min-h-[36px] sm:min-h-0">
+                <button onClick={props.onImportLeads} className="app-icon-btn flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50 min-h-[36px]">
                     <UploadIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Import</span>
                 </button>
             </div>
         </div>
 
-        {/* Quick Category Filters - horizontal scroll on small screens for cleaner UX */}
+        {/* Quick Category Filters — original desktop pills; wrap on mobile */}
         <div className="mb-4 sm:mb-6">
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent md:flex-wrap md:overflow-visible">
+          <div className="flex flex-wrap gap-2 items-center">
             <span className="text-sm font-medium text-slate-600 mr-1 flex-shrink-0 hidden sm:inline">Quick Filters:</span>
             {/* My Leads Button */}
             {props.currentUser && (
@@ -1858,47 +1637,54 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
             </div>
           )}
         </div>
-      
-        {/* User Lead Info Panel */}
+
+        {/* Your Assigned Leads — visible on desktop, mobile, and PWA */}
         {isUserFilteredView && (
-            <div className={`border rounded-lg p-4 mb-6 ${isSearchingAllLeads ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
-                <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0">
-                        <svg className={`h-5 w-5 mt-0.5 ${isSearchingAllLeads ? 'text-amber-600' : 'text-blue-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <h3 className={`text-sm font-semibold ${isSearchingAllLeads ? 'text-amber-900' : 'text-blue-800'}`}>
-                            {isSearchingAllLeads ? 'Search results include all matching leads' : 'Your Assigned Leads'}
-                        </h3>
-                        <p className={`text-sm mt-1 ${isSearchingAllLeads ? 'text-amber-800' : 'text-blue-700'}`}>
-                            {isSearchingAllLeads ? (
-                                <>
-                                    Results are grouped: <strong>your leads</strong>, then leads <strong>created by you</strong> (assigned to another AM), then <strong>not connected</strong> leads. You can only edit leads where you are the current Account Manager.
-                                </>
-                            ) : (
-                                <>
-                                    You are seeing leads where you are assigned as <strong>Account Manager</strong>. Use Filters (for example City) to view all matching leads.
-                                </>
-                            )}
-                        </p>
-                        {isSearchingAllLeads && (
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                              Your leads: {ownLeads.length}
-                            </span>
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-200 text-sky-950">
-                              Created by you: {createdByMeLeads.length}
-                            </span>
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-200 text-amber-900">
-                              Not connected: {unrelatedLeads.length}
-                            </span>
-                          </div>
-                        )}
-                    </div>
-                </div>
+          <div
+            className={`lead-scope-banner mb-4 sm:mb-6 ${
+              isSearchingAllLeads ? 'lead-scope-banner--amber' : 'lead-scope-banner--blue'
+            }`}
+            role="status"
+            aria-live="polite"
+            data-testid="assigned-leads-banner"
+          >
+            <div className="flex items-start gap-2.5 sm:gap-3 min-w-0">
+              <div className="flex-shrink-0 mt-0.5" aria-hidden>
+                <svg className={`h-5 w-5 ${isSearchingAllLeads ? 'text-amber-600' : 'text-blue-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className={`text-sm font-semibold ${isSearchingAllLeads ? 'text-amber-900' : 'text-blue-800'}`}>
+                  {isSearchingAllLeads ? 'Search results include all matching leads' : 'Your Assigned Leads'}
+                </h3>
+                <p className={`text-xs sm:text-sm mt-1 leading-snug ${isSearchingAllLeads ? 'text-amber-800' : 'text-blue-700'}`}>
+                  {isSearchingAllLeads ? (
+                    <>
+                      Results are grouped: <strong>your leads</strong>, then leads <strong>created by you</strong> (assigned to another AM), then <strong>not connected</strong> leads. You can only edit leads where you are the current Account Manager.
+                    </>
+                  ) : (
+                    <>
+                      You are seeing leads where you are assigned as <strong>Account Manager</strong>. Use Filters (for example City) to view all matching leads.
+                    </>
+                  )}
+                </p>
+                {isSearchingAllLeads && (
+                  <div className="flex flex-wrap gap-2 mt-2.5">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                      Your leads: {ownLeads.length}
+                    </span>
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-200 text-sky-950">
+                      Created by you: {createdByMeLeads.length}
+                    </span>
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-200 text-amber-900">
+                      Not connected: {unrelatedLeads.length}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
+          </div>
         )}
 
         {/* Filter Panel */}
@@ -2157,28 +1943,38 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                         <div className="flex gap-2">
                             <input
                                 type="number"
+                                inputMode="numeric"
                                 placeholder="Min"
                                 value={filters.icpScore.min}
-                                onChange={(e) => setFilters(prev => ({ 
-                                    ...prev, 
-                                    icpScore: { ...prev.icpScore, min: e.target.value } 
-                                }))}
+                                onChange={(e) => {
+                                    const parsed = parseIcpScoreInput(e.target.value);
+                                    setFilters(prev => ({
+                                        ...prev,
+                                        icpScore: { ...prev.icpScore, min: parsed === '' ? '' : String(parsed) }
+                                    }));
+                                }}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                                min="0"
-                                max="10"
+                                min={0}
+                                max={10}
+                                step={1}
                             />
                             <span className="flex items-center text-slate-500">to</span>
                             <input
                                 type="number"
+                                inputMode="numeric"
                                 placeholder="Max"
                                 value={filters.icpScore.max}
-                                onChange={(e) => setFilters(prev => ({ 
-                                    ...prev, 
-                                    icpScore: { ...prev.icpScore, max: e.target.value } 
-                                }))}
+                                onChange={(e) => {
+                                    const parsed = parseIcpScoreInput(e.target.value);
+                                    setFilters(prev => ({
+                                        ...prev,
+                                        icpScore: { ...prev.icpScore, max: parsed === '' ? '' : String(parsed) }
+                                    }));
+                                }}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                                min="0"
-                                max="10"
+                                min={0}
+                                max={10}
+                                step={1}
                             />
                         </div>
                         <div className="text-xs text-slate-500 mt-1">

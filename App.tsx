@@ -558,9 +558,18 @@ const App: React.FC = () => {
                               </select>
                           </div>
                           <div>
-                              <label className="block text-sm font-bold text-slate-800 mb-1">ICP Score (1-10)</label>
-                              <input type="number" min={1} max={10} value={formData.icpScore ?? ''} onChange={e => setFormData({ ...formData, icpScore: e.target.value === '' ? undefined : parseInt(e.target.value, 10) || undefined })}
-                                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg" placeholder="1-10" />
+                              <label className="block text-sm font-bold text-slate-800 mb-1">ICP Score (0-10)</label>
+                              <input type="number" min={0} max={10} step={1} value={formData.icpScore ?? ''} onChange={e => {
+                                  const raw = e.target.value;
+                                  if (raw === '') {
+                                    setFormData({ ...formData, icpScore: undefined });
+                                    return;
+                                  }
+                                  const parsed = parseInt(raw, 10);
+                                  if (Number.isNaN(parsed)) return;
+                                  setFormData({ ...formData, icpScore: Math.max(0, Math.min(10, parsed)) });
+                              }}
+                                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg" placeholder="0-10" />
                           </div>
                       </div>
                   </div>
@@ -601,7 +610,7 @@ const App: React.FC = () => {
 
   return (
     <SubdomainRouter>
-      <div className="min-h-screen w-full bg-slate-100 text-slate-900 flex overflow-hidden">
+      <div className="h-[100dvh] max-h-[100dvh] w-full bg-slate-100 text-slate-900 flex overflow-hidden">
         {/* Sidebar */}
         <div className="hidden md:flex md:flex-col flex-none">
           <Sidebar
@@ -614,20 +623,30 @@ const App: React.FC = () => {
           />
         </div>
 
-        {/* Mobile Sidebar - same look as Firebase */}
         {isMobileSidebarOpen && (
-          <div className="md:hidden fixed inset-0 z-50 bg-black bg-opacity-50" onClick={() => setIsMobileSidebarOpen(false)}>
-            <div className="fixed top-0 left-0 h-full w-64 bg-slate-800 text-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold">Menu</h2>
-                  <button
-                    onClick={() => setIsMobileSidebarOpen(false)}
-                    className="p-2 hover:bg-slate-700 rounded-lg text-white"
-                  >
-                    ✕
-                  </button>
+          <div className="md:hidden fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label="Main menu">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/50 app-icon-btn"
+              aria-label="Close menu"
+              onClick={() => setIsMobileSidebarOpen(false)}
+            />
+            <div className="absolute top-0 left-0 h-full w-[min(18.5rem,88vw)] bg-slate-900 text-white shadow-2xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+              <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-700 flex-shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <img src="/icon-192x192.png" alt="" className="w-8 h-8 rounded-lg bg-white object-contain flex-shrink-0" />
+                  <h2 className="text-base font-semibold truncate">Canam CRM</h2>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileSidebarOpen(false)}
+                  className="app-icon-btn p-2 min-h-[44px] min-w-[44px] hover:bg-slate-700 rounded-lg text-white"
+                  aria-label="Close menu"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto">
                 <Sidebar
                   currentView={view}
                   onViewChange={(v) => { setView(v); setIsMobileSidebarOpen(false); }}
@@ -636,27 +655,27 @@ const App: React.FC = () => {
                   currentUser={currentUser}
                   onSignOut={handleLogout}
                   forceExpanded
+                  embedded
                 />
               </div>
             </div>
           </div>
         )}
 
-        {/* Main Content - mobile-first layout */}
-        <div className="flex-1 flex flex-col min-w-0 app-shell main-content-wrap">
-          {/* Top Header Bar - mobile: compact to avoid congestion */}
-          <header className="bg-white shadow-sm border-b border-slate-200 flex-shrink-0">
-            <div className="px-2 sm:px-4 py-1.5 sm:py-2">
-              <div className="flex items-center justify-between gap-1 sm:gap-2 min-w-0">
-                <div className="flex items-center gap-1 sm:gap-3 min-w-0 flex-1">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 app-shell main-content-wrap">
+          <header className="app-header sticky top-0 z-[70] bg-white/95 backdrop-blur border-b border-slate-200 flex-shrink-0 pt-[env(safe-area-inset-top)]">
+            <div className="px-1.5 sm:px-4 py-1.5 sm:py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
                   <button
                     onClick={() => setIsMobileSidebarOpen(true)}
-                    className="md:hidden p-1.5 hover:bg-slate-100 rounded text-slate-600 flex-shrink-0"
+                    className="app-header-btn app-header-btn--ghost app-header-menu-btn"
                     title="Open Menu"
+                    aria-label="Open menu"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
                   </button>
-                  <h1 className="text-xs sm:text-lg font-semibold text-slate-900 truncate min-w-0">
+                  <h1 className="text-[15px] sm:text-lg font-semibold text-slate-900 truncate min-w-0 leading-none">
                     {view === 'leads' && <><span className="sm:hidden">Leads</span><span className="hidden sm:inline">Leads Dashboard</span></>}
                     {view === 'pipeline' && <><span className="sm:hidden">Pipeline</span><span className="hidden sm:inline">Pipeline View</span></>}
                     {view === 'meetings' && 'Meetings'}
@@ -675,40 +694,43 @@ const App: React.FC = () => {
                     {view === 'website-control' && (<> <span className="sm:hidden">Site</span><span className="hidden sm:inline">Website Control</span></>)}
                     {!['leads', 'pipeline', 'meetings', 'followups', 'live-tracking', 'travel-claims', 'reports', 'calls-report', 'bulk-email', 'notifications', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'meeting-photos', 'website-control'].includes(view) && view.replace(/-/g, ' ')}
                   </h1>
+                </div>
+                <div className="app-header-actions flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                   <button
                     onClick={() => setAddLeadModalOpen(true)}
-                    className="flex items-center gap-0.5 sm:gap-2 px-1.5 sm:px-4 py-1.5 sm:py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm flex-shrink-0"
+                    className="app-header-btn app-header-btn--primary"
+                    title="Add Lead"
+                    aria-label="Add lead"
                   >
-                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                    <span className="hidden sm:inline">Add Lead</span>
-                    <span className="sm:hidden">Add</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 4v16m8-8H4" /></svg>
+                    <span className="hidden md:inline">Add Lead</span>
                   </button>
-                </div>
-                <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
                   {attendanceHeaderState && attendanceHeaderState.status !== 'ended' ? (
                     attendanceHeaderState.status === 'on-break' ? (
-                      <button onClick={() => setIsAttendanceModalOpen(true)} className="px-1.5 sm:px-3 py-1.5 text-xs font-medium text-amber-800 bg-amber-100 rounded-lg hover:bg-amber-200 min-h-[36px] sm:min-h-0">
-                        <span className="hidden sm:inline">On Break @ {attendanceHeaderState.displayTime}</span>
-                        <span className="sm:hidden">Break</span>
+                      <button onClick={() => setIsAttendanceModalOpen(true)} className="app-header-btn app-header-btn--warn" title={`On Break @ ${attendanceHeaderState.displayTime}`} aria-label="On break">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span className="hidden md:inline">On Break</span>
                       </button>
                     ) : (
-                      <button onClick={() => setIsAttendanceModalOpen(true)} className="px-1.5 sm:px-3 py-1.5 text-xs font-medium text-green-800 bg-green-100 rounded-lg hover:bg-green-200 min-h-[36px] sm:min-h-0">
-                        <span className="hidden sm:inline">Checked In @ {attendanceHeaderState.checkedInTime}</span>
-                        <span className="sm:hidden">✓</span>
+                      <button onClick={() => setIsAttendanceModalOpen(true)} className="app-header-btn app-header-btn--success" title={`Checked In @ ${attendanceHeaderState.checkedInTime}`} aria-label="Checked in">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        <span className="hidden md:inline">Checked In</span>
                       </button>
                     )
                   ) : (
-                    <button onClick={() => setIsAttendanceModalOpen(true)} className="px-1.5 sm:px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 min-h-[36px] sm:min-h-0">
-                      <span className="hidden sm:inline">Mark Attendance</span>
-                      <span className="sm:hidden">In</span>
+                    <button onClick={() => setIsAttendanceModalOpen(true)} className="app-header-btn app-header-btn--ghost" title="Mark Attendance" aria-label="Mark attendance">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      <span className="hidden md:inline">Attendance</span>
                     </button>
                   )}
                   <button
                     onClick={() => setIsMeetingCheckInModalOpen(true)}
-                    className={`px-1.5 sm:px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors min-h-[36px] sm:min-h-0 ${hasActiveMeeting ? 'bg-orange-600 hover:bg-orange-700 border border-orange-400' : 'bg-purple-600 hover:bg-purple-700'}`}
+                    className={`app-header-btn ${hasActiveMeeting ? 'app-header-btn--alert' : 'app-header-btn--ghost'}`}
+                    title={hasActiveMeeting ? 'Active meeting' : 'Meeting check-in'}
+                    aria-label={hasActiveMeeting ? 'Active meeting' : 'Meeting check-in'}
                   >
-                    <span className="hidden sm:inline">{hasActiveMeeting ? '🟠 Meeting' : 'Meeting'}</span>
-                    <span className="sm:hidden">Meet</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    <span className="hidden md:inline">{hasActiveMeeting ? 'In Meeting' : 'Meeting'}</span>
                   </button>
                   <NotificationBell
                     notifications={visibleNotifications}
@@ -718,16 +740,16 @@ const App: React.FC = () => {
                     onNavigateToLead={handleNavigateToLead}
                     onOpenNotificationsCenter={() => setView('notifications')}
                   />
-                  <button onClick={() => setUserProfileOpen(true)} title="Profile" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-700 flex-shrink-0">
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  <button onClick={() => setUserProfileOpen(true)} title="Profile" aria-label="Profile" className="app-header-btn app-header-btn--ghost">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                   </button>
                 </div>
               </div>
             </div>
           </header>
 
-          <main className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
-            <div className="p-3 sm:p-4 pb-8 w-full max-w-full min-w-0">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 min-h-0">
+            <div className="main-content-area px-1.5 sm:px-4 py-2 sm:py-4 pb-24 md:pb-8 w-full max-w-full min-w-0">
               {isLoadingLeads && ['leads', 'pipeline'].includes(view) && (
                 <div className="flex justify-center items-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
@@ -739,7 +761,6 @@ const App: React.FC = () => {
                     {view === 'leads' && !isLoadingLeads && (
                         <LeadsDashboard
                             key="leads"
-                            defaultViewMode="compact"
                             leads={displayedLeads}
                             allLeads={leads}
                             onSelectLead={handleViewLead}
@@ -779,7 +800,6 @@ const App: React.FC = () => {
                         <div className="space-y-6">
                             <WebsiteSignupLeads onConvertToLead={() => setAddLeadModalOpen(true)} />
                             <div>
-                                <h3 className="text-xl font-bold text-slate-800 mb-4">In Pipeline Leads</h3>
                                 <LeadsDashboard
                                     key="pipeline"
                                     title="In Pipeline Leads"
@@ -817,7 +837,7 @@ const App: React.FC = () => {
                     {view === 'meetings' && (
                         <>
                             <MeetingPlanner leads={displayedLeads} meetingCheckInRecords={meetingCheckIns} onUpdateLead={(lead) => handleUpdateLead(lead.id, { followUps: lead.followUps })} onPlanNewMeeting={() => setPlanMeetingModalOpen(true)} />
-                            <div className="mt-10">
+                            <div className="mt-6 sm:mt-10">
                                 <CompletedMeetings meetingCheckIns={meetingCheckIns} leads={displayedLeads} currentUser={currentUser} availableUsers={availableUsers} />
                             </div>
                         </>

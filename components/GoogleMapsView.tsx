@@ -121,9 +121,9 @@ const GoogleMapsView: React.FC = () => {
               id: row.id ?? row.firebase_id ?? '',
               lat,
               lng,
-              title: row.salesPerson ?? row.sales_person || 'Unknown',
+              title: (row.salesPerson ?? row.sales_person) || 'Unknown',
               address: row.address || 'Unknown Location',
-              salesPerson: row.salesPerson ?? row.sales_person || 'Unknown',
+              salesPerson: (row.salesPerson ?? row.sales_person) || 'Unknown',
               timestamp: row.timestamp ?? row.created_at ?? new Date().toISOString()
             });
           }
@@ -153,7 +153,7 @@ const GoogleMapsView: React.FC = () => {
           if (typeof lat === 'number' && typeof lng === 'number') {
             attendanceRecords.push({
               id: row.id ?? row.firebase_id ?? '',
-              username: row.username ?? row.user_name || 'Unknown',
+              username: (row.username ?? row.user_name) || 'Unknown',
               displayName: row.displayName ?? row.display_name ?? row.username ?? 'Unknown',
               date: row.date || '',
               startTime: row.startTime ?? row.start_time ?? row.checkInTime ?? '',
@@ -263,39 +263,17 @@ const GoogleMapsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-slate-200">
+      {/* Tabs: pills mobile, underline desktop */}
+      <div className="app-chip-row flex sm:hidden">
+          <button onClick={() => setActiveTab('map')} className={`app-chip ${activeTab === 'map' ? 'app-chip--active' : ''}`}>Map View</button>
+          <button onClick={() => setActiveTab('meetings')} className={`app-chip app-chip--yellow ${activeTab === 'meetings' ? 'app-chip--active' : ''}`}>Meetings ({mapData.length})</button>
+          <button onClick={() => setActiveTab('attendance')} className={`app-chip app-chip--indigo ${activeTab === 'attendance' ? 'app-chip--active' : ''}`}>Attendance ({attendanceData.length})</button>
+      </div>
+      <div className="hidden sm:block border-b border-slate-200">
         <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('map')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'map'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Map View
-          </button>
-          <button
-            onClick={() => setActiveTab('meetings')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'meetings'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Meeting Reports ({mapData.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('attendance')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'attendance'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Daily Attendance ({attendanceData.length})
-          </button>
+          <button onClick={() => setActiveTab('map')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'map' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>Map View</button>
+          <button onClick={() => setActiveTab('meetings')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'meetings' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>Meeting Reports ({mapData.length})</button>
+          <button onClick={() => setActiveTab('attendance')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'attendance' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>Daily Attendance ({attendanceData.length})</button>
         </nav>
       </div>
 

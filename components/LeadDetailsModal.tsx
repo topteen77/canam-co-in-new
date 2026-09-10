@@ -12,7 +12,7 @@ import { MultiSelect } from './MultiSelect';
 import { CustomDateTimePicker } from './CustomDateTimePicker';
 import { SimplePagination } from './SimplePagination';
 import { canMutateLead } from '../utils/leadPermissions';
-import { IcpScoringModal } from './IcpScoringModal';
+import { IcpScoringModal, clampIcpScore } from './IcpScoringModal';
 
 interface LeadDetailsModalProps {
   lead: Lead | null;
@@ -614,22 +614,22 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Lead Details: ${lead.agencyName}`} maxWidth="max-w-6xl" noPadding>
       <div className="sticky top-0 z-20 bg-white border-b border-slate-200 shadow-[0_8px_16px_-8px_rgba(15,23,42,0.18)]">
-        <div className="flex overflow-x-auto px-3 sm:px-4 pt-2 gap-1">
+        <div className="app-chip-row flex px-3 pt-2 pb-2 sm:hidden">
           {[
-            { id: 'details', label: '📋 Lead Details', icon: '📋' },
-            { id: 'followups', label: '📞 Follow-ups', icon: '📞' },
-            { id: 'history', label: '📊 History', icon: '📊' }
+            { id: 'details', label: 'Lead Details', tone: '' },
+            { id: 'followups', label: 'Follow-ups', tone: 'app-chip--yellow' },
+            { id: 'history', label: 'History', tone: 'app-chip--indigo' }
           ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-3 sm:px-4 py-2 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.id
-                  ? 'border-indigo-600 text-indigo-700'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-                }`}
-            >
-              {tab.label}
-            </button>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`app-chip ${tab.tone} ${activeTab === tab.id ? 'app-chip--active' : ''}`}>{tab.label}</button>
+          ))}
+        </div>
+        <div className="hidden sm:flex overflow-x-auto px-4 pt-2 gap-1">
+          {[
+            { id: 'details', label: '📋 Lead Details' },
+            { id: 'followups', label: '📞 Follow-ups' },
+            { id: 'history', label: '📊 History' }
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-4 py-2 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}>{tab.label}</button>
           ))}
         </div>
 
@@ -866,7 +866,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
-                      <span>🎯</span> ICP Score (1-10)
+                      <span>🎯</span> ICP Score (0-10)
                     </label>
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                       <div className="relative w-32">
@@ -877,7 +877,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                             : (lead.icpScore !== undefined ? lead.icpScore : '')
                           }
                           readOnly
-                          placeholder="1-10"
+                          placeholder="0-10"
                           className="block w-full px-4 py-2 text-sm border-2 border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:outline-none"
                         />
                       </div>
@@ -1618,7 +1618,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             setCategoryScores((prev) => ({ ...prev, [category]: value }));
           }}
           onApply={(score) => {
-            setEditData((prev) => ({ ...prev, icpScore: score }));
+            setEditData((prev) => ({ ...prev, icpScore: clampIcpScore(score) }));
             setShowIcpScoreModal(false);
           }}
         />

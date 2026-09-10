@@ -360,308 +360,84 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
 
   if (!isOpen) return null;
 
+  const formatStartTime = (value?: string) => {
+    try {
+      if (!value) return '—';
+      const startTime = new Date(value);
+      if (isNaN(startTime.getTime())) return 'Invalid date';
+      return startTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
+    } catch {
+      return 'Invalid date';
+    }
+  };
+
   return (
-    <Modal title={activeMeeting ? "Meeting Check-out" : "Meeting Check-in"} onClose={onClose}>
+    <Modal
+      title={activeMeeting ? 'Meeting Check-out' : 'Meeting Check-in'}
+      onClose={onClose}
+      fullScreenOnMobile
+      maxWidth="max-w-lg"
+    >
       {activeMeeting ? (
         <div className="space-y-4">
-          {/* Active Meeting Status */}
-          <div className="bg-orange-50 border-2 border-orange-300 rounded-lg p-4">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🟠</span>
-              <div>
-                <p className="text-lg font-bold text-orange-800">MEETING IN PROGRESS</p>
-                <p className="text-sm text-orange-700">
-                  <strong>Meeting:</strong> {activeMeeting.meetingType} with {activeMeeting.salesPersonName}
-                </p>
-                <p className="text-xs text-orange-600">
-                  Started at: {(() => {
-                    try {
-                      const startTime = new Date(activeMeeting.checkInTime);
-                      if (isNaN(startTime.getTime())) {
-                        return 'Invalid Date (will be corrected)';
-                      }
-                      return startTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
-                    } catch (error) {
-                      return 'Invalid Date (will be corrected)';
-                    }
-                  })()}
-                </p>
+          <div className="meeting-info-panel">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <p className="text-[13px] font-semibold uppercase tracking-wide text-orange-700">In progress</p>
+              <span className="lead-chip bg-orange-100 text-orange-800 border-orange-200">Active</span>
+            </div>
+            <dl className="space-y-2">
+              <div className="flex items-baseline gap-2">
+                <dt className="lead-fact-label">Type</dt>
+                <dd className="min-w-0 text-[13px] font-semibold text-slate-900 break-words">{activeMeeting.meetingType || '—'}</dd>
               </div>
-            </div>
-          </div>
-
-          {/* Meeting Completion Form */}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Meeting Outcome
-              </label>
-              <select
-                value={meetingOutcome}
-                onChange={(e) => setMeetingOutcome(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value="successful">✅ Successful</option>
-                <option value="rescheduled">🔄 Rescheduled</option>
-                <option value="cancelled">❌ Cancelled</option>
-                <option value="no_show">👻 No Show</option>
-                <option value="other">📝 Other</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Meeting Completion Notes (Optional)
-              </label>
-              <textarea
-                value={completionNotes}
-                onChange={(e) => setCompletionNotes(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="Add any notes about the meeting completion..."
-              />
-            </div>
-
-            {/* Photo Upload for Completion */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                📸 Meeting End Photos (Optional - Multiple photos allowed)
-              </label>
-              <div className="bg-white p-4 rounded border-2 border-red-300">
-                <EnhancedPhotoUpload
-                  onUploadComplete={handleCompletionPhotoUpload}
-                  onUploadError={handlePhotoUploadError}
-                  disabled={isSubmitting}
-                  maxFileSize={50}
-                  compressionQuality={0.7}
-                  showCameraInGallery={true}
-                />
+              <div className="flex items-baseline gap-2">
+                <dt className="lead-fact-label">AM</dt>
+                <dd className="min-w-0 text-[13px] text-slate-800 break-words">{activeMeeting.salesPersonName || '—'}</dd>
               </div>
-
-              {photoUploadError && (
-                <div className="mt-2 text-sm text-red-600">
-                  ❌ {photoUploadError}
+              {activeMeeting.leadName && (
+                <div className="flex items-baseline gap-2">
+                  <dt className="lead-fact-label">Lead</dt>
+                  <dd className="min-w-0 text-[13px] text-slate-800 break-words">{activeMeeting.leadName}</dd>
                 </div>
               )}
-
-              {/* Display uploaded completion photos */}
-              {completionPhotos.length > 0 && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-green-700">
-                      ✅ {completionPhotos.length} completion photo(s) uploaded
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setCompletionPhotos([])}
-                      className="text-xs text-red-600 hover:text-red-800 underline"
-                    >
-                      Clear All
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-2">
-                    {completionPhotos.map((photo, index) => (
-                      <div key={index} className="relative group">
-                        <img
-                          src={photo}
-                          alt={`Completion photo ${index + 1}`}
-                          className="w-full h-24 object-cover rounded border-2 border-red-300"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeCompletionPhoto(index)}
-                          className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
-                          title="Remove photo"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleEndMeeting}
-              disabled={isSubmitting}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold"
-            >
-              {isSubmitting ? 'Completing...' : '✅ Complete Meeting'}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <form onSubmit={handleStartMeeting} className="space-y-4">
-          {/* Account Manager */}
-          <div>
-            <label htmlFor="salesPerson" className="block text-sm font-medium text-slate-700 mb-1">
-              Account Manager Name *
-            </label>
-            <input
-              type="text"
-              id="salesPerson"
-              value={selectedSalesPerson}
-              onChange={(e) => setSelectedSalesPerson(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Enter account manager name..."
-              required
-            />
+              <div className="flex items-baseline gap-2">
+                <dt className="lead-fact-label">Started</dt>
+                <dd className="min-w-0 text-[13px] text-slate-700">{formatStartTime(activeMeeting.checkInTime)}</dd>
+              </div>
+            </dl>
           </div>
 
-          {/* Person Meeting */}
-          <div>
-            <label htmlFor="personMeeting" className="block text-sm font-medium text-slate-700 mb-1">
-              Name & Designation of Person You Are Meeting
-            </label>
-            <input
-              type="text"
-              id="personMeeting"
-              value={personMeetingName}
-              onChange={(e) => setPersonMeetingName(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="e.g., John Doe - Director"
-            />
-          </div>
-
-          {/* Meeting Type */}
-          <div>
-            <label htmlFor="meetingType" className="block text-sm font-medium text-slate-700 mb-1">
-              Meeting Type
-            </label>
+          <div className="meeting-field">
+            <label htmlFor="meeting-outcome">Meeting Outcome</label>
             <select
-              id="meetingType"
-              value={meetingType}
-              onChange={(e) => setMeetingType(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              id="meeting-outcome"
+              value={meetingOutcome}
+              onChange={(e) => setMeetingOutcome(e.target.value)}
             >
-              <option value="Portal Training meeting">Portal Training meeting</option>
-              <option value="Portal demo meeting">Portal demo meeting</option>
-              <option value="Fresh walking - 1st meeting">Fresh walking - 1st meeting</option>
-              <option value="Agent Review meeting">Agent Review meeting</option>
-              <option value="Follow-up Meeting">Follow-up Meeting</option>
-              <option value="Demo">Demo</option>
+              <option value="successful">Successful</option>
+              <option value="rescheduled">Rescheduled</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="no_show">No Show</option>
+              <option value="other">Other</option>
             </select>
           </div>
 
-          {/* Lead Selection with Search */}
-          <div>
-            <label htmlFor="lead" className="block text-sm font-medium text-slate-700 mb-1">
-              Select Lead *
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                id="lead"
-                value={selectedLead ? selectedLeadData?.agencyName + ' - ' + selectedLeadData?.status : leadSearchTerm}
-                onChange={(e) => {
-                  setLeadSearchTerm(e.target.value);
-                  setSelectedLead('');
-                  setShowLeadDropdown(true);
-                }}
-                onFocus={() => setShowLeadDropdown(true)}
-                onBlur={() => {
-                  setTimeout(() => setShowLeadDropdown(false), 200);
-                }}
-                placeholder="Search and select a lead..."
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                required
-              />
-              {/* Dropdown logic remains same */}
-              {/* ... (Dropdown rendering code from original) */}
-              {showLeadDropdown && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  {filteredLeads.length > 0 ? (
-                    filteredLeads.map((lead) => (
-                      <div
-                        key={lead.id}
-                        onClick={() => {
-                          setSelectedLead(lead.id);
-                          setLeadSearchTerm('');
-                          setShowLeadDropdown(false);
-                          if (lead.accountManager) {
-                            setSelectedSalesPerson(lead.accountManager);
-                          }
-                        }}
-                        className="px-3 py-2 hover:bg-slate-100 cursor-pointer border-b border-slate-100 last:border-b-0"
-                      >
-                        <div className="font-medium text-slate-900">{lead.agencyName}</div>
-                        <div className="text-sm text-slate-500">
-                          {lead.contacts && lead.contacts[0]?.city && (
-                            <span className="text-blue-600 font-medium">{lead.contacts[0].city}</span>
-                          )}
-                          <span className="ml-2">Status: {lead.status}</span>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-3 py-2 text-slate-500 text-sm">
-                      {leadSearchTerm ? 'No leads found' : 'No leads available'}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            {/* Clear selection button logic remains same */}
+          <div className="meeting-field">
+            <label htmlFor="completion-notes">Completion Notes</label>
+            <textarea
+              id="completion-notes"
+              value={completionNotes}
+              onChange={(e) => setCompletionNotes(e.target.value)}
+              rows={3}
+              placeholder="Optional notes about how the meeting went..."
+            />
           </div>
 
-          {/* Location */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Current Location (Precise Address Required)
-            </label>
-            {isGettingLocation ? (
-              <div className="flex items-center gap-2 text-blue-600">
-                <span>🌍</span>
-                <span>Getting precise location...</span>
-              </div>
-            ) : location ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-green-600">
-                  <span>✅</span>
-                  <span className="font-medium">Precise Location Captured</span>
-                </div>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                  <div className="text-sm text-green-800 font-medium mb-1">Full Address:</div>
-                  <div className="text-sm text-green-700">{location.address}</div>
-                  <div className="text-xs text-green-600 mt-1">
-                    Coordinates: {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={getCurrentLocation}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 underline"
-                >
-                  🔄 Update Location
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-red-600">
-                  <span>❌</span>
-                  <span>Precise location not available</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={getCurrentLocation}
-                  className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  🌍 Get Precise Location
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Photo Upload for Check-in */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              📸 Meeting Start Photos * (Multiple photos allowed)
-            </label>
-            <div className="bg-white p-4 rounded border-2 border-green-300">
+          <div className="meeting-field">
+            <label>End Photos (optional)</label>
+            <div className="meeting-photo-box">
               <EnhancedPhotoUpload
-                onUploadComplete={handleCheckInPhotoUpload}
+                onUploadComplete={handleCompletionPhotoUpload}
                 onUploadError={handlePhotoUploadError}
                 disabled={isSubmitting}
                 maxFileSize={50}
@@ -670,36 +446,36 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
               />
             </div>
 
-            {/* Display check-in photos logic remains same */}
-            {checkInPhotos.length > 0 && (
-              <div className="mt-4">
+            {photoUploadError && (
+              <p className="mt-2 text-sm text-rose-600">{photoUploadError}</p>
+            )}
+
+            {completionPhotos.length > 0 && (
+              <div className="mt-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-green-700">
-                    ✅ {checkInPhotos.length} check-in photo(s) uploaded
+                  <span className="text-sm font-medium text-emerald-700">
+                    {completionPhotos.length} photo{completionPhotos.length !== 1 ? 's' : ''} added
                   </span>
                   <button
                     type="button"
-                    onClick={() => {
-                      setCheckInPhotos([]);
-                      setUploadedPhotoSize('');
-                    }}
-                    className="text-xs text-red-600 hover:text-red-800 underline"
+                    onClick={() => setCompletionPhotos([])}
+                    className="text-xs text-rose-600 hover:text-rose-800 underline"
                   >
-                    Clear All
+                    Clear all
                   </button>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-2">
-                  {checkInPhotos.map((photo, index) => (
-                    <div key={index} className="relative group">
+                <div className="grid grid-cols-3 gap-2">
+                  {completionPhotos.map((photo, index) => (
+                    <div key={index} className="relative">
                       <img
                         src={photo}
-                        alt={`Check-in photo ${index + 1}`}
-                        className="w-full h-24 object-cover rounded border-2 border-green-300"
+                        alt={`Completion photo ${index + 1}`}
+                        className="w-full h-20 object-cover rounded-lg border border-slate-200"
                       />
                       <button
                         type="button"
-                        onClick={() => removeCheckInPhoto(index)}
-                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
+                        onClick={() => removeCompletionPhoto(index)}
+                        className="absolute top-1 right-1 bg-rose-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
                         title="Remove photo"
                       >
                         ×
@@ -711,36 +487,248 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
             )}
           </div>
 
-          {/* Meeting Notes */}
-          <div>
-            <label htmlFor="notes" className="block text-sm font-medium text-slate-700 mb-1">
-              Meeting Notes (Optional)
-            </label>
+          <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleEndMeeting}
+              disabled={isSubmitting}
+              className="w-full flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {isSubmitting ? 'Completing…' : 'Complete Meeting'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleStartMeeting} className="space-y-4">
+          <div className="meeting-field">
+            <label htmlFor="salesPerson">Account Manager *</label>
+            <input
+              type="text"
+              id="salesPerson"
+              value={selectedSalesPerson}
+              onChange={(e) => setSelectedSalesPerson(e.target.value)}
+              placeholder="Enter account manager name..."
+              required
+            />
+          </div>
+
+          <div className="meeting-field">
+            <label htmlFor="personMeeting">Person Meeting</label>
+            <input
+              type="text"
+              id="personMeeting"
+              value={personMeetingName}
+              onChange={(e) => setPersonMeetingName(e.target.value)}
+              placeholder="e.g., John Doe - Director"
+            />
+          </div>
+
+          <div className="meeting-field">
+            <label htmlFor="meetingType">Meeting Type</label>
+            <select
+              id="meetingType"
+              value={meetingType}
+              onChange={(e) => setMeetingType(e.target.value)}
+            >
+              <option value="Portal Training meeting">Portal Training meeting</option>
+              <option value="Portal demo meeting">Portal demo meeting</option>
+              <option value="Fresh walking - 1st meeting">Fresh walking - 1st meeting</option>
+              <option value="Agent Review meeting">Agent Review meeting</option>
+              <option value="Follow-up Meeting">Follow-up Meeting</option>
+              <option value="Demo">Demo</option>
+            </select>
+          </div>
+
+          <div className="meeting-field">
+            <label htmlFor="lead">Select Lead *</label>
+            <div className="relative">
+              <input
+                type="text"
+                id="lead"
+                value={selectedLead ? `${selectedLeadData?.agencyName || ''} - ${selectedLeadData?.status || ''}` : leadSearchTerm}
+                onChange={(e) => {
+                  setLeadSearchTerm(e.target.value);
+                  setSelectedLead('');
+                  setShowLeadDropdown(true);
+                }}
+                onFocus={() => setShowLeadDropdown(true)}
+                onBlur={() => {
+                  setTimeout(() => setShowLeadDropdown(false), 200);
+                }}
+                placeholder="Search and select a lead..."
+                required
+              />
+              {showLeadDropdown && (
+                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                  {filteredLeads.length > 0 ? (
+                    filteredLeads.map((lead) => (
+                      <button
+                        type="button"
+                        key={lead.id}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setSelectedLead(lead.id);
+                          setLeadSearchTerm('');
+                          setShowLeadDropdown(false);
+                          if (lead.accountManager) {
+                            setSelectedSalesPerson(lead.accountManager);
+                          }
+                        }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-slate-900 text-sm break-words">{lead.agencyName}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {lead.contacts?.[0]?.city ? (
+                            <span className="text-sky-700 font-medium">{lead.contacts[0].city}</span>
+                          ) : null}
+                          <span className={lead.contacts?.[0]?.city ? ' ml-2' : ''}>Status: {lead.status}</span>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-slate-500 text-sm">
+                      {leadSearchTerm ? 'No leads found' : 'No leads available'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {selectedLead && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedLead('');
+                  setLeadSearchTerm('');
+                }}
+                className="mt-1.5 text-xs text-slate-500 hover:text-slate-700 underline"
+              >
+                Clear selected lead
+              </button>
+            )}
+          </div>
+
+          <div className="meeting-field">
+            <label>Current Location *</label>
+            {isGettingLocation ? (
+              <div className="meeting-info-panel text-[13px] text-sky-800">Getting precise location…</div>
+            ) : location ? (
+              <div className="meeting-info-panel meeting-info-panel--ok space-y-2">
+                <p className="text-[13px] font-semibold text-emerald-800">Location captured</p>
+                <p className="text-[13px] text-emerald-900 break-words">{location.address}</p>
+                <p className="text-[11px] text-emerald-700 tabular-nums">
+                  {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                </p>
+                <button
+                  type="button"
+                  onClick={getCurrentLocation}
+                  className="text-xs font-medium text-indigo-700 hover:text-indigo-900 underline"
+                >
+                  Update location
+                </button>
+              </div>
+            ) : (
+              <div className="meeting-info-panel meeting-info-panel--warn space-y-2">
+                <p className="text-[13px] text-rose-700">Precise location is required to start</p>
+                <button
+                  type="button"
+                  onClick={getCurrentLocation}
+                  className="min-h-[40px] px-3 py-2 text-sm font-semibold bg-sky-600 text-white rounded-lg hover:bg-sky-700"
+                >
+                  Get precise location
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="meeting-field">
+            <label>Start Photos *</label>
+            <div className="meeting-photo-box">
+              <EnhancedPhotoUpload
+                onUploadComplete={handleCheckInPhotoUpload}
+                onUploadError={handlePhotoUploadError}
+                disabled={isSubmitting}
+                maxFileSize={50}
+                compressionQuality={0.7}
+                showCameraInGallery={true}
+              />
+            </div>
+
+            {photoUploadError && (
+              <p className="mt-2 text-sm text-rose-600">{photoUploadError}</p>
+            )}
+
+            {checkInPhotos.length > 0 && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-emerald-700">
+                    {checkInPhotos.length} photo{checkInPhotos.length !== 1 ? 's' : ''} added
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCheckInPhotos([]);
+                      setUploadedPhotoSize('');
+                    }}
+                    className="text-xs text-rose-600 hover:text-rose-800 underline"
+                  >
+                    Clear all
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {checkInPhotos.map((photo, index) => (
+                    <div key={index} className="relative">
+                      <img
+                        src={photo}
+                        alt={`Check-in photo ${index + 1}`}
+                        className="w-full h-20 object-cover rounded-lg border border-slate-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeCheckInPhoto(index)}
+                        className="absolute top-1 right-1 bg-rose-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
+                        title="Remove photo"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="meeting-field">
+            <label htmlFor="notes">Meeting Notes</label>
             <textarea
               id="notes"
               value={meetingNotes}
               onChange={(e) => setMeetingNotes(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Add any notes about the meeting..."
+              placeholder="Optional notes about the meeting..."
             />
           </div>
 
-          {/* Submit Button */}
-          <div className="flex gap-3">
+          <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+              className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !location || checkInPhotos.length === 0}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Starting...' : 'Start Meeting'}
+              {isSubmitting ? 'Starting…' : 'Start Meeting'}
             </button>
           </div>
         </form>

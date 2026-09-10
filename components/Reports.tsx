@@ -617,12 +617,12 @@ export const Reports: React.FC<ReportsProps> = ({
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <h2 className="text-3xl font-bold text-slate-800">{pageTitle}</h2>
+    <div className="space-y-4 sm:space-y-8">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xl sm:text-3xl font-bold text-slate-800">{pageTitle}</h2>
         <button
           onClick={() => setRefreshKey(prev => prev + 1)}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors"
+          className="app-icon-btn flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors"
           title="Refresh reports"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -632,61 +632,29 @@ export const Reports: React.FC<ReportsProps> = ({
         </button>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="border-b border-slate-200">
-        <nav className="-mb-px flex space-x-8 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('attendance')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-              activeTab === 'attendance'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            📊 Attendance Report
-          </button>
-          <button
-            onClick={() => setActiveTab('meetings')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-              activeTab === 'meetings'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            🤝 Meeting Check-ins
-          </button>
-          <button
-            onClick={() => setActiveTab('travel')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-              activeTab === 'travel'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            🚗 Travel Report
-          </button>
+      {/* Mobile pills */}
+      <div className="sm:hidden -mx-1 px-1">
+        <nav className="app-chip-row flex" aria-label="Report views">
+          <button onClick={() => setActiveTab('attendance')} className={`app-chip ${activeTab === 'attendance' ? 'app-chip--active' : ''}`}>Attendance</button>
+          <button onClick={() => setActiveTab('meetings')} className={`app-chip app-chip--yellow ${activeTab === 'meetings' ? 'app-chip--active' : ''}`}>Meetings</button>
+          <button onClick={() => setActiveTab('travel')} className={`app-chip app-chip--orange ${activeTab === 'travel' ? 'app-chip--active' : ''}`}>Travel</button>
           {isAdmin && (
-            <button
-              onClick={() => setActiveTab('live-tracking')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                activeTab === 'live-tracking'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              }`}
-            >
-              📱 Live Location Tracker
-            </button>
+            <button onClick={() => setActiveTab('live-tracking')} className={`app-chip app-chip--green ${activeTab === 'live-tracking' ? 'app-chip--active' : ''}`}>GPS</button>
           )}
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-              activeTab === 'dashboard'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            📊 Agent Dashboard
-          </button>
+          <button onClick={() => setActiveTab('dashboard')} className={`app-chip app-chip--indigo ${activeTab === 'dashboard' ? 'app-chip--active' : ''}`}>Agents</button>
+        </nav>
+      </div>
+
+      {/* Desktop underline tabs (original) */}
+      <div className="hidden sm:block border-b border-slate-200">
+        <nav className="-mb-px flex space-x-8 overflow-x-auto">
+          <button onClick={() => setActiveTab('attendance')} className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${activeTab === 'attendance' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>📊 Attendance Report</button>
+          <button onClick={() => setActiveTab('meetings')} className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${activeTab === 'meetings' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>🤝 Meeting Check-ins</button>
+          <button onClick={() => setActiveTab('travel')} className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${activeTab === 'travel' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>🚗 Travel Report</button>
+          {isAdmin && (
+            <button onClick={() => setActiveTab('live-tracking')} className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${activeTab === 'live-tracking' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>📱 Live Location Tracker</button>
+          )}
+          <button onClick={() => setActiveTab('dashboard')} className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${activeTab === 'dashboard' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>📊 Agent Dashboard</button>
         </nav>
       </div>
 

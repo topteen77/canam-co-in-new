@@ -3,6 +3,7 @@ import type { Lead, FollowUpType, FollowUpStatus } from '../types';
 import { trackCallAction, trackWhatsAppAction, trackEmailAction } from '../services/ctaTrackingService';
 import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
+import { IcpScoringModal, clampIcpScore, emptyIcpCategoryScores } from './IcpScoringModal';
 import { canMutateLead } from '../utils/leadPermissions';
 import { partitionLeadsByOwnership, getLeadRelation, getLeadRelationBadge, LEAD_RELATION_HEADERS } from '../utils/leadVisibility';
 
@@ -364,18 +365,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
   const [selectedLeadContacts, setSelectedLeadContacts] = useState<Lead | null>(null);
   const [showIcpScoreModal, setShowIcpScoreModal] = useState(false);
   const [selectedLeadForIcp, setSelectedLeadForIcp] = useState<Lead | null>(null);
-  const [showReferenceTable, setShowReferenceTable] = useState(false);
-  const [categoryScores, setCategoryScores] = useState<{[key: string]: number | ''}>({
-    'Business Profile': '',
-    'Services Portfolio': '',
-    'Online Presence': '',
-    'Operational Scale': '',
-    'Applicant Volume': '',
-    'Team Strength': '',
-    'Network Strength': '',
-    'Applicant Quality': '',
-    'Physical Presence': ''
-  });
+  const [categoryScores, setCategoryScores] = useState(emptyIcpCategoryScores);
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([
     { id: 'select', label: '', width: 'w-12', visible: isAdmin },
     { id: 'agencyName', label: 'Agency', width: 'w-48', visible: true, sortable: true },
@@ -580,8 +570,8 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
 
       {/* Compact Table */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto max-w-full">
-          <table className="w-full table-fixed">
+        <div className="overflow-x-auto max-w-full -mx-1 sm:mx-0">
+          <table className="w-full min-w-[720px]">
             {/* Frozen Header */}
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr>
@@ -1570,486 +1560,56 @@ Iapply.io`;
         );
       })()}
       
-      {/* ICP Score Modal */}
-      {showIcpScoreModal && selectedLeadForIcp && (() => {
-        // 🟢 SAFE FIX: Pre-calculate safe lists for ICP Modal
-        const safeContacts = Array.isArray(selectedLeadForIcp.contacts) ? selectedLeadForIcp.contacts : [];
-        const firstContact = safeContacts[0] || {};
-
-        // Calculate average score
-        const scores = Object.values(categoryScores).filter(s => s !== '') as number[];
-        const average = scores.length > 0 
-          ? Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 10) / 10 
-          : null;
-        
-        const handleCategoryScoreChange = (category: string, value: string) => {
-          const numValue = value === '' ? '' : Math.max(0, Math.min(10, parseInt(value) || 0));
-          setCategoryScores(prev => ({ ...prev, [category]: numValue }));
-        };
-        
-        return (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]" onClick={() => setShowIcpScoreModal(false)}>
-            <div className="bg-white rounded-xl shadow-2xl max-w-[95vw] w-full max-h-[95vh] mx-4 my-4 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              {/* Lead Details Banner */}
-              <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-6 flex-shrink-0">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1">
-                    <h2 className="text-2xl font-bold mb-2">{selectedLeadForIcp.agencyName}</h2>
-                    <div className="flex flex-wrap gap-3 items-center">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">Status:</span>
-                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-medium">{selectedLeadForIcp.status}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">Category:</span>
-                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-medium">{selectedLeadForIcp.agentCategory}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">Current ICP Score:</span>
-                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold">
-                          {selectedLeadForIcp.icpScore !== undefined && selectedLeadForIcp.icpScore !== null ? `${selectedLeadForIcp.icpScore}/10` : 'Not Set'}
-                        </span>
-                      </div>
-                      {firstContact.name && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">Contact:</span>
-                          <span className="text-sm">{firstContact.name}</span>
-                          {firstContact.phone && (
-                            <span className="text-sm">• {firstContact.phone}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowIcpScoreModal(false)}
-                    className="text-white hover:text-gray-200 text-3xl font-bold ml-4"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-              
-              {/* Modal Content */}
-              <div className="flex-1 overflow-y-auto p-6">
-                <div className="mb-4">
-                  <p className="text-sm text-slate-600 mb-4">
-                    Use this scoring system to assess agencies/partners. Enter a score (0-10) for each category, and the average will be calculated automatically.
-                  </p>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <p className="text-sm font-semibold text-blue-800 mb-2">💡 How to Use:</p>
-                    <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
-                      <li>Review each category and assessment parameter</li>
-                      <li>Evaluate the agency based on the scoring logic</li>
-                      <li>Enter a score (0-10) for each category in the "Your Score" column</li>
-                      <li>The average will be calculated automatically and can be applied to the ICP Score field</li>
-                    </ol>
-                  </div>
-                  {average !== null && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-                      <p className="text-sm font-semibold text-green-800">
-                        📊 Calculated Average: <span className="text-lg font-bold text-green-900">{average.toFixed(1)}/10</span>
-                        {average >= 1 && average <= 10 && (
-                          <span className="ml-2 text-xs">(Rounded: {Math.round(average)}/10)</span>
-                        )}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="mb-4 flex justify-end">
-                  <button
-                    onClick={() => setShowReferenceTable(true)}
-                    className="px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    📖 View Reference Examples
-                  </button>
-                </div>
-                
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse border border-slate-300 text-sm">
-                    <thead>
-                      <tr className="bg-indigo-100">
-                        <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Category</th>
-                        <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Assessment Parameter</th>
-                        <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Scoring Logic (0–10)</th>
-                        <th className="border border-slate-300 px-3 py-2 text-center font-bold text-slate-800 bg-indigo-200">Your Score (0-10)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {/* Business Profile */}
-                      <tr className="bg-white">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Business Profile</td>
-                        <td className="border border-slate-300 px-3 py-2">Business Age</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>24+ months = 10</li>
-                            <li>12–24 = 7</li>
-                            <li>6–12 = 5</li>
-                            <li>&lt;6 = 2</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Business Profile']}
-                            onChange={(e) => handleCategoryScoreChange('Business Profile', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                      {/* Services Portfolio */}
-                      <tr className="bg-slate-50">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Services Portfolio</td>
-                        <td className="border border-slate-300 px-3 py-2">Main Study Destinations</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>Canada focus = 3</li>
-                            <li>UK = 2</li>
-                            <li>Others = 1</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Services Portfolio']}
-                            onChange={(e) => handleCategoryScoreChange('Services Portfolio', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                      {/* Online Presence */}
-                      <tr className="bg-white">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Online Presence</td>
-                        <td className="border border-slate-300 px-3 py-2">Digital & Social Media Reputation</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>Strong (≥4.5 & &gt;100 reviews) = 10</li>
-                            <li>Moderate = 7</li>
-                            <li>Weak = 3</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Online Presence']}
-                            onChange={(e) => handleCategoryScoreChange('Online Presence', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                      {/* Operational Scale */}
-                      <tr className="bg-slate-50">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Operational Scale</td>
-                        <td className="border border-slate-300 px-3 py-2">Visa Success Cases (Last 6 months)</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>&gt;20 = 10</li>
-                            <li>15–20 = 7</li>
-                            <li>10–15 = 5</li>
-                            <li>&lt;10 = 3</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Operational Scale']}
-                            onChange={(e) => handleCategoryScoreChange('Operational Scale', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                      {/* Applicant Volume */}
-                      <tr className="bg-white">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Applicant Volume</td>
-                        <td className="border border-slate-300 px-3 py-2">No. of successful submissions</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>&gt;50 = 10</li>
-                            <li>25–50 = 7</li>
-                            <li>&lt;25 = 5</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Applicant Volume']}
-                            onChange={(e) => handleCategoryScoreChange('Applicant Volume', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                      {/* Team Strength */}
-                      <tr className="bg-slate-50">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Team Strength</td>
-                        <td className="border border-slate-300 px-3 py-2">Staff Count</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>Well-staffed = 10</li>
-                            <li>Moderate = 7</li>
-                            <li>Small = 5</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Team Strength']}
-                            onChange={(e) => handleCategoryScoreChange('Team Strength', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                      {/* Network Strength */}
-                      <tr className="bg-white">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Network Strength</td>
-                        <td className="border border-slate-300 px-3 py-2">Direct / Indirect Tie-ups</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>&gt;10 Canada = 10</li>
-                            <li>5–10 = 7</li>
-                            <li>&lt;5 = 5</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Network Strength']}
-                            onChange={(e) => handleCategoryScoreChange('Network Strength', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                      {/* Applicant Quality */}
-                      <tr className="bg-slate-50">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Applicant Quality</td>
-                        <td className="border border-slate-300 px-3 py-2">Genuine vs Fake Ratio</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>&lt;5% fake = 10</li>
-                            <li>5–10% = 7</li>
-                            <li>10–20% = 5</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Applicant Quality']}
-                            onChange={(e) => handleCategoryScoreChange('Applicant Quality', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                      {/* Physical Presence */}
-                      <tr className="bg-white">
-                        <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Physical Presence</td>
-                        <td className="border border-slate-300 px-3 py-2">Branches (India / Abroad)</td>
-                        <td className="border border-slate-300 px-3 py-2">
-                          <ul className="list-disc list-inside space-y-1 text-xs">
-                            <li>Multi-city = 10</li>
-                            <li>Single-city = 7</li>
-                          </ul>
-                        </td>
-                        <td className="border border-slate-300 px-3 py-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            value={categoryScores['Physical Presence']}
-                            onChange={(e) => handleCategoryScoreChange('Physical Presence', e.target.value)}
-                            className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200"
-                            placeholder="0-10"
-                          />
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              
-              {/* Reference Table Modal */}
-              {showReferenceTable && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110]" onClick={() => setShowReferenceTable(false)}>
-                  <div className="bg-white rounded-xl shadow-2xl max-w-[90vw] w-full max-h-[85vh] mx-4 my-4 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                    <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 flex-shrink-0 flex justify-between items-center">
-                      <h3 className="text-xl font-bold">📖 Reference Examples</h3>
-                      <button
-                        onClick={() => setShowReferenceTable(false)}
-                        className="text-white hover:text-gray-200 text-2xl font-bold"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-6">
-                      <p className="text-sm text-slate-600 mb-4">
-                        This table shows example answers and verification sources for reference. Use this as a guide when scoring each category.
-                      </p>
-                      <div className="overflow-x-auto">
-                        <table className="w-full border-collapse border border-slate-300 text-sm">
-                          <thead>
-                            <tr className="bg-blue-100">
-                              <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Category</th>
-                              <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Assessment Parameter</th>
-                              <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Expected / Example Answer</th>
-                              <th className="border border-slate-300 px-3 py-2 text-left font-bold text-slate-800">Verification Source</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr className="bg-white">
-                              <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Business Profile</td>
-                              <td className="border border-slate-300 px-3 py-2">Business Age</td>
-                              <td className="border border-slate-300 px-3 py-2">6 months, 2 years, 5+ years</td>
-                              <td className="border border-slate-300 px-3 py-2">Zauba, Google reviews</td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                              <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Services Portfolio</td>
-                              <td className="border border-slate-300 px-3 py-2">Main Study Destinations</td>
-                              <td className="border border-slate-300 px-3 py-2">Canada, US, UK, Australia</td>
-                              <td className="border border-slate-300 px-3 py-2">Website, Social media</td>
-                            </tr>
-                            <tr className="bg-white">
-                              <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Online Presence</td>
-                              <td className="border border-slate-300 px-3 py-2">Digital & Social Media Reputation</td>
-                              <td className="border border-slate-300 px-3 py-2">Google rating 4.5+, 200+ reviews</td>
-                              <td className="border border-slate-300 px-3 py-2">Google, FB, Instagram</td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                              <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Operational Scale</td>
-                              <td className="border border-slate-300 px-3 py-2">Visa Success Cases (Last 6 months)</td>
-                              <td className="border border-slate-300 px-3 py-2">10–30</td>
-                              <td className="border border-slate-300 px-3 py-2">Internal data / Ref call</td>
-                            </tr>
-                            <tr className="bg-white">
-                              <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Applicant Volume</td>
-                              <td className="border border-slate-300 px-3 py-2">No. of successful submissions</td>
-                              <td className="border border-slate-300 px-3 py-2">25–100+</td>
-                              <td className="border border-slate-300 px-3 py-2">CRM / Reference</td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                              <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Team Strength</td>
-                              <td className="border border-slate-300 px-3 py-2">Staff Count</td>
-                              <td className="border border-slate-300 px-3 py-2">Counselors: 5–10<br/>Visa: 2–3<br/>Ops: 2–5</td>
-                              <td className="border border-slate-300 px-3 py-2">LinkedIn / Office call</td>
-                            </tr>
-                            <tr className="bg-white">
-                              <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Network Strength</td>
-                              <td className="border border-slate-300 px-3 py-2">Direct / Indirect Tie-ups</td>
-                              <td className="border border-slate-300 px-3 py-2">Canada: 10–20, USA: 5</td>
-                              <td className="border border-slate-300 px-3 py-2">Partner list / Call</td>
-                            </tr>
-                            <tr className="bg-slate-50">
-                              <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Applicant Quality</td>
-                              <td className="border border-slate-300 px-3 py-2">Genuine vs Fake Ratio</td>
-                              <td className="border border-slate-300 px-3 py-2">&lt;5% fake cases</td>
-                              <td className="border border-slate-300 px-3 py-2">Record audit / Referral</td>
-                            </tr>
-                            <tr className="bg-white">
-                              <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">Physical Presence</td>
-                              <td className="border border-slate-300 px-3 py-2">Branches (India / Abroad)</td>
-                              <td className="border border-slate-300 px-3 py-2">e.g., Delhi, Punjab, Dubai</td>
-                              <td className="border border-slate-300 px-3 py-2">Website / Call</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                    <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 p-4 flex justify-end">
-                      <button
-                        onClick={() => setShowReferenceTable(false)}
-                        className="px-6 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Footer with Buttons */}
-              <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 p-4 flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setCategoryScores({
-                      'Business Profile': '',
-                      'Services Portfolio': '',
-                      'Online Presence': '',
-                      'Operational Scale': '',
-                      'Applicant Volume': '',
-                      'Team Strength': '',
-                      'Network Strength': '',
-                      'Applicant Quality': '',
-                      'Physical Presence': ''
-                    });
+      {showIcpScoreModal && selectedLeadForIcp && (
+        <IcpScoringModal
+          onClose={() => {
                     setShowIcpScoreModal(false);
-                  }}
-                  className="px-6 py-2 text-sm font-semibold bg-slate-400 text-white rounded-lg hover:bg-slate-500 transition-colors"
-                >
-                  Close
-                </button>
-                {average !== null && average >= 1 && average <= 10 && selectedLeadForIcp && canMutateLead(selectedLeadForIcp, { currentUser, isAdmin }) && (
-                  <button
-                    onClick={async () => {
-                      if (!selectedLeadForIcp || !canMutateLead(selectedLeadForIcp, { currentUser, isAdmin })) {
+            setSelectedLeadForIcp(null);
+            setCategoryScores(emptyIcpCategoryScores());
+          }}
+          categoryScores={categoryScores}
+          onCategoryScoreChange={(category, value) => {
+            setCategoryScores((prev) => ({ ...prev, [category]: value }));
+          }}
+          applyDisabled={!canMutateLead(selectedLeadForIcp, { currentUser, isAdmin })}
+          onApply={async (score) => {
+            const nextScore = clampIcpScore(score);
+            if (!canMutateLead(selectedLeadForIcp, { currentUser, isAdmin })) {
                         alert('You can view this lead but only the current Account Manager can edit it.');
                         return;
                       }
-                      if (selectedLeadForIcp && onUpdateLead) {
-                        try {
-                          await onUpdateLead(selectedLeadForIcp.id, { icpScore: Math.round(average) });
-                          alert(`✅ ICP Score updated to ${Math.round(average)}/10`);
+            if (!onUpdateLead) {
+              alert(`ICP Score would be updated to ${nextScore}/10. Please update the lead manually.`);
+              setShowIcpScoreModal(false);
+              setSelectedLeadForIcp(null);
+              return;
+            }
+            try {
+              await onUpdateLead(selectedLeadForIcp.id, { icpScore: nextScore });
+              alert(`ICP Score updated to ${nextScore}/10`);
                           setShowIcpScoreModal(false);
-                          setCategoryScores({
-                            'Business Profile': '',
-                            'Services Portfolio': '',
-                            'Online Presence': '',
-                            'Operational Scale': '',
-                            'Applicant Volume': '',
-                            'Team Strength': '',
-                            'Network Strength': '',
-                            'Applicant Quality': '',
-                            'Physical Presence': ''
-                          });
+              setSelectedLeadForIcp(null);
+              setCategoryScores(emptyIcpCategoryScores());
                         } catch (error) {
-                          alert(`❌ Failed to update ICP Score: ${error}`);
-                        }
-                      } else {
-                        alert(`ICP Score would be updated to ${Math.round(average)}/10. Please update the lead manually.`);
-                        setShowIcpScoreModal(false);
-                      }
-                    }}
-                    className="px-6 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    ✅ Apply Score ({Math.round(average)}/10)
-                  </button>
+              alert(`Failed to update ICP Score: ${error}`);
+            }
+          }}
+          banner={(
+            <div className="bg-indigo-600 text-white rounded-xl p-3 sm:p-4 mb-3">
+              <p className="font-bold text-lg truncate">{selectedLeadForIcp.agencyName}</p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs sm:text-sm">
+                <span className="px-2 py-1 bg-white/20 rounded-full">{selectedLeadForIcp.status}</span>
+                {selectedLeadForIcp.agentCategory && (
+                  <span className="px-2 py-1 bg-white/20 rounded-full">{selectedLeadForIcp.agentCategory}</span>
                 )}
+                <span className="px-2 py-1 bg-white/20 rounded-full font-semibold">
+                  Current: {selectedLeadForIcp.icpScore !== undefined && selectedLeadForIcp.icpScore !== null ? `${selectedLeadForIcp.icpScore}/10` : 'Not set'}
+                </span>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          )}
+        />
+      )}
     </div>
   );
 };

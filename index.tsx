@@ -15,3 +15,17 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+const splashStartedAt = Date.now();
+const hideSplash = () => {
+  const splash = document.getElementById('app-splash');
+  if (!splash || splash.classList.contains('is-done')) return;
+  const remaining = Math.max(0, 1600 - (Date.now() - splashStartedAt));
+  window.setTimeout(() => {
+    splash.classList.add('is-done');
+    window.setTimeout(() => splash.remove(), 380);
+  }, remaining);
+};
+
+requestAnimationFrame(() => requestAnimationFrame(hideSplash));
+window.setTimeout(hideSplash, 2500);

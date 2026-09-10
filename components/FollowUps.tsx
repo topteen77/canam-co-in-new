@@ -39,7 +39,6 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
 
   // New filters
   const [agencyNameFilter, setAgencyNameFilter] = useState<string>('');
-  const todayDateStr = new Date().toISOString().split('T')[0];
   const [dateRangeFilter, setDateRangeFilter] = useState<{
     from: string;
     to: string;
@@ -48,7 +47,7 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
   const [lastUpdatedRangeFilter, setLastUpdatedRangeFilter] = useState<{
     from: string;
     to: string;
-  }>({ from: todayDateStr, to: todayDateStr });
+  }>({ from: '', to: '' });
 
   // Sort by filter
   const [sortBy, setSortBy] = useState<'date' | 'type' | 'status' | 'agency' | 'assignedTo' | 'lastUpdated'>('lastUpdated');
@@ -688,31 +687,29 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
     }
   };
 
-  // Get agent category color
+  // Soft category chips (readable on mobile; avoid heavy gradients)
   const getAgentCategoryColor = (category: string) => {
     switch (category) {
-      case 'Platinum': return 'bg-gradient-to-r from-gray-300 to-gray-500 text-white';
-      case 'Diamond': return 'bg-gradient-to-r from-cyan-300 to-cyan-500 text-white';
-      case 'Gold': return 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white';
-      case 'Silver': return 'bg-gradient-to-r from-gray-200 to-gray-400 text-gray-800';
-      case 'Bronze': return 'bg-gradient-to-r from-orange-400 to-orange-600 text-white';
-      case 'Beginner': return 'bg-gradient-to-r from-green-400 to-green-600 text-white';
-      default: return 'bg-gradient-to-r from-blue-400 to-blue-600 text-white';
+      case 'Platinum': return 'bg-slate-100 text-slate-700 border-slate-200';
+      case 'Diamond': return 'bg-cyan-50 text-cyan-800 border-cyan-200';
+      case 'Gold': return 'bg-amber-50 text-amber-800 border-amber-200';
+      case 'Silver': return 'bg-slate-100 text-slate-600 border-slate-200';
+      case 'Bronze': return 'bg-orange-50 text-orange-800 border-orange-200';
+      case 'Beginner': return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      default: return 'bg-sky-50 text-sky-800 border-sky-200';
     }
   };
 
   return (
-    <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-full pb-20">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-800 mb-2 flex items-center gap-3">
-            📞 Follow-ups Management - LIVE VERSION
+    <div className="page-shell px-0 py-1 sm:p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-full pb-24 overflow-x-hidden">
+      <div className="max-w-7xl mx-auto min-w-0 w-full">
+        <div className="mb-3 sm:mb-8 px-0.5">
+          <h1 className="text-xl sm:text-3xl font-bold text-slate-800 mb-1 sm:mb-2">
+            Follow-ups
           </h1>
-          <p className="text-slate-600">Track and manage all your follow-ups in one place</p>
+          <p className="text-sm sm:text-base text-slate-600">Track and manage follow-ups in one place</p>
 
-          {/* Debug Information Toggle Button */}
-          <div className="mt-4 flex justify-end">
+          <div className="mt-3 hidden md:flex justify-end">
             <button
               onClick={() => setShowDebugInfo(!showDebugInfo)}
               className="px-3 py-1 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
@@ -795,103 +792,76 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-6 mb-4 sm:mb-8 min-w-0">
           <div
-            className="bg-white rounded-xl shadow-lg p-6 border border-blue-200 cursor-pointer hover:shadow-xl hover:border-blue-300 transition-all duration-200"
+            className="bg-white rounded-xl shadow-sm sm:shadow-lg p-3 sm:p-6 border border-blue-200 cursor-pointer hover:shadow-xl hover:border-blue-300 transition-all duration-200 min-w-0"
             onClick={() => setActiveTab('all')}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">All Follow-ups</p>
-                <p className="text-2xl font-bold text-blue-600">{stats.totalAll}</p>
+            <div className="flex items-center justify-between gap-1 min-w-0">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-slate-600 truncate">All Follow-ups</p>
+                <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.totalAll}</p>
               </div>
-              <div className="text-3xl">📋</div>
+              <div className="hidden sm:block text-3xl" aria-hidden>📋</div>
             </div>
           </div>
 
           <div
-            className="bg-white rounded-xl shadow-lg p-6 border border-orange-200 cursor-pointer hover:shadow-xl hover:border-orange-300 transition-all duration-200"
+            className="bg-white rounded-xl shadow-sm sm:shadow-lg p-3 sm:p-6 border border-orange-200 cursor-pointer hover:shadow-xl hover:border-orange-300 transition-all duration-200 min-w-0"
             onClick={() => setActiveTab('planned')}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Planned</p>
-                <p className="text-2xl font-bold text-orange-600">{stats.totalPlanned}</p>
+            <div className="flex items-center justify-between gap-1 min-w-0">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-slate-600 truncate">Planned</p>
+                <p className="text-xl sm:text-2xl font-bold text-orange-600">{stats.totalPlanned}</p>
               </div>
-              <div className="text-3xl">⏰</div>
+              <div className="hidden sm:block text-3xl" aria-hidden>⏰</div>
             </div>
           </div>
 
           <div
-            className="bg-white rounded-xl shadow-lg p-6 border border-red-200 cursor-pointer hover:shadow-xl hover:border-red-300 transition-all duration-200"
+            className="bg-white rounded-xl shadow-sm sm:shadow-lg p-3 sm:p-6 border border-red-200 cursor-pointer hover:shadow-xl hover:border-red-300 transition-all duration-200 min-w-0"
             onClick={() => setActiveTab('planned')}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Overdue</p>
-                <p className="text-2xl font-bold text-red-600">{stats.totalOverdue}</p>
+            <div className="flex items-center justify-between gap-1 min-w-0">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-slate-600 truncate">Overdue</p>
+                <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.totalOverdue}</p>
               </div>
-              <div className="text-3xl">⚠️</div>
+              <div className="hidden sm:block text-3xl" aria-hidden>⚠️</div>
             </div>
           </div>
 
           <div
-            className="bg-white rounded-xl shadow-lg p-6 border border-green-200 cursor-pointer hover:shadow-xl hover:border-green-300 transition-all duration-200"
+            className="bg-white rounded-xl shadow-sm sm:shadow-lg p-3 sm:p-6 border border-green-200 cursor-pointer hover:shadow-xl hover:border-green-300 transition-all duration-200 min-w-0"
             onClick={() => setActiveTab('completed')}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600">Completed</p>
-                <p className="text-2xl font-bold text-green-600">{stats.totalCompleted}</p>
+            <div className="flex items-center justify-between gap-1 min-w-0">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-slate-600 truncate">Completed</p>
+                <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.totalCompleted}</p>
               </div>
-              <div className="text-3xl">✅</div>
+              <div className="hidden sm:block text-3xl" aria-hidden>✅</div>
             </div>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="bg-white rounded-xl shadow-lg border border-blue-200 mb-6">
-          <div className="flex border-b border-slate-200">
-            <button
-              onClick={() => setActiveTab('all')}
-              className={`px-6 py-4 font-semibold text-sm transition-colors ${activeTab === 'all'
-                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                : 'text-slate-600 hover:text-blue-600'
-                }`}
-            >
-              📋 All Follow-ups ({stats.totalAll})
-            </button>
-            <button
-              onClick={() => setActiveTab('planned')}
-              className={`px-6 py-4 font-semibold text-sm transition-colors ${activeTab === 'planned'
-                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                : 'text-slate-600 hover:text-blue-600'
-                }`}
-            >
-              ⏰ Planned ({stats.totalPlanned})
-            </button>
-            <button
-              onClick={() => setActiveTab('completed')}
-              className={`px-6 py-4 font-semibold text-sm transition-colors ${activeTab === 'completed'
-                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                : 'text-slate-600 hover:text-blue-600'
-                }`}
-            >
-              ✅ Completed ({stats.totalCompleted})
-            </button>
-            <button
-              onClick={() => setActiveTab('detailed-report')}
-              className={`px-6 py-4 font-semibold text-sm transition-colors ${activeTab === 'detailed-report'
-                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                : 'text-slate-600 hover:text-blue-600'
-                }`}
-            >
-              📊 Detailed Report
-            </button>
+        {/* Tab Navigation: pills on mobile, original underline tabs on desktop */}
+        <div className="bg-white rounded-xl shadow-sm sm:shadow-lg border border-blue-200 mb-6 min-w-0 overflow-hidden">
+          <div className="app-chip-row flex p-3 border-b border-slate-200 sm:hidden" role="tablist" aria-label="Follow-up views">
+            <button type="button" role="tab" aria-selected={activeTab === 'all'} onClick={() => setActiveTab('all')} className={`app-chip ${activeTab === 'all' ? 'app-chip--active' : ''}`}>All ({stats.totalAll})</button>
+            <button type="button" role="tab" aria-selected={activeTab === 'planned'} onClick={() => setActiveTab('planned')} className={`app-chip app-chip--yellow ${activeTab === 'planned' ? 'app-chip--active' : ''}`}>Planned ({stats.totalPlanned})</button>
+            <button type="button" role="tab" aria-selected={activeTab === 'completed'} onClick={() => setActiveTab('completed')} className={`app-chip app-chip--green ${activeTab === 'completed' ? 'app-chip--active' : ''}`}>Done ({stats.totalCompleted})</button>
+            <button type="button" role="tab" aria-selected={activeTab === 'detailed-report'} onClick={() => setActiveTab('detailed-report')} className={`app-chip app-chip--indigo ${activeTab === 'detailed-report' ? 'app-chip--active' : ''}`}>Report</button>
+          </div>
+          <div className="hidden sm:flex border-b border-slate-200" role="tablist" aria-label="Follow-up views">
+            <button type="button" role="tab" aria-selected={activeTab === 'all'} onClick={() => setActiveTab('all')} className={`px-6 py-4 font-semibold text-sm whitespace-nowrap transition-colors ${activeTab === 'all' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-slate-600 hover:text-blue-600'}`}>All ({stats.totalAll})</button>
+            <button type="button" role="tab" aria-selected={activeTab === 'planned'} onClick={() => setActiveTab('planned')} className={`px-6 py-4 font-semibold text-sm whitespace-nowrap transition-colors ${activeTab === 'planned' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-slate-600 hover:text-blue-600'}`}>Planned ({stats.totalPlanned})</button>
+            <button type="button" role="tab" aria-selected={activeTab === 'completed'} onClick={() => setActiveTab('completed')} className={`px-6 py-4 font-semibold text-sm whitespace-nowrap transition-colors ${activeTab === 'completed' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-slate-600 hover:text-blue-600'}`}>Done ({stats.totalCompleted})</button>
+            <button type="button" role="tab" aria-selected={activeTab === 'detailed-report'} onClick={() => setActiveTab('detailed-report')} className={`px-6 py-4 font-semibold text-sm whitespace-nowrap transition-colors ${activeTab === 'detailed-report' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-slate-600 hover:text-blue-600'}`}>Report</button>
           </div>
 
-          {/* Tab Content */}
-          <div className="p-6">
+          <div className="p-2 sm:p-6 min-w-0">
             {activeTab === 'detailed-report' ? (
               <DetailedFollowUpReport
                 currentUser={currentUser}
@@ -901,50 +871,45 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
             ) : (
               /* Unified Follow-ups Display */
               <div>
-                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <h2 className="text-xl font-bold text-slate-800">
-                      {activeTab === 'all' && 'All Follow-ups'}
-                      {activeTab === 'planned' && 'Planned Follow-ups'}
-                      {activeTab === 'completed' && 'Completed Follow-ups'}
-                      {activeTab === 'detailed-report' && 'Detailed Report'}
-                    </h2>
-                    <div className="text-sm text-slate-600">
-                      {currentTabFollowUps.length} follow-ups
+                <div className="flex flex-col gap-4 mb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-bold text-slate-800">
+                        {activeTab === 'all' && 'All Follow-ups'}
+                        {activeTab === 'planned' && 'Planned Follow-ups'}
+                        {activeTab === 'completed' && 'Completed Follow-ups'}
+                        {activeTab === 'detailed-report' && 'Detailed Report'}
+                      </h2>
+                      <p className="text-sm text-slate-500 mt-0.5">
+                        {currentTabFollowUps.length} follow-up{currentTabFollowUps.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
                       {userFilter !== 'all' && (
-                        <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
-                          User: {userFilter}
-                        </span>
+                        <span className="lead-chip bg-sky-50 text-sky-800 border-sky-200">User: {getUserDisplayName(userFilter)}</span>
                       )}
                       {agencyCategoryFilter !== 'all' && (
-                        <span className="ml-2 px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs">
-                          Category: {agencyCategoryFilter}
-                        </span>
+                        <span className="lead-chip bg-amber-50 text-amber-800 border-amber-200">Category: {agencyCategoryFilter}</span>
                       )}
                       {typeFilter !== 'all' && (
-                        <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
-                          Type: {typeFilter}
-                        </span>
+                        <span className="lead-chip bg-emerald-50 text-emerald-800 border-emerald-200">Type: {typeFilter}</span>
                       )}
                       {activeTab === 'completed' && (
-                        <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
-                          {dateFilter.startDate} to {dateFilter.endDate}
+                        <span className="lead-chip bg-violet-50 text-violet-800 border-violet-200">
+                          {dateFilter.startDate} → {dateFilter.endDate}
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Filters and Download */}
-                  <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
-                    {/* Filter Buttons */}
-                    <div className="flex flex-wrap gap-2">
-                      {/* User Filter */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-600">User:</label>
+                  <div className="fu-filter-panel">
+                    <div className="fu-filter-grid">
+                      <div className="fu-filter-field">
+                        <label htmlFor="fu-user-filter">User</label>
                         <select
+                          id="fu-user-filter"
                           value={userFilter}
                           onChange={(e) => setUserFilter(e.target.value)}
-                          className="px-3 py-1 border border-slate-300 rounded-lg text-sm bg-white"
                         >
                           <option value="all">All Users</option>
                           {availableUsers.map(user => (
@@ -955,17 +920,12 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                         </select>
                       </div>
 
-                      {/* Agency Category Filter */}
-                      <div className="flex items-center gap-2 bg-yellow-50 px-2 py-1 rounded-lg border border-yellow-200">
-                        <label className="text-sm font-medium text-yellow-800">Agency Category:</label>
+                      <div className="fu-filter-field">
+                        <label htmlFor="fu-category-filter">Agency Category</label>
                         <select
+                          id="fu-category-filter"
                           value={agencyCategoryFilter}
-                          onChange={(e) => {
-                            console.log('Agency Category filter changed to:', e.target.value);
-                            setAgencyCategoryFilter(e.target.value);
-                          }}
-                          className="px-3 py-1 border border-yellow-300 rounded-lg text-sm bg-white text-slate-800"
-                          style={{ minWidth: '120px' }}
+                          onChange={(e) => setAgencyCategoryFilter(e.target.value)}
                         >
                           <option value="all">All Categories</option>
                           {AGENT_CATEGORIES.map(category => (
@@ -976,13 +936,12 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                         </select>
                       </div>
 
-                      {/* Type Filter */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-600">Type:</label>
+                      <div className="fu-filter-field">
+                        <label htmlFor="fu-type-filter">Type</label>
                         <select
+                          id="fu-type-filter"
                           value={typeFilter}
                           onChange={(e) => setTypeFilter(e.target.value)}
-                          className="px-3 py-1 border border-slate-300 rounded-lg text-sm bg-white"
                         >
                           <option value="all">All Types</option>
                           <option value="call">Call</option>
@@ -995,135 +954,147 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                         </select>
                       </div>
 
-                      {/* Agency/Agent Name Filter */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-600">Agency/Agent:</label>
+                      <div className="fu-filter-field">
+                        <label htmlFor="fu-agency-filter">Agency / Agent</label>
                         <input
+                          id="fu-agency-filter"
                           type="text"
-                          placeholder="Search agency or agent name..."
+                          placeholder="Search name..."
                           value={agencyNameFilter}
                           onChange={(e) => setAgencyNameFilter(e.target.value)}
-                          className="px-3 py-1 border border-slate-300 rounded-lg text-sm bg-white min-w-[200px]"
                         />
                       </div>
 
-                      {/* Date Range Filter */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-600">Date Range:</label>
-                        <input
-                          type="date"
-                          placeholder="From"
-                          value={dateRangeFilter.from}
-                          onChange={(e) => setDateRangeFilter(prev => ({ ...prev, from: e.target.value }))}
-                          className="px-3 py-1 border border-slate-300 rounded-lg text-sm bg-white"
-                        />
-                        <span className="text-slate-600">to</span>
-                        <input
-                          type="date"
-                          placeholder="To"
-                          value={dateRangeFilter.to}
-                          onChange={(e) => setDateRangeFilter(prev => ({ ...prev, to: e.target.value }))}
-                          className="px-3 py-1 border border-slate-300 rounded-lg text-sm bg-white"
-                        />
+                      <div className="fu-filter-field">
+                        <label>Date Range</label>
+                        <div className="fu-filter-range">
+                          <div className="fu-filter-date">
+                            <span className="fu-filter-date-label">From</span>
+                            <input
+                              type="date"
+                              aria-label="Date from"
+                              value={dateRangeFilter.from}
+                              onChange={(e) => setDateRangeFilter(prev => ({ ...prev, from: e.target.value }))}
+                            />
+                          </div>
+                          <span className="fu-filter-to">to</span>
+                          <div className="fu-filter-date">
+                            <span className="fu-filter-date-label">To</span>
+                            <input
+                              type="date"
+                              aria-label="Date to"
+                              value={dateRangeFilter.to}
+                              onChange={(e) => setDateRangeFilter(prev => ({ ...prev, to: e.target.value }))}
+                            />
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Last Updated Date Range Filter */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-600">Last Updated:</label>
-                        <input
-                          type="date"
-                          placeholder="From"
-                          value={lastUpdatedRangeFilter.from}
-                          onChange={(e) => setLastUpdatedRangeFilter(prev => ({ ...prev, from: e.target.value }))}
-                          className="px-3 py-1 border border-slate-300 rounded-lg text-sm bg-white"
-                        />
-                        <span className="text-slate-600">to</span>
-                        <input
-                          type="date"
-                          placeholder="To"
-                          value={lastUpdatedRangeFilter.to}
-                          onChange={(e) => setLastUpdatedRangeFilter(prev => ({ ...prev, to: e.target.value }))}
-                          className="px-3 py-1 border border-slate-300 rounded-lg text-sm bg-white"
-                        />
+                      <div className="fu-filter-field">
+                        <label>Last Updated</label>
+                        <div className="fu-filter-range">
+                          <div className="fu-filter-date">
+                            <span className="fu-filter-date-label">From</span>
+                            <input
+                              type="date"
+                              aria-label="Last updated from"
+                              value={lastUpdatedRangeFilter.from}
+                              onChange={(e) => setLastUpdatedRangeFilter(prev => ({ ...prev, from: e.target.value }))}
+                            />
+                          </div>
+                          <span className="fu-filter-to">to</span>
+                          <div className="fu-filter-date">
+                            <span className="fu-filter-date-label">To</span>
+                            <input
+                              type="date"
+                              aria-label="Last updated to"
+                              value={lastUpdatedRangeFilter.to}
+                              onChange={(e) => setLastUpdatedRangeFilter(prev => ({ ...prev, to: e.target.value }))}
+                            />
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Sort By Filter */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-600">Sort:</label>
-                        <select
-                          value={sortBy}
-                          onChange={(e) => setSortBy(e.target.value as 'date' | 'type' | 'status' | 'agency' | 'assignedTo' | 'lastUpdated')}
-                          className="px-3 py-1 border border-slate-300 rounded-lg text-sm bg-white"
-                        >
-                          <option value="date">Date</option>
-                          <option value="type">Type</option>
-                          <option value="status">Status</option>
-                          <option value="agency">Agency</option>
-                          <option value="assignedTo">Assigned To</option>
-                          <option value="lastUpdated">Last Updated Date</option>
-                        </select>
-                        <button
-                          onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                          className="px-2 py-1 border border-slate-300 rounded-lg text-sm bg-white hover:bg-slate-50"
-                          title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
-                        >
-                          {sortOrder === 'asc' ? '↑' : '↓'}
-                        </button>
+                      <div className="fu-filter-field">
+                        <label htmlFor="fu-sort-filter">Sort</label>
+                        <div className="flex gap-2">
+                          <select
+                            id="fu-sort-filter"
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as 'date' | 'type' | 'status' | 'agency' | 'assignedTo' | 'lastUpdated')}
+                            className="flex-1"
+                          >
+                            <option value="date">Date</option>
+                            <option value="type">Type</option>
+                            <option value="status">Status</option>
+                            <option value="agency">Agency</option>
+                            <option value="assignedTo">Assigned To</option>
+                            <option value="lastUpdated">Last Updated Date</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                            className="app-icon-btn px-3 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 text-slate-700"
+                            title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+                            aria-label={`Sort ${sortOrder === 'asc' ? 'descending' : 'ascending'}`}
+                          >
+                            {sortOrder === 'asc' ? '↑' : '↓'}
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Clear Filters Button */}
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setUserFilter('all');
-                            setAgencyCategoryFilter('all');
-                            setTypeFilter('all');
-                            setAgencyNameFilter('');
-                            setDateRangeFilter({ from: '', to: '' });
-                            setLastUpdatedRangeFilter({ from: '', to: '' });
-                          }}
-                          className="px-3 py-1 bg-gray-500 text-white text-sm rounded-lg hover:bg-gray-600 transition-colors"
-                          title="Clear all filters"
-                        >
-                          Clear Filters
-                        </button>
-                      </div>
+                      {activeTab === 'completed' && (
+                        <div className="fu-filter-field">
+                          <label>Completed Window</label>
+                          <div className="fu-filter-range">
+                            <div className="fu-filter-date">
+                              <span className="fu-filter-date-label">From</span>
+                              <input
+                                type="date"
+                                aria-label="Completed from"
+                                value={dateFilter.startDate}
+                                onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                              />
+                            </div>
+                            <span className="fu-filter-to">to</span>
+                            <div className="fu-filter-date">
+                              <span className="fu-filter-date-label">To</span>
+                              <input
+                                type="date"
+                                aria-label="Completed to"
+                                value={dateFilter.endDate}
+                                onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Date Filters for Completed Tab */}
-                    {activeTab === 'completed' && (
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <label className="text-sm font-medium text-slate-600">From:</label>
-                          <input
-                            type="date"
-                            value={dateFilter.startDate}
-                            onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                            className="px-3 py-1 border border-slate-300 rounded-lg text-sm"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-sm font-medium text-slate-600">To:</label>
-                          <input
-                            type="date"
-                            value={dateFilter.endDate}
-                            onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                            className="px-3 py-1 border border-slate-300 rounded-lg text-sm"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Download Button */}
-                    <button
-                      onClick={handleDownloadExcel}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Download Excel
-                    </button>
+                    <div className="fu-filter-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserFilter('all');
+                          setAgencyCategoryFilter('all');
+                          setTypeFilter('all');
+                          setAgencyNameFilter('');
+                          setDateRangeFilter({ from: '', to: '' });
+                          setLastUpdatedRangeFilter({ from: '', to: '' });
+                        }}
+                        className="bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200"
+                        title="Clear all filters"
+                      >
+                        Clear Filters
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadExcel}
+                        className="bg-emerald-600 text-white hover:bg-emerald-700"
+                      >
+                        Download Excel
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1147,169 +1118,162 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                   </div>
                 ) : (
                   <>
-                    <div className="space-y-4 mb-8">
-                      {paginatedFollowUps.map((followUp, index) => (
+                    <div className="space-y-2.5 mb-8">
+                      {paginatedFollowUps.map((followUp, index) => {
+                        const lead = leads.find(l => l.id === followUp.leadId);
+                        const assignedUser = lead?.accountManager || followUp.assignedTo;
+                        const assignedName = assignedUser ? getUserDisplayName(assignedUser) : null;
+                        const isOverdue = new Date(followUp.date) < new Date() && followUp.status === 'Planned';
+                        const notesPreview = followUp.notes
+                          ? (followUp.notes.length > 140 ? `${followUp.notes.slice(0, 140)}…` : followUp.notes)
+                          : null;
+                        const updatedAt = formatDate(ensureFollowUpTimestamps({ ...followUp }).updatedAt);
 
-                        <div key={index} className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group">
-                          <div className="flex items-center justify-between">
-                            <div
-                              className="flex-1 cursor-pointer hover:bg-blue-50 p-2 rounded-lg transition-colors"
-                              onClick={() => {
-                                const lead = leads.find(l => l.id === followUp.leadId);
-                                if (lead) {
-                                  handleLeadNameClick(lead);
-                                }
-                              }}
-                            >
-                              <div className="flex items-center gap-3 mb-2">
-                                <span className="text-2xl">{getTypeIcon(followUp.type)}</span>
-                                <div>
-                                  <h3 className="font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition-all duration-200 border-b border-transparent hover:border-blue-300 inline-flex items-center gap-2">
-                                    <svg className="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                    </svg>
-                                    {followUp.agencyName}
-                                    {(() => {
-                                      // Get the assigned user name from the lead
-                                      const lead = leads.find(l => l.id === followUp.leadId);
-                                      const assignedUser = lead?.accountManager || followUp.assignedTo;
-                                      if (assignedUser) {
-                                        const userName = getUserDisplayName(assignedUser);
-                                        return (
-                                          <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-full">
-                                            👤 {userName}
-                                          </span>
-                                        );
-                                      }
-                                      return null;
-                                    })()}
-                                    <span className="text-xs opacity-60">(Click to edit lead)</span>
-                                  </h3>
-                                  <p className={`text-sm ${new Date(followUp.date) < new Date() && followUp.status === 'Planned' ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>
-                                    {followUp.type} - {formatDate(followUp.date)}
-                                  </p>
-                                  {new Date(followUp.date) < new Date() && followUp.status === 'Planned' && (
-                                    <span className="inline-block px-2 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded-full mt-1">
-                                      ⚠️ Overdue
-                                    </span>
-                                  )}
+                        return (
+                        <article
+                          key={`${followUp.leadId}-${followUp.id}-${index}`}
+                          className={`fu-card ${isOverdue ? 'fu-card--overdue' : ''}`}
+                        >
+                          <div
+                            className="cursor-pointer"
+                            onClick={() => {
+                              if (lead) handleLeadNameClick(lead);
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start gap-2">
+                                  <span className="text-[17px] leading-none mt-0.5 shrink-0" aria-hidden>
+                                    {getTypeIcon(followUp.type)}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <h3 className="fu-card-title break-words">{followUp.agencyName}</h3>
+                                    <p className={`mt-0.5 text-[12px] ${isOverdue ? 'text-rose-600 font-semibold' : 'text-slate-500'}`}>
+                                      {followUp.type} · {formatDate(followUp.date)}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
-                              {followUp.notes && (
-                                <p className="text-sm text-slate-600 mb-2">{followUp.notes}</p>
-                              )}
-                              <div className="flex items-center gap-4 text-xs text-slate-500">
-                                <span>Lead Status: {followUp.leadStatus}</span>
-                                {(() => {
-                                  const lead = leads.find(l => l.id === followUp.leadId);
-                                  return lead ? (
-                                    <span>Assigned to: {getUserDisplayName(lead.accountManager || followUp.assignedTo)}</span>
-                                  ) : followUp.assignedTo ? (
-                                    <span>Assigned to: {getUserDisplayName(followUp.assignedTo)}</span>
-                                  ) : null;
-                                })()}
-                                {(() => {
-                                  const lead = leads.find(l => l.id === followUp.leadId);
-                                  return lead ? (
-                                    <>
-                                      {lead.agentCategory && (
-                                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getAgentCategoryColor(lead.agentCategory)}`}>
-                                          {lead.agentCategory}
-                                        </span>
-                                      )}
-                                      {lead.onboardingDate && (
-                                        <span>Onboarded: {formatDate(lead.onboardingDate)}</span>
-                                      )}
-                                    </>
-                                  ) : null;
-                                })()}
-                                <span>Last update: {formatDate(ensureFollowUpTimestamps({ ...followUp }).updatedAt)}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(followUp.status)}`}>
+                              <span className={`lead-chip whitespace-nowrap shrink-0 ${getStatusColor(followUp.status)}`}>
                                 {followUp.status}
                               </span>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditFollowUp(followUp);
-                                  }}
-                                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                  title="Edit follow-up"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                  </svg>
-                                </button>
-                                {onUpdateLead && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteFollowUp(followUp.leadId, followUp.id);
-                                    }}
-                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Delete follow-up"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
-                                )}
-                                {followUp.status === 'Planned' && onUpdateLead && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleUpdateFollowUpStatus(followUp.leadId, followUp.id, 'Done');
-                                    }}
-                                    className="px-3 py-1 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors"
-                                  >
-                                    Mark Done
-                                  </button>
-                                )}
-                                {onUpdateLead && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleMarkAsUpdated(followUp.leadId, followUp.id);
-                                    }}
-                                    className="px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                                    title="Mark this follow-up as updated"
-                                  >
-                                    Mark Updated
-                                  </button>
-                                )}
-                                {followUp.status === 'Done' && onUpdateLead && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleUpdateFollowUpStatus(followUp.leadId, followUp.id, 'Planned');
-                                    }}
-                                    className="px-3 py-1 bg-orange-600 text-white text-xs font-semibold rounded-lg hover:bg-orange-700 transition-colors"
-                                  >
-                                    Reopen
-                                  </button>
-                                )}
+                            </div>
 
-                                {/* Follow-up History Button for each lead */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsHistoryModalOpen(true);
-                                    setEditingFollowUp(followUp);
-                                  }}
-                                  className="px-3 py-1 bg-purple-600 text-white text-xs font-semibold rounded-lg hover:bg-purple-700 transition-colors"
-                                  title="View Follow-up History"
-                                >
-                                  History
-                                </button>
-                              </div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {isOverdue && (
+                                <span className="lead-chip bg-rose-50 text-rose-700 border-rose-200">Overdue</span>
+                              )}
+                              {assignedName && (
+                                <span className="lead-chip bg-violet-50 text-violet-800 border-violet-200">
+                                  {assignedName}
+                                </span>
+                              )}
+                              {lead?.agentCategory && (
+                                <span className={`lead-chip ${getAgentCategoryColor(lead.agentCategory)}`}>
+                                  {lead.agentCategory}
+                                </span>
+                              )}
+                            </div>
+
+                            {notesPreview ? (
+                              <p className="fu-card-notes">{notesPreview}</p>
+                            ) : (
+                              <p className="fu-card-notes text-slate-400 italic">No notes</p>
+                            )}
+
+                            <div className="fu-card-meta">
+                              <span className="fu-card-meta-item">
+                                <strong>Status</strong> {followUp.leadStatus || 'Unknown'}
+                              </span>
+                              {lead?.onboardingDate && (
+                                <span className="fu-card-meta-item">
+                                  <strong>Onboarded</strong> {formatDate(lead.onboardingDate)}
+                                </span>
+                              )}
+                              <span className="fu-card-meta-item">
+                                <strong>Updated</strong> {updatedAt}
+                              </span>
                             </div>
                           </div>
-                        </div>
-                      ))}
+
+                          <div className="fu-card-actions">
+                            {followUp.status === 'Planned' && onUpdateLead && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateFollowUpStatus(followUp.leadId, followUp.id, 'Done');
+                                }}
+                                className="fu-btn-success"
+                              >
+                                Mark Done
+                              </button>
+                            )}
+                            {onUpdateLead && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkAsUpdated(followUp.leadId, followUp.id);
+                                }}
+                                className="fu-btn-primary"
+                                title="Mark this follow-up as updated"
+                              >
+                                Mark Updated
+                              </button>
+                            )}
+                            {followUp.status === 'Done' && onUpdateLead && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateFollowUpStatus(followUp.leadId, followUp.id, 'Planned');
+                                }}
+                                className="fu-btn-warn"
+                              >
+                                Reopen
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsHistoryModalOpen(true);
+                                setEditingFollowUp(followUp);
+                              }}
+                              className="fu-btn-violet"
+                              title="View Follow-up History"
+                            >
+                              History
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditFollowUp(followUp);
+                              }}
+                              className="fu-btn-ghost"
+                              title="Edit follow-up"
+                            >
+                              Edit
+                            </button>
+                            {onUpdateLead && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteFollowUp(followUp.leadId, followUp.id);
+                                }}
+                                className="fu-btn-danger"
+                                title="Delete follow-up"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </article>
+                        );
+                      })}
                     </div>
 
                     {/* Pagination */}

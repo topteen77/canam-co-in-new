@@ -482,35 +482,21 @@ export const UsageReport: React.FC<UsageReportProps> = ({ currentUser, isAdmin }
   }
 
   return (
-    <div className="p-6 max-w-full min-w-0 overflow-x-hidden">
+    <div className="page-full-bleed px-3 pt-2 pb-20 sm:p-6 max-w-full min-w-0 overflow-x-hidden">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-slate-800 mb-2">User Activity Report</h2>
         <p className="text-slate-600">Track all user activities across mobile and desktop versions</p>
         
         {/* Tab Navigation */}
-        <div className="mt-4 border-b border-slate-200">
-          <div className="flex justify-between items-center">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setActiveTab('general')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'general'
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                📊 General Activities ({activities.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('cta')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'cta'
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                📞 Call-to-Action Activities ({ctaActivities.length})
-              </button>
+        <div className="mt-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+            <nav className="app-chip-row flex sm:hidden">
+              <button onClick={() => setActiveTab('general')} className={`app-chip ${activeTab === 'general' ? 'app-chip--active' : ''}`}>General ({activities.length})</button>
+              <button onClick={() => setActiveTab('cta')} className={`app-chip app-chip--yellow ${activeTab === 'cta' ? 'app-chip--active' : ''}`}>CTA ({ctaActivities.length})</button>
+            </nav>
+            <nav className="hidden sm:-mb-px sm:flex sm:space-x-8">
+              <button onClick={() => setActiveTab('general')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'general' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>📊 General Activities ({activities.length})</button>
+              <button onClick={() => setActiveTab('cta')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'cta' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>📞 Call-to-Action Activities ({ctaActivities.length})</button>
             </nav>
             <div className="flex items-center gap-2">
                 {/* Removed Test Buttons for cleaner production UI, can be re-added if debugging needed */}

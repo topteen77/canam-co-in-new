@@ -63,10 +63,10 @@ export const SimplePagination: React.FC<SimplePaginationProps> = ({
           </div>
         </div>
       )}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 mb-6 shadow-sm mt-4">
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="bg-white border border-slate-200 rounded-lg p-3 sm:p-4 mb-6 shadow-sm mt-4 min-w-0">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center justify-between min-w-0">
           {/* Left side - Info and items per page */}
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 min-w-0">
             <div className="text-sm text-slate-600">
               Showing {displayStart}-{displayEnd} of {totalItems} records
             </div>
@@ -91,7 +91,7 @@ export const SimplePagination: React.FC<SimplePaginationProps> = ({
           </div>
 
           {/* Right side - Navigation */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             {safeTotalPages > 1 ? (
               <>
                 <button

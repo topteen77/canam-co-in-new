@@ -255,7 +255,7 @@ export const cropVideoToCardFrame = async (
 
 export const glareMessage = (glareRatio: number): string | null => {
   if (glareRatio >= 0.22) {
-    return 'Shine is covering too much of the card. Tilt the card slightly, turn off flash, and tap again.';
+    return 'Strong reflection was reduced. If a name looks wrong, tilt the card and take another photo.';
   }
   if (glareRatio >= 0.12) {
     return 'Some reflection was reduced. If names look wrong, tilt the card and take another photo.';

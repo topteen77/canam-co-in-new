@@ -8,6 +8,7 @@ interface SidebarProps {
   currentUser: string | null;
   onSignOut: () => void;
   forceExpanded?: boolean;
+  embedded?: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -17,7 +18,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   isSubAdmin,
   currentUser,
   onSignOut,
-  forceExpanded = false
+  forceExpanded = false,
+  embedded = false
 }) => {
   const [isPinnedOpen, setIsPinnedOpen] = useState(() => forceExpanded);
   const [isHovered, setIsHovered] = useState(false);
@@ -56,7 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <div 
-      className={`bg-slate-900 text-white transition-all duration-300 ${sidebarWidthClass} flex flex-col min-h-screen h-full flex-none`}
+      className={`bg-slate-900 text-white transition-all duration-300 ${embedded ? 'w-full min-h-0' : sidebarWidthClass} flex flex-col ${embedded ? 'h-full' : 'min-h-screen h-full'} flex-none`}
       onMouseEnter={() => {
         if (!forceExpanded) {
           setIsHovered(true);
@@ -68,7 +70,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         }
       }}
     >
-      {/* Header */}
+      {!embedded && (
       <div className="p-3 sm:p-4 border-b border-slate-700">
         <div className="flex items-center justify-between gap-2">
           {!forceExpanded && (
@@ -85,19 +87,23 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
           {isExpanded && (
-            <h1 className="text-xl font-bold text-white">Canam CRM</h1>
+            <div className="flex items-center gap-2 min-w-0">
+              <img src="/icon-192x192.png" alt="" className="w-8 h-8 rounded-lg bg-white object-contain flex-shrink-0" />
+              <h1 className="text-lg font-bold text-white truncate">Canam CRM</h1>
+            </div>
           )}
         </div>
       </div>
+      )}
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 overflow-y-auto">
+      <nav className={`flex-1 px-2 ${embedded ? 'py-3' : 'py-4'} overflow-y-auto`}>
         <ul className="space-y-1">
           {navigationItems.map((item) => (
             <li key={item.id}>
               <button
                 onClick={() => onViewChange(item.view)}
-                className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors ${
+                className={`w-full flex items-center gap-3 px-3 py-3 min-h-[44px] rounded-lg transition-colors ${
                   currentView === item.view
                     ? 'bg-indigo-600 text-white'
                     : 'hover:bg-slate-700 text-slate-300'

@@ -168,17 +168,17 @@ export const DetailedFollowUpReport: React.FC<DetailedFollowUpReportProps> = ({
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">Detailed Follow-up Report</h2>
+    <div className="space-y-4 sm:space-y-6 min-w-0">
+      <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center min-w-0">
+        <h2 className="text-lg sm:text-2xl font-bold text-gray-800">Detailed Follow-up Report</h2>
         <div className="text-sm text-gray-600">
           {filteredActivities.length} activities found
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 min-w-0">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 sm:gap-4 min-w-0">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
             <input
@@ -228,27 +228,84 @@ export const DetailedFollowUpReport: React.FC<DetailedFollowUpReportProps> = ({
       </div>
 
       {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <div className="text-2xl font-bold text-blue-600">{stats.totalCalls}</div>
-          <div className="text-sm text-blue-800">Total Calls</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 min-w-0">
+        <div className="bg-blue-50 p-3 sm:p-4 rounded-lg border border-blue-200 min-w-0">
+          <div className="text-xl sm:text-2xl font-bold text-blue-600">{stats.totalCalls}</div>
+          <div className="text-xs sm:text-sm text-blue-800">Total Calls</div>
         </div>
-        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-          <div className="text-2xl font-bold text-green-600">{stats.totalWhatsApp}</div>
-          <div className="text-sm text-green-800">WhatsApp Messages</div>
+        <div className="bg-green-50 p-3 sm:p-4 rounded-lg border border-green-200 min-w-0">
+          <div className="text-xl sm:text-2xl font-bold text-green-600">{stats.totalWhatsApp}</div>
+          <div className="text-xs sm:text-sm text-green-800">WhatsApp</div>
         </div>
-        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-          <div className="text-2xl font-bold text-purple-600">{formatDuration(stats.totalCallDuration)}</div>
-          <div className="text-sm text-purple-800">Total Call Duration</div>
+        <div className="bg-purple-50 p-3 sm:p-4 rounded-lg border border-purple-200 min-w-0">
+          <div className="text-xl sm:text-2xl font-bold text-purple-600">{formatDuration(stats.totalCallDuration)}</div>
+          <div className="text-xs sm:text-sm text-purple-800">Total Duration</div>
         </div>
-        <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-          <div className="text-2xl font-bold text-orange-600">{formatDuration(stats.avgCallDuration)}</div>
-          <div className="text-sm text-orange-800">Avg Call Duration</div>
+        <div className="bg-orange-50 p-3 sm:p-4 rounded-lg border border-orange-200 min-w-0">
+          <div className="text-xl sm:text-2xl font-bold text-orange-600">{formatDuration(stats.avgCallDuration)}</div>
+          <div className="text-xs sm:text-sm text-orange-800">Avg Duration</div>
         </div>
       </div>
 
-      {/* Activities Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Activities: stacked cards on mobile, table on md+ */}
+      <div className="md:hidden space-y-3 min-w-0">
+        {filteredActivities.map((activity) => {
+          const clientName = activity.leadName || activity.details?.agencyName || 'Unknown';
+          let when = 'Invalid Date';
+          let time = '';
+          try {
+            const d = new Date(activity.timestamp);
+            when = d.toLocaleDateString();
+            time = d.toLocaleTimeString();
+          } catch {
+            /* keep fallback */
+          }
+          return (
+            <div key={activity.id} className="rounded-xl border border-slate-200 bg-white p-3 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 break-words">{clientName}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {getUserDisplayName(activity.userEmail, availableUsers)}
+                  </p>
+                </div>
+                {activity.action === 'call' ? (
+                  <span className="lead-chip bg-blue-100 text-blue-800">Call</span>
+                ) : activity.action === 'whatsapp' ? (
+                  <span className="lead-chip bg-green-100 text-green-800">WhatsApp</span>
+                ) : (
+                  <span className="lead-chip bg-gray-100 text-gray-800">Email</span>
+                )}
+              </div>
+              <p className="mt-2 text-[13px] text-slate-600 break-words">{activity.contactInfo}</p>
+              <p className="mt-1 text-[12px] text-slate-500">{when}{time ? ` · ${time}` : ''}</p>
+              {activity.action === 'call' && activity.duration !== undefined && (
+                <p className="mt-1 text-[13px] font-medium text-blue-600">{formatDuration(Number(activity.duration))}</p>
+              )}
+              {activity.action === 'whatsapp' && activity.messageText && (
+                <p className="mt-2 text-[13px] text-slate-700 break-words bg-green-50 border border-green-200 rounded-lg p-2">
+                  {activity.messageText}
+                </p>
+              )}
+              {(activity.action === 'call' || activity.action === 'whatsapp') && (
+                <button
+                  type="button"
+                  onClick={() => activity.action === 'call' ? handleCall(activity.contactInfo) : handleWhatsApp(activity.contactInfo)}
+                  className={`mt-3 w-full rounded-lg text-xs font-semibold ${
+                    activity.action === 'call'
+                      ? 'text-blue-700 bg-blue-50'
+                      : 'text-green-700 bg-green-50'
+                  }`}
+                >
+                  {activity.action === 'call' ? 'Call' : 'WhatsApp'}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -380,6 +437,12 @@ export const DetailedFollowUpReport: React.FC<DetailedFollowUpReportProps> = ({
           </div>
         )}
       </div>
+
+      {filteredActivities.length === 0 && (
+        <div className="md:hidden text-center py-8 text-gray-500">
+          No activities found for the selected filters.
+        </div>
+      )}
     </div>
   );
 };

@@ -1,7 +1,7 @@
 {
-  "version": "2.2.5",
-  "buildTime": "2026-09-10T09:42:13.262Z",
-  "buildNumber": "20260910094213",
+  "version": "2.2.6",
+  "buildTime": "2026-09-10T12:54:55.711Z",
+  "buildNumber": "20260910125455",
   "features": [
     "Auto-update system",
     "Mobile cache button",

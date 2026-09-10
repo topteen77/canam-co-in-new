@@ -1,16 +1,18 @@
 // Canam CRM service worker — app shell + offline fallback
-const CACHE_NAME = 'canam-crm-pwa-v5';
+const CACHE_NAME = 'canam-crm-pwa-v8';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/offline.html',
   '/manifest.json',
+  '/icon.svg',
   '/icon-192x192.png',
   '/icon-512x512.png',
   '/icon-maskable-192.png',
   '/icon-maskable-512.png',
   '/apple-touch-icon.png',
-  '/favicon.svg'
+  '/favicon.svg',
+  '/splash-1080x1920.png'
 ];
 
 self.addEventListener('install', (event) => {

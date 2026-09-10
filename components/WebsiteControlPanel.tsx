@@ -138,29 +138,32 @@ const WebsiteControlPanel: React.FC<WebsiteControlPanelProps> = ({ isAdmin }) =>
         </div>
       </div>
 
-      {/* Tabs */}
-        <div className="bg-white rounded-xl shadow">
-        <div className="border-b border-slate-200">
-          <nav className="flex overflow-x-auto no-scrollbar">
+      {/* Tabs: pills mobile, underline desktop */}
+        <div className="bg-white rounded-xl shadow p-3 sm:hidden">
+          <nav className="app-chip-row flex">
             {websiteSections.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => setActiveTab(section.id)}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition-colors whitespace-nowrap ${
-                  activeTab === section.id
-                    ? 'border-indigo-600 text-indigo-600 font-semibold'
-                    : 'border-transparent text-slate-600 hover:text-indigo-600'
-                }`}
-              >
-                <span className="text-lg">{section.icon}</span>
+              <button key={section.id} onClick={() => setActiveTab(section.id)} className={`app-chip ${activeTab === section.id ? 'app-chip--active' : ''}`}>
+                <span>{section.icon}</span>
                 <span>{section.label}</span>
               </button>
             ))}
           </nav>
         </div>
+        <div className="hidden sm:block bg-white rounded-xl shadow">
+          <div className="border-b border-slate-200">
+            <nav className="flex overflow-x-auto no-scrollbar">
+              {websiteSections.map((section) => (
+                <button key={section.id} onClick={() => setActiveTab(section.id)} className={`flex items-center gap-2 px-6 py-4 border-b-2 transition-colors whitespace-nowrap ${activeTab === section.id ? 'border-indigo-600 text-indigo-600 font-semibold' : 'border-transparent text-slate-600 hover:text-indigo-600'}`}>
+                  <span className="text-lg">{section.icon}</span>
+                  <span>{section.label}</span>
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
 
         {/* Content Area */}
-        <div className="p-6">
+        <div className="bg-white rounded-xl shadow p-6 mt-4">
           {isLoading ? (
             <div className="flex justify-center items-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
@@ -337,7 +340,6 @@ const WebsiteControlPanel: React.FC<WebsiteControlPanelProps> = ({ isAdmin }) =>
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 };

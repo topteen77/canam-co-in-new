@@ -23,6 +23,25 @@ export const ICP_SCORE_ROWS: IcpRow[] = [
   { cat: 'Physical Presence', param: 'Branches', logic: ['Multi-city = 10', 'Single-city = 7'], ans: 'e.g., Delhi, Punjab, Dubai', src: 'Website / Call' }
 ];
 
+export const ICP_SCORE_MIN = 0;
+export const ICP_SCORE_MAX = 10;
+export const ICP_SCORE_STEP = 1;
+
+export const emptyIcpCategoryScores = (): IcpCategoryScores =>
+  Object.fromEntries(ICP_SCORE_ROWS.map((row) => [row.cat, ''])) as IcpCategoryScores;
+
+export const clampIcpScore = (value: number): number => {
+  if (!Number.isFinite(value)) return ICP_SCORE_MIN;
+  const stepped = Math.round(value / ICP_SCORE_STEP) * ICP_SCORE_STEP;
+  return Math.max(ICP_SCORE_MIN, Math.min(ICP_SCORE_MAX, stepped));
+};
+
+export const parseIcpScoreInput = (raw: string): number | '' => {
+  const digits = String(raw ?? '').replace(/[^\d]/g, '');
+  if (digits === '') return '';
+  return clampIcpScore(parseInt(digits, 10));
+};
+
 interface IcpScoringModalProps {
   onClose: () => void;
   categoryScores: IcpCategoryScores;
@@ -32,25 +51,66 @@ interface IcpScoringModalProps {
   applyDisabled?: boolean;
 }
 
-const parseScore = (value: string): number | '' => {
-  if (value === '') return '';
-  const parsed = parseInt(value, 10);
-  if (Number.isNaN(parsed)) return '';
-  return Math.max(0, Math.min(10, parsed));
-};
+const ScoreStepper: React.FC<{
+  value: number | '';
+  onChange: (value: number | '') => void;
+  labelledBy?: string;
+}> = ({ value, onChange, labelledBy }) => {
+  const numeric = typeof value === 'number' ? clampIcpScore(value) : null;
+  const atMin = numeric !== null && numeric <= ICP_SCORE_MIN;
+  const atMax = numeric !== null && numeric >= ICP_SCORE_MAX;
 
-const ScoreInput: React.FC<{ value: number | ''; onChange: (value: string) => void }> = ({ value, onChange }) => (
-  <input
-    type="number"
-    inputMode="numeric"
-    min={0}
-    max={10}
-    placeholder="0-10"
-    value={value === '' ? '' : value}
-    onChange={(event) => onChange(event.target.value)}
-    className="w-[4.5rem] sm:w-24 min-h-[44px] px-2 py-2 text-center text-base border border-slate-200 rounded-lg font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none placeholder:text-slate-300"
-  />
-);
+  const bump = (delta: number) => {
+    if (numeric === null) {
+      if (delta > 0) onChange(ICP_SCORE_MIN);
+      return;
+    }
+    onChange(clampIcpScore(numeric + delta));
+  };
+
+  return (
+    <div className="icp-score-stepper inline-flex items-center rounded-lg border border-slate-300 bg-white overflow-hidden shadow-sm">
+      <button
+        type="button"
+        aria-label="Decrease score"
+        disabled={numeric === null || atMin}
+        onClick={() => bump(-ICP_SCORE_STEP)}
+        className="icp-score-step flex items-center justify-center text-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:hover:bg-slate-100"
+      >
+        −
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        aria-labelledby={labelledBy}
+        aria-valuemin={ICP_SCORE_MIN}
+        aria-valuemax={ICP_SCORE_MAX}
+        min={ICP_SCORE_MIN}
+        max={ICP_SCORE_MAX}
+        step={ICP_SCORE_STEP}
+        placeholder="0–10"
+        value={numeric === null ? '' : String(numeric)}
+        onChange={(event) => onChange(parseIcpScoreInput(event.target.value))}
+        onBlur={(event) => {
+          const parsed = parseIcpScoreInput(event.target.value);
+          onChange(parsed === '' ? '' : clampIcpScore(parsed));
+        }}
+        className="icp-score-input text-center font-bold text-slate-800 border-x border-slate-300 outline-none focus:bg-indigo-50"
+      />
+      <button
+        type="button"
+        aria-label="Increase score"
+        disabled={atMax}
+        onClick={() => bump(ICP_SCORE_STEP)}
+        className="icp-score-step flex items-center justify-center text-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:hover:bg-slate-100"
+      >
+        +
+      </button>
+    </div>
+  );
+};
 
 export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
   onClose,
@@ -65,7 +125,8 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
   const average = scores.length > 0
     ? Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 10) / 10
     : null;
-  const canApply = average !== null && average >= 1 && average <= 10 && !applyDisabled;
+  const appliedScore = average === null ? null : clampIcpScore(Math.round(average));
+  const canApply = appliedScore !== null && !applyDisabled;
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -108,7 +169,7 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
         <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-8 sm:py-4">
           {banner}
           <p className="text-sm text-slate-600 mb-3 sm:mb-6 font-medium">
-            Enter a score (0-10) for each category. The average is calculated automatically.
+            Enter a score from {ICP_SCORE_MIN} to {ICP_SCORE_MAX} for each category. Use + / − to change by {ICP_SCORE_STEP}. The average is calculated automatically.
           </p>
 
           <details className="bg-blue-50 border border-blue-100 rounded-xl p-3 sm:p-6 mb-4 sm:mb-6" open>
@@ -118,7 +179,7 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
             <ol className="mt-2 space-y-1.5 text-sm text-blue-800 font-medium pl-5 list-decimal">
               <li>Review each category and assessment parameter</li>
               <li>Evaluate the agency based on the scoring logic</li>
-              <li>Enter a score (0-10) for each category</li>
+              <li>Enter a score ({ICP_SCORE_MIN}–{ICP_SCORE_MAX}, step {ICP_SCORE_STEP}) for each category</li>
               <li>Apply the average to the ICP Score field</li>
             </ol>
           </details>
@@ -126,8 +187,8 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
           {average !== null && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4 text-sm font-semibold text-emerald-800">
               Average: <span className="text-base">{average.toFixed(1)}/10</span>
-              {average >= 1 && average <= 10 && (
-                <span className="ml-1 text-xs font-medium">(applies as {Math.round(average)}/10)</span>
+              {appliedScore !== null && (
+                <span className="ml-1 text-xs font-medium">(applies as {appliedScore}/10)</span>
               )}
             </div>
           )}
@@ -147,12 +208,13 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
               <div key={row.cat} className="border border-slate-200 rounded-xl p-3 bg-white shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-bold text-slate-800">{row.cat}</p>
+                    <p id={`icp-cat-${row.cat}`} className="font-bold text-slate-800">{row.cat}</p>
                     <p className="text-xs text-slate-500 mt-0.5">{row.param}</p>
                   </div>
-                  <ScoreInput
+                  <ScoreStepper
                     value={categoryScores[row.cat] ?? ''}
-                    onChange={(value) => onCategoryScoreChange(row.cat, parseScore(value))}
+                    onChange={(next) => onCategoryScoreChange(row.cat, next)}
+                    labelledBy={`icp-cat-${row.cat}`}
                   />
                 </div>
                 <ul className="mt-2 text-xs text-slate-600 list-disc pl-4 space-y-0.5">
@@ -171,7 +233,7 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
                   <th className="px-4 py-3 text-left text-sm font-bold text-slate-700 border-b border-r border-slate-200">Category</th>
                   <th className="px-4 py-3 text-left text-sm font-bold text-slate-700 border-b border-r border-slate-200">Assessment Parameter</th>
                   <th className="px-4 py-3 text-left text-sm font-bold text-slate-700 border-b border-r border-slate-200">Scoring Logic (0-10)</th>
-                  <th className="px-4 py-3 text-center text-sm font-bold text-slate-700 border-b bg-[#D9E2FF]">Your Score (0-10)</th>
+                  <th className="px-4 py-3 text-center text-sm font-bold text-slate-700 border-b bg-[#D9E2FF]">Your Score ({ICP_SCORE_MIN}–{ICP_SCORE_MAX})</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -187,9 +249,9 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
                       </ul>
                     </td>
                     <td className="px-4 py-4 text-center">
-                      <ScoreInput
+                      <ScoreStepper
                         value={categoryScores[row.cat] ?? ''}
-                        onChange={(value) => onCategoryScoreChange(row.cat, parseScore(value))}
+                        onChange={(next) => onCategoryScoreChange(row.cat, next)}
                       />
                     </td>
                   </tr>
@@ -210,10 +272,10 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
           {canApply && (
             <button
               type="button"
-              onClick={() => onApply(Math.round(average))}
+              onClick={() => appliedScore !== null && onApply(appliedScore)}
               className="w-full sm:w-auto min-h-[44px] px-6 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700"
             >
-              Apply Score ({Math.round(average)}/10)
+              Apply Score ({appliedScore}/10)
             </button>
           )}
         </div>

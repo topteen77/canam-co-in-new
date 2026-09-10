@@ -121,27 +121,32 @@ const WebsiteSignupLeads: React.FC<WebsiteSignupLeadsProps> = ({ onConvertToLead
     <div className="space-y-4">
       {/* Header */}
       <div className="bg-white p-4 rounded-xl shadow">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">Leads from Website</h2>
-            <p className="text-sm text-slate-500">All partner signups from iApply website</p>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Leads from Website</h2>
+            <p className="text-sm text-slate-500">All partner signups from the website</p>
           </div>
-          <div className="text-right">
-            <div className="text-3xl font-bold text-indigo-600">{signupLeads.length}</div>
+          <div className="text-left sm:text-right">
+            <div className="text-2xl sm:text-3xl font-bold text-indigo-600">{signupLeads.length}</div>
             <div className="text-sm text-slate-500">Total Signups</div>
           </div>
         </div>
 
-        {/* Stage Filter */}
-        <div className="flex flex-wrap gap-2">
+        <div className="app-chip-row flex sm:hidden">
+          {stages.map((stage) => (
+            <button key={stage} onClick={() => setSelectedStage(stage)} className={`app-chip ${selectedStage === stage ? 'app-chip--active' : ''}`}>
+              {stage}
+              {stage !== 'All' && <span className="font-semibold">{signupLeads.filter(l => l.stage === stage).length}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="hidden sm:flex sm:flex-wrap sm:gap-2">
           {stages.map((stage) => (
             <button
               key={stage}
               onClick={() => setSelectedStage(stage)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                selectedStage === stage
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                selectedStage === stage ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               {stage}

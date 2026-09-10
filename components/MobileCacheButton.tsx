@@ -101,7 +101,7 @@ export const MobileCacheButton: React.FC<MobileCacheButtonProps> = ({ className 
       <button
         onClick={handleClearCache}
         disabled={isLoading}
-        className={`fixed bottom-20 right-4 z-40 md:hidden bg-orange-500 hover:bg-orange-600 text-white rounded-full p-3 shadow-lg transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+        className={`fixed bottom-6 left-3 z-30 md:hidden app-icon-btn bg-slate-700/80 hover:bg-slate-800 text-white rounded-full p-2 shadow-md opacity-90 ${className}`}
         title="Clear Cache & Reload"
         aria-label="Clear Cache"
       >

@@ -198,8 +198,8 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
         <p className="text-sm text-slate-600 mb-3">
           Upload a visiting card or tap Take photo. You can crop extra area, rotate, and adjust brightness before the card is read.
           {llmReady
-            ? ' After you confirm, lighting and shine are reduced in color, then AI fills matching fields. OCR is used if AI is unavailable.'
-            : ' After you confirm, lighting and shine are reduced in color, then OCR fills matching fields. Add a Gemini API key to enable AI reading.'}
+            ? ' After you confirm, lighting and shine are reduced in color, then AI fills matching fields. Use the + dropdown beside any field to pick a different extracted value, then edit it if needed.'
+            : ' After you confirm, lighting and shine are reduced in color, then OCR fills matching fields. Use the + dropdown beside any field to pick a different extracted value, then edit it if needed.'}
         </p>
 
         <input
@@ -390,7 +390,7 @@ export const ImageUploadOCR: React.FC<ImageUploadOCRProps> = ({ onExtractComplet
 
         {extractedText && (
           <p className="mt-3 text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
-            Extracted text is pinned at the bottom as a tool. Scroll the form and drag or tap chips into fields.
+            Tap + beside a field to choose an extracted value, then edit it if needed.
           </p>
         )}
       </div>

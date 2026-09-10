@@ -20,9 +20,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#cc0000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Canam CRM" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="apple-touch-startup-image" href="/splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" />
+    <link rel="apple-touch-startup-image" href="/splash-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/splash-2048x2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)" />
+    <link rel="apple-touch-startup-image" href="/splash-1080x1920.png" />
     
     
     <!-- Page Title -->
@@ -67,16 +73,99 @@
     <style>
       body {
         font-family: 'Inter', sans-serif;
+        margin: 0;
+      }
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background:
+          radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.08), transparent 55%),
+          linear-gradient(180deg, #ffffff 0%, #f8fafc 48%, #eef2ff 100%);
+        overflow: hidden;
+        padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
+        transition: opacity 0.4s ease, visibility 0.4s ease;
+      }
+      #app-splash.is-done {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .splash-content {
+        position: relative;
+        z-index: 1;
+        width: min(88vw, 360px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        animation: splash-pop 0.55s ease-out;
+      }
+      .splash-wordmark {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .splash-brand {
+        margin: 8px 0 0;
+        font-size: 1.35rem;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: #111827;
+      }
+      .splash-sub {
+        margin: 2px 0 0;
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        color: #cc0000;
+      }
+      .splash-funnel {
+        width: min(78vw, 300px);
+        margin: 8px 0 4px;
+        filter: drop-shadow(0 18px 28px rgba(79, 70, 229, 0.16));
+        animation: splash-funnel-in 0.7s ease-out;
+      }
+      .splash-funnel img {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-height: min(52vh, 340px);
+        object-fit: contain;
+      }
+      .splash-loader {
+        width: 24px;
+        height: 24px;
+        margin-top: 16px;
+        border-radius: 50%;
+        border: 3px solid #e0e7ff;
+        border-top-color: #4f46e5;
+        animation: splash-spin 0.75s linear infinite;
+      }
+      @media (max-height: 700px) {
+        .splash-funnel img { max-height: 42vh; }
+        .splash-brand { font-size: 1.15rem; }
+      }
+      @keyframes splash-spin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes splash-pop {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes splash-funnel-in {
+        from { opacity: 0; transform: translateY(16px) scale(0.96); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
       }
       @keyframes fade-in-up {
-        from {
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
       }
       .animate-fade-in-up {
         animation: fade-in-up 0.5s ease-out forwards;
@@ -97,11 +186,19 @@
 <link rel="stylesheet" href="/index.css">
 </head>
   <body>
-    <div id="root">
-      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-family:Inter,sans-serif;color:#334155;">
-        <p>Loading Canam CRM…</p>
+    <div id="app-splash" aria-hidden="true">
+      <div class="splash-content">
+        <div class="splash-wordmark">
+          <p class="splash-brand">Canam CRM</p>
+          <p class="splash-sub">STUDYABROAD</p>
+        </div>
+        <div class="splash-funnel">
+          <img src="/splash-funnel.png" alt="Attract, Engage, Retain, Grow" />
+        </div>
+        <div class="splash-loader" role="status" aria-label="Loading"></div>
       </div>
     </div>
+    <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {

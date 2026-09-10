@@ -1311,47 +1311,26 @@ useEffect(() => {
   const filteredLeads = getFilteredLeads();
 
   return (
-    <div className="p-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">📧 Bulk Email Marketing</h1>
-          <p className="text-slate-600">Create, send, and track email campaigns to your leads</p>
+    <div className="page-shell px-0 py-1 sm:p-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-full min-w-0 max-w-full overflow-x-hidden">
+      <div className="max-w-7xl mx-auto min-w-0 w-full">
+        <div className="bg-white rounded-xl shadow-sm sm:shadow-lg p-3 sm:p-6 mb-3 sm:mb-6">
+          <h1 className="text-xl sm:text-3xl font-bold text-slate-800 mb-1 sm:mb-2">Bulk Email</h1>
+          <p className="text-sm sm:text-base text-slate-600">Create and send campaigns to your leads</p>
         </div>
 
-        {/* Tabs */}
-        <div className="bg-white rounded-xl shadow-lg mb-6">
-          <div className="border-b border-slate-200">
+        <div className="bg-white rounded-xl shadow-sm sm:shadow-lg mb-4 sm:mb-6">
+          <div className="p-3 sm:hidden">
+            <nav className="app-chip-row flex" aria-label="Bulk email views">
+              <button onClick={() => setActiveTab('compose')} className={`app-chip ${activeTab === 'compose' ? 'app-chip--active' : ''}`}>Compose</button>
+              <button onClick={() => setActiveTab('templates')} className={`app-chip app-chip--yellow ${activeTab === 'templates' ? 'app-chip--active' : ''}`}>Templates</button>
+              <button onClick={() => setActiveTab('campaigns')} className={`app-chip app-chip--indigo ${activeTab === 'campaigns' ? 'app-chip--active' : ''}`}>Campaigns</button>
+            </nav>
+          </div>
+          <div className="hidden sm:block border-b border-slate-200">
             <nav className="flex -mb-px">
-              <button
-                onClick={() => setActiveTab('compose')}
-                className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'compose'
-                    ? 'border-indigo-600 text-indigo-600'
-                    : 'border-transparent text-slate-600 hover:text-slate-800 hover:border-slate-300'
-                }`}
-              >
-                ✏️ Compose
-              </button>
-              <button
-                onClick={() => setActiveTab('templates')}
-                className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'templates'
-                    ? 'border-indigo-600 text-indigo-600'
-                    : 'border-transparent text-slate-600 hover:text-slate-800 hover:border-slate-300'
-                }`}
-              >
-                📝 Templates
-              </button>
-              <button
-                onClick={() => setActiveTab('campaigns')}
-                className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'campaigns'
-                    ? 'border-indigo-600 text-indigo-600'
-                    : 'border-transparent text-slate-600 hover:text-slate-800 hover:border-slate-300'
-                }`}
-              >
-                📊 Campaigns
-              </button>
+              <button onClick={() => setActiveTab('compose')} className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'compose' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800 hover:border-slate-300'}`}>Compose</button>
+              <button onClick={() => setActiveTab('templates')} className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'templates' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800 hover:border-slate-300'}`}>Templates</button>
+              <button onClick={() => setActiveTab('campaigns')} className={`px-6 py-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'campaigns' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-600 hover:text-slate-800 hover:border-slate-300'}`}>Campaigns</button>
             </nav>
           </div>
         </div>
@@ -1361,7 +1340,7 @@ useEffect(() => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Filters Panel */}
             <div className="lg:col-span-1">
-              <div className="bg-white rounded-xl shadow-lg p-6 sticky top-6">
+              <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 lg:sticky lg:top-4">
                 <h2 className="text-xl font-bold text-slate-800 mb-4">🔍 Filter Leads</h2>
                 
                 {/* Template Selection */}
@@ -1821,7 +1800,8 @@ useEffect(() => {
                         <div className="mt-4 border border-slate-200 rounded-lg bg-white shadow-sm">
                           <div className="px-4 py-2 border-b border-slate-200 flex items-center justify-between">
                             <span className="text-sm font-semibold text-slate-700">Live Preview</span>
-                            <span className="text-xs text-slate-500">Desktop friendly view</span>
+                            <span className="text-xs text-slate-500 hidden sm:inline">Desktop friendly view</span>
+                            <span className="text-xs text-slate-500 sm:hidden">Scroll to review</span>
                           </div>
                           <div
                             className="p-4 prose prose-sm max-w-none text-slate-800"
@@ -1955,11 +1935,11 @@ useEffect(() => {
                   )}
 
                   <div className="flex flex-col gap-3">
-                    <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
                       <button
                         onClick={handleOpenInGmail}
                         disabled={filteredLeads.length === 0}
-                        className="flex-1 px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                        className="flex-1 min-w-0 w-full px-4 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                       >
                         <span>📧</span>
                         <span>Open in Gmail ({filteredLeads.length} leads)</span>
@@ -2031,7 +2011,7 @@ useEffect(() => {
                           }
                         }}
                         disabled={filteredLeads.length === 0}
-                        className="flex-1 px-6 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                        className="flex-1 min-w-0 w-full px-4 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                       >
                         <span>📧</span>
                         <span>Open in Outlook ({filteredLeads.length} leads)</span>
@@ -2039,7 +2019,7 @@ useEffect(() => {
                       <button
                         onClick={handleOpenWhatsApp}
                         disabled={filteredLeads.length === 0}
-                        className="flex-1 px-6 py-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                        className="flex-1 min-w-0 w-full px-4 py-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                       >
                         <span>💬</span>
                         <span>Open WhatsApp ({filteredLeads.length} leads)</span>
@@ -2071,20 +2051,19 @@ useEffect(() => {
 
         {/* Templates Tab */}
         {activeTab === 'templates' && (
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            {/* ... template rendering logic remains unchanged ... */}
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-slate-800">📝 Email Templates</h2>
-              <div className="flex gap-2">
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 min-w-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-2xl font-bold text-slate-800">Email Templates</h2>
+              <div className="flex gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => {
                     console.log('🔄 Refreshing templates...');
                     loadTemplates();
                   }}
-                  className="px-4 py-2 bg-slate-600 text-white font-semibold rounded-lg hover:bg-slate-700 transition-colors"
+                  className="flex-1 sm:flex-none min-w-0 px-3 sm:px-4 py-2 bg-slate-600 text-white text-sm font-semibold rounded-lg hover:bg-slate-700 transition-colors"
                   title="Refresh templates"
                 >
-                  🔄 Refresh
+                  Refresh
                 </button>
                 <button
                   onClick={() => {
@@ -2096,9 +2075,9 @@ useEffect(() => {
                     setTemplateAttachments([]);
                     setIsTemplateModalOpen(true);
                   }}
-                  className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+                  className="flex-1 sm:flex-none min-w-0 px-3 sm:px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
                 >
-                  ➕ Create Template
+                  Create
                 </button>
               </div>
             </div>
@@ -2107,7 +2086,7 @@ useEffect(() => {
               <div className="text-center py-12">
                 <p className="text-slate-600 mb-4">No templates created yet</p>
                 <p className="text-xs text-slate-500 mb-2">Current user: {currentUser}</p>
-                <div className="flex gap-2 justify-center">
+                <div className="flex flex-col sm:flex-row gap-2 justify-center">
                   <button
                     onClick={() => {
                       console.log('🔄 Manual refresh triggered');
@@ -2133,28 +2112,29 @@ useEffect(() => {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {templates.map(template => (
                   <div
                     key={template.id}
-                    className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                    className="border border-slate-200 rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow min-w-0 overflow-hidden"
                   >
-                    <h3 className="font-bold text-lg text-slate-800 mb-2">{template.name}</h3>
-                    <p className="text-sm text-slate-600 mb-3 truncate">{template.subject}</p>
-                    <p className="text-xs text-slate-500 mb-4 line-clamp-3">{template.body}</p>
-                    <div className="flex gap-2">
+                    <h3 className="font-bold text-base sm:text-lg text-slate-800 mb-2 break-words">{template.name}</h3>
+                    <p className="text-sm text-slate-600 mb-3 break-words">{template.subject}</p>
+                    <p className="text-xs text-slate-500 mb-4 line-clamp-3 break-words">{template.body}</p>
+                    <div className="flex gap-2 min-w-0">
                       <button
                         onClick={() => handleEditTemplate(template)}
-                        className="flex-1 px-3 py-2 bg-indigo-600 text-white text-sm font-semibold rounded hover:bg-indigo-700 transition-colors"
+                        className="flex-1 min-w-0 px-3 py-2 bg-indigo-600 text-white text-sm font-semibold rounded hover:bg-indigo-700 transition-colors"
                       >
-                        ✏️ Edit
+                        Edit
                       </button>
                       {!template.isSystemTemplate && (
                         <button
                           onClick={() => handleDeleteTemplate(template.id!)}
-                          className="px-3 py-2 bg-red-600 text-white text-sm font-semibold rounded hover:bg-red-700 transition-colors"
+                          className="shrink-0 px-3 py-2 bg-red-600 text-white text-sm font-semibold rounded hover:bg-red-700 transition-colors"
+                          aria-label="Delete template"
                         >
-                          🗑️
+                          Delete
                         </button>
                       )}
                     </div>
@@ -2167,17 +2147,16 @@ useEffect(() => {
 
         {/* Campaigns Tab */}
         {activeTab === 'campaigns' && (
-          <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 min-w-0">
              {/* ... campaign rendering logic remains unchanged ... */}
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-slate-800">📊 Campaign History</h2>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-2xl font-bold text-slate-800">Campaign History</h2>
               {campaigns.length > 0 && (
                 <button
                   onClick={() => {
                     loadCampaigns();
                   }}
-                  className="px-4 py-2 bg-slate-600 text-white font-semibold rounded-lg hover:bg-slate-700 transition-colors"
-                  title="Refresh campaigns"
+                  className="w-full sm:w-auto px-4 py-2 bg-slate-600 text-white font-semibold rounded-lg hover:bg-slate-700 transition-colors"
                 >
                   🔄 Refresh
                 </button>
@@ -2227,7 +2206,7 @@ useEffect(() => {
                 </div>
 
                 {/* Download Buttons */}
-                <div className="flex gap-2 mb-4 pb-4 border-b border-slate-200">
+                <div className="flex flex-col sm:flex-row gap-2 mb-4 pb-4 border-b border-slate-200">
                   <button
                     onClick={() => {
                       // Export to CSV
@@ -2293,9 +2272,9 @@ useEffect(() => {
                       key={campaign.id}
                       className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-bold text-lg text-slate-800 mb-1">{campaign.name}</h3>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between min-w-0">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-base sm:text-lg text-slate-800 mb-1 break-words">{campaign.name}</h3>
                           <p className="text-sm text-slate-600 mb-2">Template: {campaign.templateName}</p>
                           <p className="text-sm text-slate-600 mb-2">Recipients: {campaign.recipientCount}</p>
                           <p className="text-xs text-slate-500">
@@ -2400,9 +2379,9 @@ useEffect(() => {
 
         {/* Template Modal */}
         {isTemplateModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl shadow-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-              <h2 className="text-2xl font-bold text-slate-800 mb-6">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-8 max-w-2xl w-full sm:mx-4 max-h-[100dvh] sm:max-h-[90vh] overflow-y-auto min-w-0">
+              <h2 className="text-lg sm:text-2xl font-bold text-slate-800 mb-4 sm:mb-6">
                 {editingTemplate ? '✏️ Edit Template' : '➕ Create Template'}
               </h2>
               
@@ -2891,22 +2870,22 @@ useEffect(() => {
                 </div>
               </div>
 
-              <div className="flex gap-4 mt-6">
-                <button
-                  onClick={handleSaveTemplate}
-                  disabled={templateBodySize > 950 * 1024}
-                  className="flex-1 px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
-                >
-                  💾 Save Template {templateBodySize > 950 * 1024 && '(Too Large!)'}
-                </button>
+              <div className="flex flex-col-reverse sm:flex-row gap-3 mt-6">
                 <button
                   onClick={() => {
                     setIsTemplateModalOpen(false);
                     setEditingTemplate(null);
                   }}
-                  className="px-6 py-3 bg-slate-300 text-slate-800 font-semibold rounded-lg hover:bg-slate-400 transition-colors"
+                  className="w-full sm:w-auto px-6 py-3 bg-slate-300 text-slate-800 font-semibold rounded-lg hover:bg-slate-400 transition-colors"
                 >
                   Cancel
+                </button>
+                <button
+                  onClick={handleSaveTemplate}
+                  disabled={templateBodySize > 950 * 1024}
+                  className="flex-1 min-w-0 px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
+                >
+                  Save Template {templateBodySize > 950 * 1024 && '(Too Large!)'}
                 </button>
               </div>
             </div>
