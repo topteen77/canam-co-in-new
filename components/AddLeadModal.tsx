@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { ImageUploadOCR } from './ImageUploadOCR';
 import { SuggestInput } from './SuggestInput';
@@ -16,10 +16,33 @@ import {
   type LocationSuggestion
 } from '../utils/locationSuggest';
 import { DEFAULT_CONTACT_COUNTRY } from '../utils/countriesAndCities';
-import { IcpScoringModal, clampIcpScore } from './IcpScoringModal';
+import { IcpScoringModal, TRAINING_SCORE_ROWS, clampIcpScore, emptyTrainingCategoryScores } from './IcpScoringModal';
 import type { Lead, AgencyDocuments } from '../types';
 import type { ExtractedLeadData } from '../services/ocrService';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES } from '../types';
+
+const PHONE_RE = /^\d{10}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function FieldMessage({
+  message,
+  tone = 'error',
+}: {
+  message?: string;
+  tone?: 'error' | 'ok' | 'hint';
+}) {
+  if (!message) return null;
+  const styles = {
+    error: 'border-rose-200 bg-rose-50 text-rose-800',
+    ok: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    hint: 'border-slate-200 bg-slate-50 text-slate-600',
+  };
+  return (
+    <p role={tone === 'error' ? 'alert' : 'status'} className={`mt-2 rounded-lg border px-3 py-2 text-xs font-medium leading-5 ${styles[tone]}`}>
+      {message}
+    </p>
+  );
+}
 
 interface AddLeadModalProps {
   onClose: () => void;
@@ -67,6 +90,9 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     trainingScore: undefined as number | undefined
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [formAlert, setFormAlert] = useState<string | null>(null);
+  const formTopRef = useRef<HTMLDivElement>(null);
+  const isPrimaryMobileValid = PHONE_RE.test(formData.phone.trim());
   const [agencyDocuments, setAgencyDocuments] = useState<AgencyDocuments>({});
   const [newTagName, setNewTagName] = useState('');
   const [tagError, setTagError] = useState('');
@@ -75,6 +101,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
 
   // ICP Score Modal States
   const [showIcpScoreModal, setShowIcpScoreModal] = useState(false);
+  const [showTrainingScoreModal, setShowTrainingScoreModal] = useState(false);
+  const [trainingCategoryScores, setTrainingCategoryScores] = useState(emptyTrainingCategoryScores);
   const [categoryScores, setCategoryScores] = useState<Record<string, number | ''>>({
     'Business Profile': '',
     'Services Portfolio': '',
@@ -90,28 +118,53 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (formErrors[field]) setFormErrors((prev) => ({ ...prev, [field]: '' }));
+    if (formAlert) setFormAlert(null);
   };
 
   const handlePhoneChange = (field: string, value: string) => {
     const clean = value.replace(/\D/g, '').slice(0, 10);
     handleInputChange(field, clean);
+    if (field === 'phone' && PHONE_RE.test(clean) && formErrors.email?.includes('required')) {
+      setFormErrors((prev) => ({ ...prev, email: '' }));
+    }
   };
 
   const handleEmailChange = (field: string, value: string) => {
     handleInputChange(field, value.trim().toLowerCase());
   };
 
-  const validatePhone = (phone: string) => !phone || /^\d{10}$/.test(phone);
-  const validateEmail = (email: string) => !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const scrollToFormAlert = () => {
+    formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const scroller = formTopRef.current?.closest('.overflow-y-auto');
+    if (scroller instanceof HTMLElement) scroller.scrollTop = 0;
+  };
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
-    if (!formData.agencyName.trim()) errors.agencyName = 'Agency name is required';
-    if (formData.phone && !validatePhone(formData.phone)) errors.phone = 'Phone must be exactly 10 digits';
-    if (formData.email && !validateEmail(formData.email)) errors.email = 'Please enter a valid email';
-    if (formData.alternateMobile && !validatePhone(formData.alternateMobile)) errors.alternateMobile = 'Alternate mobile must be 10 digits';
+    const phone = formData.phone.trim();
+    const email = formData.email.trim();
+    const phoneValid = PHONE_RE.test(phone);
+
+    if (!formData.agencyName.trim()) errors.agencyName = 'Agency name is required.';
+
+    if (!phone) {
+      errors.phone = 'Enter a 10-digit primary mobile number.';
+    } else if (!phoneValid) {
+      errors.phone = 'Primary mobile must be exactly 10 digits.';
+    }
+
+    if (!phoneValid && !email) {
+      errors.email = 'Email is required until the primary mobile is a valid 10-digit number.';
+    } else if (email && !EMAIL_RE.test(email)) {
+      errors.email = 'Enter a valid email address.';
+    }
+
+    if (formData.alternateMobile.trim() && !PHONE_RE.test(formData.alternateMobile.trim())) {
+      errors.alternateMobile = 'Alternate mobile must be exactly 10 digits.';
+    }
+
     setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+    return errors;
   };
 
   const handleDocumentUpload = (documentType: 'companyRegistration' | 'panCard' | 'gstNumber' | 'mou', document: any) => {
@@ -220,10 +273,14 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
-    if (!validateForm()) {
-      alert('Please fix the form errors before submitting');
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      const first = Object.values(errors)[0];
+      setFormAlert(first);
+      scrollToFormAlert();
       return;
     }
+    setFormAlert(null);
     setIsSubmitting(true);
     try {
       const contactId = `contact_${Date.now()}`;
@@ -261,7 +318,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
       });
       onClose();
     } catch (err: any) {
-      alert(err?.message || 'Failed to add lead. Please try again.');
+      setFormAlert(err?.message || 'Failed to add lead. Please try again.');
+      scrollToFormAlert();
     } finally {
       setIsSubmitting(false);
     }
@@ -289,13 +347,26 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         </div>
       )}
     >
-      <form id="add-lead-form" onSubmit={handleSubmit} className="space-y-4 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg">
+      <form id="add-lead-form" onSubmit={handleSubmit} noValidate className="space-y-4 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg">
+        <div ref={formTopRef} />
+        {formAlert && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 shadow-sm" role="alert">
+            <p className="text-sm font-semibold text-rose-900">Please fix these details</p>
+            <ul className="mt-1.5 space-y-1 text-sm text-rose-800">
+              {Object.values(formErrors).filter(Boolean).length > 0
+                ? Object.values(formErrors).filter(Boolean).map((message) => (
+                    <li key={message}>• {message}</li>
+                  ))
+                : <li>• {formAlert}</li>}
+            </ul>
+          </div>
+        )}
         {/* OCR */}
         <ImageUploadOCR onExtractComplete={handleOCRComplete} onError={setOcrError} />
         {ocrError && (
-          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-3">
-            <p className="text-sm font-medium text-red-800">⚠️ {ocrError}</p>
-            <p className="text-xs text-red-600 mt-1">You can still fill the form manually.</p>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-medium text-amber-900">{ocrError}</p>
+            <p className="text-xs text-amber-700 mt-1">You can still fill the form manually.</p>
           </div>
         )}
 
@@ -312,11 +383,10 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                   onChange={(e) => handleInputChange('agencyName', e.target.value)}
                   className={`block w-full px-3 py-2 text-sm border-2 rounded-lg focus:border-indigo-500 bg-white min-h-[44px] ${formData.agencyName ? 'pr-10' : ''} ${formErrors.agencyName ? 'border-red-500' : 'border-slate-300'}`}
                   placeholder="Enter agency or partner name"
-                  required
                 />
               </InputWithClear>
             </OcrInputRow>
-            {formErrors.agencyName && <p className="mt-1 text-xs font-medium text-red-600">⚠️ {formErrors.agencyName}</p>}
+            <FieldMessage message={formErrors.agencyName} />
           </DroppableField>
         </div>
 
@@ -350,27 +420,34 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                       className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.phone ? 'pr-10' : ''} ${formErrors.phone ? 'border-red-500' : 'border-slate-300'}`}
                       placeholder="9876543210"
                       maxLength={10}
-                      required
+                      inputMode="numeric"
                     />
                   </InputWithClear>
                 </OcrInputRow>
-                {formErrors.phone && <p className="mt-1 text-xs text-red-600">⚠️ {formErrors.phone}</p>}
+                <FieldMessage message={formErrors.phone} />
+                {isPrimaryMobileValid && !formErrors.phone && (
+                  <FieldMessage message="Primary mobile is valid. Email is optional." tone="ok" />
+                )}
               </DroppableField>
               <DroppableField field="email">
-                <LabelWithOcr field="email">📧 Primary Email *</LabelWithOcr>
+                <LabelWithOcr field="email">📧 Primary Email{isPrimaryMobileValid ? '' : ' *'}</LabelWithOcr>
                 <OcrInputRow field="email">
                   <InputWithClear value={formData.email} onClear={() => handleInputChange('email', '')}>
                     <input
-                      type="email"
+                      type="text"
+                      inputMode="email"
+                      autoComplete="email"
                       value={formData.email}
                       onChange={(e) => handleEmailChange('email', e.target.value)}
                       className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] ${formData.email ? 'pr-10' : ''} ${formErrors.email ? 'border-red-500' : 'border-slate-300'}`}
                       placeholder="contact@agency.com"
-                      required
                     />
                   </InputWithClear>
                 </OcrInputRow>
-                {formErrors.email && <p className="mt-1 text-xs text-red-600">⚠️ {formErrors.email}</p>}
+                <FieldMessage message={formErrors.email} />
+                {!formErrors.email && !isPrimaryMobileValid && (
+                  <FieldMessage message="Required unless primary mobile is a valid 10-digit number." tone="hint" />
+                )}
               </DroppableField>
               <DroppableField field="alternateMobile">
                 <LabelWithOcr field="alternateMobile">📱 Alternate Mobile</LabelWithOcr>
@@ -386,7 +463,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                     />
                   </InputWithClear>
                 </OcrInputRow>
-                {formErrors.alternateMobile && <p className="mt-1 text-xs text-red-600">⚠️ {formErrors.alternateMobile}</p>}
+                <FieldMessage message={formErrors.alternateMobile} />
               </DroppableField>
             </div>
           </div>
@@ -579,20 +656,28 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-800 mb-1">Training Score</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  step={0.1}
-                  value={formData.trainingScore !== undefined ? formData.trainingScore : ''}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    trainingScore: e.target.value === '' ? undefined : parseFloat(e.target.value)
-                  }))}
-                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px]"
-                  placeholder="0-10"
-                />
+                <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
+                  <span>🎓</span> Training Score (0-10)
+                </label>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="relative w-32">
+                    <input
+                      type="text"
+                      value={formData.trainingScore !== undefined ? formData.trainingScore : ''}
+                      readOnly
+                      placeholder="0-10"
+                      className="block w-full px-4 py-2 text-sm border-2 border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowTrainingScoreModal(true)}
+                    className="flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                  >
+                    <span>📊</span>
+                    <span>View Scoring</span>
+                  </button>
+                </div>
               </div>
             </div>
             <div>
@@ -717,6 +802,23 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         onApply={(score) => {
           setFormData((prev) => ({ ...prev, icpScore: clampIcpScore(score) }));
           setShowIcpScoreModal(false);
+        }}
+      />
+    )}
+    {showTrainingScoreModal && (
+      <IcpScoringModal
+        title="Training Scoring System"
+        icon="🎓"
+        rows={TRAINING_SCORE_ROWS}
+        applyNoun="Training Score"
+        onClose={() => setShowTrainingScoreModal(false)}
+        categoryScores={trainingCategoryScores}
+        onCategoryScoreChange={(category, value) => {
+          setTrainingCategoryScores((prev) => ({ ...prev, [category]: value }));
+        }}
+        onApply={(score) => {
+          setFormData((prev) => ({ ...prev, trainingScore: clampIcpScore(score) }));
+          setShowTrainingScoreModal(false);
         }}
       />
     )}

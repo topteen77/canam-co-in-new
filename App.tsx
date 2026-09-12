@@ -61,6 +61,10 @@ import {
 import { pwaNotificationService } from './services/pwaNotificationService';
 import SubdomainRouter from './components/SubdomainRouter';
 import { useSessionTimeout } from './hooks/useSessionTimeout';
+import { useSessionGuard } from './hooks/useSessionGuard';
+import { useMeetingPresenceWatch } from './hooks/useMeetingPresenceWatch';
+import { useAdminMeetingAlerts } from './hooks/useAdminMeetingAlerts';
+import AdminMeetingAlertBanner from './components/AdminMeetingAlertBanner';
 import { parseViewFromHash, syncViewHash } from './utils/appView';
 
 const CONFIGURED_SUPER_ADMINS = ['canamrakesh@gmail.com', 'manchandapranjal01@gmail.com'];
@@ -129,6 +133,7 @@ const App: React.FC = () => {
     } catch (_) {}
   }, [readNotificationIds]);
   const [showSessionTimeoutModal, setShowSessionTimeoutModal] = useState(false);
+  const [logoutNotice, setLogoutNotice] = useState<string | null>(null);
   const [dismissedNotificationIds, setDismissedNotificationIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('crm_dismissed_notification_ids');
@@ -139,6 +144,21 @@ const App: React.FC = () => {
     } catch (_) {}
     return new Set();
   });
+  const [dismissedMeetingAlertIds, setDismissedMeetingAlertIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('crm_dismissed_meeting_alert_ids');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? new Set(arr) : new Set();
+      }
+    } catch (_) {}
+    return new Set();
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('crm_dismissed_meeting_alert_ids', JSON.stringify([...dismissedMeetingAlertIds]));
+    } catch (_) {}
+  }, [dismissedMeetingAlertIds]);
 
   // --- 1. INITIAL DATA LOADING (SQL) ---
   useEffect(() => {
@@ -202,6 +222,7 @@ const App: React.FC = () => {
   // --- 3. DERIVED STATE ---
   const isAdmin = ['Admin', 'SuperAdmin', 'superadmin'].includes(userRole);
   const isSubAdmin = userRole === 'SubAdmin';
+  const { alerts: meetingAlerts } = useAdminMeetingAlerts(isAdmin);
   
   const displayedLeads = useMemo(
     () => getAssignedLeads(leads, { isAdmin, currentUser }),
@@ -223,13 +244,45 @@ const App: React.FC = () => {
   const canViewAllDashboardData = isAdmin; 
   const leadsForReports = canViewAllDashboardData ? leads : displayedLeads;
 
-  const activeNotifications = useMemo(() => buildNotifications({
-      currentUser: currentUser,
-      isAdmin,
-      leads,
-      meetingCheckInRecords: meetingCheckIns,
-      preferences: notificationPreferences
-  }), [leads, meetingCheckIns, currentUser, isAdmin, notificationPreferences]);
+  const activeNotifications = useMemo(() => {
+      const base = buildNotifications({
+          currentUser: currentUser,
+          isAdmin,
+          leads,
+          meetingCheckInRecords: meetingCheckIns,
+          preferences: notificationPreferences
+      });
+      if (!isAdmin) return base;
+      const cutoff = Date.now() - 12 * 60 * 60 * 1000;
+      const desk = meetingAlerts
+          .filter((alert) => {
+              if (alert.alertType === 'returned_place') return false;
+              const created = new Date(alert.createdAt).getTime();
+              return !Number.isNaN(created) && created >= cutoff;
+          })
+          .map((alert) => {
+              const left = alert.alertType === 'left_place';
+              const who = alert.userName || alert.userEmail;
+              const place = alert.leadName || 'a client meeting';
+              const stamp = alert.createdAt ? new Date(alert.createdAt).toISOString() : new Date().toISOString();
+              return {
+                  id: `meeting_alert_${alert.id}`,
+                  category: 'meeting' as const,
+                  title: left ? 'Left the meeting place' : 'Meeting ended',
+                  description: left
+                      ? `${who} has left ${place}${alert.distanceM ? ` (${Math.round(Number(alert.distanceM))}m away)` : ''}.`
+                      : `${who} finished the meeting with ${place}.`,
+                  timestamp: stamp,
+                  scheduledAt: stamp,
+                  leadId: alert.leadId,
+                  leadName: alert.leadName,
+                  status: left ? 'overdue' as const : 'today' as const,
+                  followUpType: 'Meeting',
+                  isMuted: false,
+              };
+          });
+      return [...desk, ...base].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [leads, meetingCheckIns, currentUser, isAdmin, notificationPreferences, meetingAlerts]);
 
   const visibleNotifications = useMemo(
     () => activeNotifications.filter((n) => !dismissedNotificationIds.has(n.id)),
@@ -268,6 +321,17 @@ const App: React.FC = () => {
     [meetingCheckIns, currentUser]
   );
 
+  useMeetingPresenceWatch(currentUser, hasActiveMeeting);
+
+  const dismissMeetingAlert = useCallback((id: string) => {
+    setDismissedMeetingAlertIds((prev) => new Set(prev).add(id));
+    setDismissedNotificationIds((prev) => {
+      const next = new Set(prev).add(`meeting_alert_${id}`);
+      try { localStorage.setItem('crm_dismissed_notification_ids', JSON.stringify([...next])); } catch (_) {}
+      return next;
+    });
+  }, []);
+
   // --- 4. HANDLERS ---
   const handleLogout = useCallback(async () => {
       await UpdateService.getInstance().handleLogout();
@@ -280,6 +344,11 @@ const App: React.FC = () => {
     handleLogout();
     setShowSessionTimeoutModal(true);
   });
+
+  useSessionGuard(currentUser, useCallback((reason: string) => {
+    handleLogout();
+    setLogoutNotice(reason);
+  }, [handleLogout]));
 
   const handleLogin = (email: string) => {
       const u = getStoredUser();
@@ -372,7 +441,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   // --- 5. RENDER ---
-  const renderTimeoutModal = () => showSessionTimeoutModal && (
+  const renderTimeoutModal = () => (showSessionTimeoutModal || logoutNotice) && (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[9999]">
       <div className="bg-white rounded-lg p-6 max-w-sm w-full text-center shadow-xl">
         <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
@@ -380,10 +449,13 @@ const App: React.FC = () => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
         </div>
-        <h3 className="text-xl font-bold text-gray-900 mb-2">Session Expired</h3>
-        <p className="text-gray-600 mb-6">You have been logged out due to 30 minutes of inactivity. Please log in again to continue.</p>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">{logoutNotice ? 'Signed out' : 'Session Expired'}</h3>
+        <p className="text-gray-600 mb-6">{logoutNotice || 'You have been logged out due to 8 hours of inactivity. Please log in again to continue.'}</p>
         <button
-          onClick={() => setShowSessionTimeoutModal(false)}
+          onClick={() => {
+            setShowSessionTimeoutModal(false);
+            setLogoutNotice(null);
+          }}
           className="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors"
         >
           Okay
@@ -749,6 +821,13 @@ const App: React.FC = () => {
           </header>
 
           <main className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 min-h-0">
+            {isAdmin && (
+              <AdminMeetingAlertBanner
+                alerts={meetingAlerts}
+                dismissedIds={dismissedMeetingAlertIds}
+                onDismiss={dismissMeetingAlert}
+              />
+            )}
             <div className="main-content-area px-1.5 sm:px-4 py-2 sm:py-4 pb-24 md:pb-8 w-full max-w-full min-w-0">
               {isLoadingLeads && ['leads', 'pipeline'].includes(view) && (
                 <div className="flex justify-center items-center py-8">
@@ -861,6 +940,9 @@ const App: React.FC = () => {
                                 try { localStorage.setItem('crm_dismissed_notification_ids', JSON.stringify([...next])); } catch (_) {}
                                 return next;
                               });
+                              if (id.startsWith('meeting_alert_')) {
+                                setDismissedMeetingAlertIds((prev) => new Set(prev).add(id.slice('meeting_alert_'.length)));
+                              }
                             }}
                             onNavigateToLead={handleNavigateToLead}
                             preferences={notificationPreferences}

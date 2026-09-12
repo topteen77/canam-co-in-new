@@ -169,7 +169,8 @@ export class PWAAuthService {
   public async signIn(email: string, password: string): Promise<UserData> {
       try {
           // This calls your new Node.js SQL Backend
-          const response = await apiClient.post('/auth/login', { email, password });
+          const { getDeviceFingerprint } = await import('./deviceFingerprint');
+          const response = await apiClient.post('/auth/login', { email, password, ...getDeviceFingerprint() });
           
           // Backend returns { success: true, user: {...} }
           // We don't have JWT generation in the simple backend yet, so we mock it or rely on session

@@ -12,7 +12,7 @@ import { MultiSelect } from './MultiSelect';
 import { CustomDateTimePicker } from './CustomDateTimePicker';
 import { SimplePagination } from './SimplePagination';
 import { canMutateLead } from '../utils/leadPermissions';
-import { IcpScoringModal, clampIcpScore } from './IcpScoringModal';
+import { IcpScoringModal, TRAINING_SCORE_ROWS, clampIcpScore, emptyTrainingCategoryScores } from './IcpScoringModal';
 
 interface LeadDetailsModalProps {
   lead: Lead | null;
@@ -195,6 +195,8 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   
   const highlightedFollowUpRef = useRef<HTMLDivElement>(null);
   const [showIcpScoreModal, setShowIcpScoreModal] = useState(false);
+  const [showTrainingScoreModal, setShowTrainingScoreModal] = useState(false);
+  const [trainingCategoryScores, setTrainingCategoryScores] = useState(emptyTrainingCategoryScores);
   const [categoryScores, setCategoryScores] = useState<{ [key: string]: number | '' }>({
     'Business Profile': '',
     'Services Portfolio': '',
@@ -283,7 +285,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         websiteLink: lead.websiteLink,
         agencyDocuments: lead.agencyDocuments,
         countryInterest: safeCountryInterest,
-        icpScore: lead.icpScore
+        icpScore: lead.icpScore,
+        trainingDate: lead.trainingDate,
+        trainingScore: lead.trainingScore
       });
 
       // Reset contact modal state when lead changes
@@ -884,6 +888,48 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setShowIcpScoreModal(true)}
+                        className="flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                      >
+                        <span>📊</span>
+                        <span>View Scoring</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-800 mb-1">Training Date</label>
+                    {isEditing ? (
+                      <input
+                        type="date"
+                        value={editData.trainingDate || lead.trainingDate || ''}
+                        onChange={(e) => setEditData(prev => ({ ...prev, trainingDate: e.target.value }))}
+                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800"
+                      />
+                    ) : (
+                      <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">
+                        {formatDate(lead.trainingDate)}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
+                      <span>🎓</span> Training Score (0-10)
+                    </label>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="relative w-32">
+                        <input
+                          type="text"
+                          value={isEditing
+                            ? (editData.trainingScore !== undefined ? editData.trainingScore : (lead.trainingScore !== undefined ? lead.trainingScore : ''))
+                            : (lead.trainingScore !== undefined ? lead.trainingScore : '')
+                          }
+                          readOnly
+                          placeholder="0-10"
+                          className="block w-full px-4 py-2 text-sm border-2 border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowTrainingScoreModal(true)}
                         className="flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95"
                       >
                         <span>📊</span>
@@ -1620,6 +1666,23 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           onApply={(score) => {
             setEditData((prev) => ({ ...prev, icpScore: clampIcpScore(score) }));
             setShowIcpScoreModal(false);
+          }}
+        />
+      )}
+      {showTrainingScoreModal && (
+        <IcpScoringModal
+          title="Training Scoring System"
+          icon="🎓"
+          rows={TRAINING_SCORE_ROWS}
+          applyNoun="Training Score"
+          onClose={() => setShowTrainingScoreModal(false)}
+          categoryScores={trainingCategoryScores}
+          onCategoryScoreChange={(category, value) => {
+            setTrainingCategoryScores((prev) => ({ ...prev, [category]: value }));
+          }}
+          onApply={(score) => {
+            setEditData((prev) => ({ ...prev, trainingScore: clampIcpScore(score) }));
+            setShowTrainingScoreModal(false);
           }}
         />
       )}

@@ -177,6 +177,15 @@ export const completeMeeting = async (id, data) => {
     values.push(id);
     
     await db.execute(query, values);
+    try {
+      const [rows] = await db.query(`SELECT * FROM ${table} WHERE \`${idCol}\` = ? LIMIT 1`, [id]);
+      if (rows[0]) {
+        const { recordMeetingEnded } = await import('./meetingAlertsService.js');
+        await recordMeetingEnded(mapMeetingRow(rows[0]));
+      }
+    } catch (alertError) {
+      console.warn('Meeting-ended alert skipped:', alertError.message);
+    }
     return { success: true };
   } catch (error) {
     console.error('❌ Service Error (completeMeeting):', error.message);

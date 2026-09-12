@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 
+const INACTIVITY_MS = 8 * 60 * 60 * 1000;
+
 export function useSessionTimeout(currentUser: string | null, onTimeout: () => void) {
   useEffect(() => {
     if (!currentUser) return;
@@ -8,10 +10,9 @@ export function useSessionTimeout(currentUser: string | null, onTimeout: () => v
 
     const resetTimer = () => {
       clearTimeout(inactivityTimer);
-      // 30 minutes timeout
       inactivityTimer = setTimeout(() => {
         onTimeout();
-      }, 30 * 60 * 1000);
+      }, INACTIVITY_MS);
 
       localStorage.setItem('lastActivityTime', Date.now().toString());
     };
@@ -21,8 +22,7 @@ export function useSessionTimeout(currentUser: string | null, onTimeout: () => v
     const activityHandler = () => {
       const lastActivity = parseInt(localStorage.getItem('lastActivityTime') || '0', 10);
 
-      // If computer went to sleep and woke up after 30 mins
-      if (Date.now() - lastActivity > 30 * 60 * 1000) {
+      if (Date.now() - lastActivity > INACTIVITY_MS) {
         clearTimeout(inactivityTimer);
         onTimeout();
         return;
@@ -41,7 +41,7 @@ export function useSessionTimeout(currentUser: string | null, onTimeout: () => v
 
     const intervalId = setInterval(() => {
       const lastActivity = parseInt(localStorage.getItem('lastActivityTime') || '0', 10);
-      if (Date.now() - lastActivity > 30 * 60 * 1000) {
+      if (Date.now() - lastActivity > INACTIVITY_MS) {
         clearTimeout(inactivityTimer);
         onTimeout();
       }

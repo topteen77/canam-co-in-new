@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { login as apiLogin, register } from '../services/authService';
+import { login as apiLogin, register, readSessionActiveError, type ActiveSessionInfo } from '../services/authService';
+import { ForceLoginOtp } from './ForceLoginOtp';
 
 interface LoginProps {
   onLogin: (username: string) => boolean;
@@ -16,6 +17,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [name, setName] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const [blockedSession, setBlockedSession] = useState<ActiveSessionInfo | null>(null);
+  const [canForceLogin, setCanForceLogin] = useState(false);
 
   const handleEmailLogin = async () => {
     const trimmedEmail = email.trim();
@@ -25,12 +28,26 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       setLoading(true);
       setError(null);
       setSuccess(null);
+      setBlockedSession(null);
+      setCanForceLogin(false);
       const { user } = await apiLogin(trimmedEmail, trimmedPassword, rememberMe);
       setSuccess('Login successful! Redirecting...');
       onLogin(user.email);
     } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || 'Login failed. Check email and password.';
-      setError(msg);
+      const blocked = readSessionActiveError(err);
+      if (blocked) {
+        setBlockedSession(blocked.activeSession);
+        setCanForceLogin(blocked.canForceLogin);
+        setError(null);
+      } else {
+        const data = err?.response?.data;
+        if (data?.error === 'DEVICE_RESTRICTED') {
+          setError(data.message || 'This device is restricted and cannot sign in.');
+        } else {
+          const msg = data?.message || (data?.error && data.error !== 'SESSION_ACTIVE' ? data.error : null) || err?.message || 'Login failed. Check email and password.';
+          setError(msg);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -148,6 +165,19 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
+          )}
+          {!showRegister && blockedSession && (
+            <ForceLoginOtp
+              email={email.trim()}
+              password={password}
+              rememberMe={rememberMe}
+              activeSession={blockedSession}
+              canForceLogin={canForceLogin}
+              onSuccess={(signedInEmail) => {
+                setSuccess('Force login successful. Previous session ended.');
+                onLogin(signedInEmail);
+              }}
+            />
           )}
         </div>
 

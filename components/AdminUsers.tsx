@@ -4,6 +4,7 @@ import apiClient from '../services/apiClient';
 import { generateDefaultPasswordsForAllUsers } from '../services/passwordService';
 import { getUserDisplayName as utilGetUserDisplayName, cleanCorruptedData } from '../utils/dataCleaning';
 import CompanyManagement from './CompanyManagement';
+import DeviceSessions from './DeviceSessions';
 
 export type AppRole = 'Admin' | 'SubAdmin' | 'Account Manager' | 'Sales' | 'Operations' | 'Pending';
 
@@ -54,7 +55,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({
   const hasAdminAccess = isAdmin || isSubAdmin;
   const effectiveUserRole = userRole || 'Account Manager';
   const effectiveCurrentUser = currentUser || '';
-  const [activeTab, setActiveTab] = useState<'users' | 'costs' | 'usage' | 'company-management'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'devices' | 'costs' | 'usage' | 'company-management'>('users');
 
   const getUserDisplayName = (email: string): string =>
     utilGetUserDisplayName(email, Array.isArray(users) ? users : []);
@@ -492,6 +493,7 @@ Continue?
 
       <div className="chip-scroll flex sm:hidden">
         <button type="button" onClick={() => setActiveTab('users')} className={`chip-btn app-chip ${activeTab === 'users' ? 'app-chip--active' : ''}`}>👥 Users</button>
+        {isAdmin && <button type="button" onClick={() => setActiveTab('devices')} className={`chip-btn app-chip ${activeTab === 'devices' ? 'app-chip--active' : ''}`}>📱 Devices</button>}
         <button type="button" onClick={() => setActiveTab('company-management')} className={`chip-btn app-chip ${activeTab === 'company-management' ? 'app-chip--active' : ''}`}>🏢 Companies</button>
         <button type="button" onClick={() => setActiveTab('costs')} className={`chip-btn app-chip ${activeTab === 'costs' ? 'app-chip--active' : ''}`}>💰 Costs</button>
         <button type="button" onClick={() => setActiveTab('usage')} className={`chip-btn app-chip ${activeTab === 'usage' ? 'app-chip--active' : ''}`}>👥 Usage</button>
@@ -499,6 +501,7 @@ Continue?
       <div className="hidden sm:block border-b border-gray-200">
         <nav className="-mb-px flex space-x-8">
           <button onClick={() => setActiveTab('users')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'users' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>👥 User Management</button>
+          {isAdmin && <button onClick={() => setActiveTab('devices')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'devices' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>📱 Devices</button>}
           <button onClick={() => setActiveTab('company-management')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'company-management' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>🏢 Company Management</button>
           <button onClick={() => setActiveTab('costs')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'costs' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>💰 Cost Calculator</button>
           <button onClick={() => setActiveTab('usage')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'usage' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>👥 User Usage Tracker</button>
@@ -842,6 +845,10 @@ Continue?
             </>
           )}
         </div>
+      )}
+
+      {isAdmin && activeTab === 'devices' && (
+        <DeviceSessions />
       )}
 
       {activeTab === 'costs' && (

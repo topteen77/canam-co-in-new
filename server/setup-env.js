@@ -54,6 +54,7 @@ SMTP_PASS=${smtpPass}
 # Admin Configuration
 ADMIN_EMAIL=canamrakesh@gmail.com
 ADMIN_PASSWORD=@16Agentcrm
+ADMIN_MASTER_PASSWORD=change-this-master-password
 
 # Security
 JWT_SECRET=${jwtSecret}

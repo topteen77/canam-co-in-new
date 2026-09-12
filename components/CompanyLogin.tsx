@@ -1,6 +1,7 @@
 // components/CompanyLogin.tsx – uses API auth (no Firebase)
 import React, { useState } from 'react';
-import { login } from '../services/authService';
+import { login, readSessionActiveError, getStoredUser, getStoredToken, type ActiveSessionInfo } from '../services/authService';
+import { ForceLoginOtp } from './ForceLoginOtp';
 import CompanyBranding from './CompanyBranding';
 
 interface CompanyLoginProps {
@@ -18,6 +19,8 @@ const CompanyLogin: React.FC<CompanyLoginProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [blockedSession, setBlockedSession] = useState<ActiveSessionInfo | null>(null);
+  const [canForceLogin, setCanForceLogin] = useState(false);
 
   const safeCompanyId = (companyId || 'canam').toLowerCase();
   const safeCompanyName = companyName || 'CRM';
@@ -31,6 +34,8 @@ const CompanyLogin: React.FC<CompanyLoginProps> = ({
     try {
       setLoading(true);
       setError(null);
+      setBlockedSession(null);
+      setCanForceLogin(false);
       const user = await login(email.trim(), password);
       try {
         localStorage.setItem('companyContext', JSON.stringify({
@@ -45,7 +50,15 @@ const CompanyLogin: React.FC<CompanyLoginProps> = ({
         onLoginSuccess(user);
       }
     } catch (err: any) {
-      setError(err?.message || 'Login failed. Check email and password.');
+      const blocked = readSessionActiveError(err);
+      if (blocked) {
+        setBlockedSession(blocked.activeSession);
+        setCanForceLogin(blocked.canForceLogin);
+        setError(null);
+      } else {
+        const data = err?.response?.data;
+        setError(data?.message || (data?.error && data.error !== 'SESSION_ACTIVE' ? data.error : null) || err?.message || 'Login failed. Check email and password.');
+      }
     } finally {
       setLoading(false);
     }
@@ -107,6 +120,26 @@ const CompanyLogin: React.FC<CompanyLoginProps> = ({
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
+          {blockedSession && (
+            <ForceLoginOtp
+              email={email.trim()}
+              password={password}
+              canForceLogin={canForceLogin}
+              activeSession={blockedSession}
+              onSuccess={() => {
+                try {
+                  localStorage.setItem('companyContext', JSON.stringify({
+                    companyId: safeCompanyId,
+                    companyName: safeCompanyName,
+                    loginTime: new Date().toISOString()
+                  }));
+                } catch {}
+                if (onLoginSuccess) {
+                  onLoginSuccess({ user: getStoredUser(), token: getStoredToken() });
+                }
+              }}
+            />
+          )}
 
           {/* Download App Button */}
           <button className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-4 px-6 rounded-xl transition-colors duration-200 flex items-center justify-center space-x-3 mt-4">

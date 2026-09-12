@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { login as apiLogin } from '../services/authService';
+import { login as apiLogin, readSessionActiveError, type ActiveSessionInfo } from '../services/authService';
+import { ForceLoginOtp } from './ForceLoginOtp';
 
 interface LoginProps {
   onLogin: (username: string) => boolean;
@@ -11,6 +12,8 @@ export const ImprovedLogin: React.FC<LoginProps> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [blockedSession, setBlockedSession] = useState<ActiveSessionInfo | null>(null);
+  const [canForceLogin, setCanForceLogin] = useState(false);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,12 +25,22 @@ export const ImprovedLogin: React.FC<LoginProps> = ({ onLogin }) => {
       setLoading(true);
       setError(null);
       setSuccess(null);
+      setBlockedSession(null);
+      setCanForceLogin(false);
       const { user } = await apiLogin(email.trim(), password);
       setSuccess('Login successful! Redirecting...');
       onLogin(user.email);
     } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || 'Login failed. Check email and password.';
-      setError(msg);
+      const blocked = readSessionActiveError(err);
+      if (blocked) {
+        setBlockedSession(blocked.activeSession);
+        setCanForceLogin(blocked.canForceLogin);
+        setError(null);
+      } else {
+        const data = err?.response?.data;
+        const msg = data?.message || (data?.error && data.error !== 'SESSION_ACTIVE' ? data.error : null) || err?.message || 'Login failed. Check email and password.';
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -85,6 +98,18 @@ export const ImprovedLogin: React.FC<LoginProps> = ({ onLogin }) => {
             <span>{loading ? 'Signing in...' : 'Sign in'}</span>
           </button>
         </form>
+        {blockedSession && (
+          <ForceLoginOtp
+            email={email.trim()}
+            password={password}
+            activeSession={blockedSession}
+            canForceLogin={canForceLogin}
+            onSuccess={(signedInEmail) => {
+              setSuccess('Force login successful. Previous session ended.');
+              onLogin(signedInEmail);
+            }}
+          />
+        )}
 
         <div className="mt-8 space-y-3">
           <div className="flex items-center gap-2 text-green-600">

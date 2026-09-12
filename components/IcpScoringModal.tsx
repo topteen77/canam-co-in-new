@@ -11,6 +11,17 @@ type IcpRow = {
   src: string;
 };
 
+export const TRAINING_SCORE_ROWS: IcpRow[] = [
+  { cat: 'Product Knowledge', param: 'Study destinations & programs', logic: ['Explains 3+ destinations clearly = 10', '1–2 destinations = 6', 'Unclear = 3'], ans: 'Canada, UK, Australia intakes and entry requirements', src: 'Training quiz / mock counseling' },
+  { cat: 'Process Knowledge', param: 'Application & visa steps', logic: ['Completes end-to-end without help = 10', 'Needs prompts = 6', 'Cannot complete = 3'], ans: 'Documents checklist, SOP, visa timeline', src: 'Role-play / trainer notes' },
+  { cat: 'CRM Usage', param: 'Lead, follow-up, meeting use', logic: ['Uses CRM independently = 10', 'Partial = 6', 'Needs hand-holding = 3'], ans: 'Creates lead, logs follow-up, meeting check-in', src: 'CRM activity after training' },
+  { cat: 'Compliance', param: 'Genuine files & policy', logic: ['Strict genuine-file practice = 10', 'Some gaps = 6', 'Weak = 3'], ans: 'Rejects fake docs, knows red flags', src: 'Case review / trainer' },
+  { cat: 'Counseling Quality', param: 'Student conversation', logic: ['Structured, student-first = 10', 'Average = 6', 'Script-only / poor = 3'], ans: 'Need, budget, and timeline covered', src: 'Mock session' },
+  { cat: 'Follow-up Discipline', param: 'Next-step ownership', logic: ['Always books next action = 10', 'Sometimes = 6', 'Rarely = 3'], ans: 'Follow-up date set the same day', src: 'CRM follow-ups' },
+  { cat: 'Participation', param: 'Attendance & practice', logic: ['Full attendance + practice = 10', 'Partial = 6', 'Missed most = 3'], ans: 'Attended all sessions and completed exercises', src: 'Attendance sheet' },
+  { cat: 'Assessment', param: 'End-of-training test', logic: ['≥80% = 10', '60–79% = 7', '<60% = 4'], ans: 'Written or oral assessment score', src: 'Trainer assessment' }
+];
+
 export const ICP_SCORE_ROWS: IcpRow[] = [
   { cat: 'Business Profile', param: 'Business Age', logic: ['24+ months = 10', '12-24 = 7', '6-12 = 5', '<6 = 2'], ans: '6 months, 2 years, 5+ years', src: 'Zauba, Google reviews' },
   { cat: 'Services Portfolio', param: 'Main Study Destinations', logic: ['Canada focus = 3', 'UK = 2', 'Others = 1'], ans: 'Canada, US, UK, Australia', src: 'Website, Social media' },
@@ -29,6 +40,9 @@ export const ICP_SCORE_STEP = 1;
 
 export const emptyIcpCategoryScores = (): IcpCategoryScores =>
   Object.fromEntries(ICP_SCORE_ROWS.map((row) => [row.cat, ''])) as IcpCategoryScores;
+
+export const emptyTrainingCategoryScores = (): IcpCategoryScores =>
+  Object.fromEntries(TRAINING_SCORE_ROWS.map((row) => [row.cat, ''])) as IcpCategoryScores;
 
 export const clampIcpScore = (value: number): number => {
   if (!Number.isFinite(value)) return ICP_SCORE_MIN;
@@ -49,6 +63,10 @@ interface IcpScoringModalProps {
   onApply: (score: number) => void;
   banner?: React.ReactNode;
   applyDisabled?: boolean;
+  title?: string;
+  icon?: string;
+  rows?: IcpRow[];
+  applyNoun?: string;
 }
 
 const ScoreStepper: React.FC<{
@@ -118,7 +136,11 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
   onCategoryScoreChange,
   onApply,
   banner,
-  applyDisabled = false
+  applyDisabled = false,
+  title = 'ICP Scoring System',
+  icon = '🎯',
+  rows = ICP_SCORE_ROWS,
+  applyNoun = 'ICP Score',
 }) => {
   const [showReference, setShowReference] = useState(false);
   const scores = Object.values(categoryScores).filter((score) => score !== '') as number[];
@@ -153,8 +175,8 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
       >
         <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 flex justify-between items-center flex-shrink-0 gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-2xl sm:text-3xl">🎯</span>
-            <h2 className="text-lg sm:text-2xl font-bold text-slate-800 truncate">ICP Scoring System</h2>
+            <span className="text-2xl sm:text-3xl">{icon}</span>
+            <h2 className="text-lg sm:text-2xl font-bold text-slate-800 truncate">{title}</h2>
           </div>
           <button
             type="button"
@@ -180,7 +202,7 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
               <li>Review each category and assessment parameter</li>
               <li>Evaluate the agency based on the scoring logic</li>
               <li>Enter a score ({ICP_SCORE_MIN}–{ICP_SCORE_MAX}, step {ICP_SCORE_STEP}) for each category</li>
-              <li>Apply the average to the ICP Score field</li>
+              <li>Apply the average to the {applyNoun} field</li>
             </ol>
           </details>
 
@@ -204,7 +226,7 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
           </div>
 
           <div className="space-y-3 md:hidden">
-            {ICP_SCORE_ROWS.map((row) => (
+            {rows.map((row) => (
               <div key={row.cat} className="border border-slate-200 rounded-xl p-3 bg-white shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -237,7 +259,7 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {ICP_SCORE_ROWS.map((row) => (
+                {rows.map((row) => (
                   <tr key={row.cat} className="hover:bg-slate-50/50">
                     <td className="px-4 py-4 text-sm font-bold text-slate-800 border-r border-slate-100">{row.cat}</td>
                     <td className="px-4 py-4 text-sm font-medium text-slate-600 border-r border-slate-100">{row.param}</td>
@@ -296,7 +318,7 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
                 Example answers and where to verify them when scoring each category.
               </p>
               <div className="space-y-3 md:hidden">
-                {ICP_SCORE_ROWS.map((row) => (
+                {rows.map((row) => (
                   <div key={row.cat} className="border border-slate-200 rounded-xl p-3">
                     <p className="font-bold text-slate-800">{row.cat}</p>
                     <p className="text-xs text-slate-500 mb-2">{row.param}</p>
@@ -316,7 +338,7 @@ export const IcpScoringModal: React.FC<IcpScoringModalProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {ICP_SCORE_ROWS.map((row) => (
+                    {rows.map((row) => (
                       <tr key={row.cat}>
                         <td className="px-4 py-3 text-sm font-bold text-slate-800 border-r">{row.cat}</td>
                         <td className="px-4 py-3 text-sm text-slate-600 border-r">{row.param}</td>

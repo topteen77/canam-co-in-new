@@ -22,6 +22,8 @@ import * as documentService from './services/documentService.js';
 import * as emailService from './services/emailService.js';
 import * as leadTagService from './services/leadTagService.js';
 import * as authController from './controllers/authController.js';
+import { authenticateToken, requireAdmin, requireMasterUnlock } from './middleware/auth.js';
+import { ensureTables as ensureSessionTables } from './services/sessionService.js';
 import * as notificationService from './services/notificationService.js';
 import * as passwordService from './services/passwordService.js';
 import * as travelClaimsService from './services/travelClaimsService.js';
@@ -34,7 +36,7 @@ import * as emailCampaignsService from './services/emailCampaignsService.js';
 import * as fieldConfigsService from './services/fieldConfigsService.js';
 import * as travelSessionsService from './services/travelSessionsService.js';
 import * as meetingCompletionsService from './services/meetingCompletionsService.js';
-import jwt from 'jsonwebtoken';
+import * as meetingAlertsService from './services/meetingAlertsService.js';
 
 // Load environment variables
 const __filename = fileURLToPath(import.meta.url);
@@ -189,6 +191,27 @@ app.post('/api/meetings/add', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+app.post('/api/meetings/presence', authenticateToken, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = await meetingAlertsService.processMeetingPresence({
+      ...body,
+      email: req.user?.email || body.email,
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.get('/api/admin/meeting-alerts', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const alerts = await meetingAlertsService.listMeetingAlerts();
+    res.json(alerts);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.put('/api/meetings/update/:id', async (req, res) => {
   try {
     await meetingService.updateMeeting(req.params.id, req.body);
@@ -314,23 +337,31 @@ app.post('/api/users', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// --- MIDDLEWARE: Protect Routes ---
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-
-  if (!token) return res.sendStatus(401);
-
-  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-change-this', (err, user) => {
-    if (err) return res.sendStatus(403);
-    req.user = user;
-    next();
-  });
-};
+const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many OTP attempts. Try again later.' },
+});
 
 app.post('/api/auth/login', authController.login);
 app.post('/api/auth/register', authController.register);
 app.get('/api/auth/me', authenticateToken, authController.getMe);
+app.post('/api/auth/force-login/request-otp', otpLimiter, authController.requestAdminForceLoginOtp);
+app.post('/api/auth/force-login', otpLimiter, authController.adminForceLogin);
+app.get('/api/auth/session', authenticateToken, authController.getCurrentSession);
+app.post('/api/auth/session/heartbeat', authenticateToken, authController.heartbeat);
+app.post('/api/auth/logout', authenticateToken, authController.logoutCurrent);
+app.post('/api/admin/master/unlock', otpLimiter, authenticateToken, requireAdmin, authController.unlockMaster);
+app.get('/api/admin/login-intel', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminLoginIntel);
+app.get('/api/admin/devices', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminListDevices);
+app.get('/api/admin/sessions', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminListSessions);
+app.post('/api/admin/sessions/:id/logout', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminLogoutSession);
+app.post('/api/admin/devices/:deviceId/logout', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminLogoutDevice);
+app.post('/api/admin/devices/:deviceId/restrict', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminRestrictDevice);
+app.post('/api/admin/devices/:deviceId/unrestrict', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminUnrestrictDevice);
+app.post('/api/admin/users/:email/logout-all', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminLogoutUser);
 
 // --- ACTIVITY LOG ROUTES ---
 app.get('/api/activities', async (req, res) => {
@@ -830,6 +861,12 @@ app.get('/api/debug/attendance', async (req, res) => {
 // --- START SERVER ---
 const useHttps = process.env.SSL_KEY_PATH && process.env.SSL_CERT_PATH;
 const httpsPort = process.env.HTTPS_PORT ? parseInt(process.env.HTTPS_PORT, 10) : PORT;
+
+ensureSessionTables().then(() => {
+  console.log('✅ Session and device tables ready');
+}).catch((err) => {
+  console.error('⚠️ Could not prepare session tables:', err.message);
+});
 
 function startListening() {
   if (useHttps) {
