@@ -133,6 +133,26 @@ export async function ensureTables() {
   `);
   await addColumnIfMissing('user_sessions', 'environment', "ADD COLUMN environment VARCHAR(32) NOT NULL DEFAULT 'local'");
   await addColumnIfMissing('user_devices', 'environment', "ADD COLUMN environment VARCHAR(32) NOT NULL DEFAULT 'local'");
+  await addColumnIfMissing('user_sessions', 'location', "ADD COLUMN location VARCHAR(512) DEFAULT ''");
+  await addColumnIfMissing('user_sessions', 'latitude', 'ADD COLUMN latitude DECIMAL(10,7) NULL');
+  await addColumnIfMissing('user_sessions', 'longitude', 'ADD COLUMN longitude DECIMAL(10,7) NULL');
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS last_login_info (
+      id VARCHAR(64) PRIMARY KEY,
+      user_email VARCHAR(255) NOT NULL,
+      device_id VARCHAR(128) DEFAULT '',
+      device_type VARCHAR(32) DEFAULT '',
+      device_name VARCHAR(255) DEFAULT '',
+      ip_address VARCHAR(64) DEFAULT '',
+      location VARCHAR(512) DEFAULT '',
+      latitude DECIMAL(10,7) NULL,
+      longitude DECIMAL(10,7) NULL,
+      last_seen DATETIME NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_last_login_email (user_email),
+      INDEX idx_last_login_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
   await db.query(`
     CREATE TABLE IF NOT EXISTS restricted_devices (
       device_id VARCHAR(128) PRIMARY KEY,
@@ -169,6 +189,9 @@ function publicSession(row) {
     revokedAt: row.revoked_at,
     revokedBy: row.revoked_by,
     environment: row.environment || 'local',
+    location: row.location || '',
+    latitude: row.latitude,
+    longitude: row.longitude,
   };
 }
 
@@ -241,7 +264,7 @@ export async function upsertDevice({ userId, email, deviceId, deviceType, device
   return { deviceId: idValue, deviceType: type, deviceName: name, environment: env };
 }
 
-export async function createSession({ userId, email, deviceId, deviceType, deviceName, userAgent, ip, environment }) {
+export async function createSession({ userId, email, deviceId, deviceType, deviceName, userAgent, ip, environment, location, latitude, longitude }) {
   await ensureTables();
   const sessionId = newId();
   const userEmail = String(email || '').trim().toLowerCase();
@@ -251,11 +274,79 @@ export async function createSession({ userId, email, deviceId, deviceType, devic
   await upsertDevice({ userId, email: userEmail, deviceId, deviceType: type, deviceName: name, userAgent, ip, environment: env });
   await db.query(
     `INSERT INTO user_sessions
-      (id, user_id, user_email, device_id, device_type, device_name, user_agent, ip_address, environment, status, created_at, last_seen)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())`,
-    [sessionId, String(userId || ''), userEmail, deviceId, type, name, userAgent || '', ip || '', env]
+      (id, user_id, user_email, device_id, device_type, device_name, user_agent, ip_address, environment, location, latitude, longitude, status, created_at, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())`,
+    [sessionId, String(userId || ''), userEmail, deviceId, type, name, userAgent || '', ip || '', env, location || '', latitude ?? null, longitude ?? null]
   );
   return getSessionById(sessionId);
+}
+
+export async function getMostRecentSession(email, exceptSessionId = null) {
+  await ensureTables();
+  const userEmail = String(email || '').trim().toLowerCase();
+  const [rows] = exceptSessionId
+    ? await db.query(
+      `SELECT * FROM user_sessions WHERE user_email = ? AND id != ? ORDER BY last_seen DESC LIMIT 1`,
+      [userEmail, exceptSessionId]
+    )
+    : await db.query(
+      `SELECT * FROM user_sessions WHERE user_email = ? ORDER BY last_seen DESC LIMIT 1`,
+      [userEmail]
+    );
+  return rows[0] || null;
+}
+
+export async function recordForceLoginInfo(sessionRow) {
+  if (!sessionRow) return null;
+  await ensureTables();
+  const info = publicSession(sessionRow);
+  const id = newId();
+  await db.query(
+    `INSERT INTO last_login_info
+      (id, user_email, device_id, device_type, device_name, ip_address, location, latitude, longitude, last_seen, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+    [
+      id,
+      info.userEmail || '',
+      info.deviceId || '',
+      info.deviceType || '',
+      info.deviceName || '',
+      info.ipAddress || '',
+      info.location || '',
+      info.latitude ?? null,
+      info.longitude ?? null,
+      info.lastSeen || null,
+    ]
+  );
+  return { ...info, id };
+}
+
+export async function listLastLogins() {
+  await ensureTables();
+  const [rows] = await db.query(`
+    SELECT l.*
+    FROM last_login_info l
+    INNER JOIN (
+      SELECT user_email, MAX(created_at) AS created_at
+      FROM last_login_info
+      GROUP BY user_email
+    ) latest
+      ON latest.user_email = l.user_email AND latest.created_at = l.created_at
+    ORDER BY l.created_at DESC
+  `);
+  return (rows || []).map((row) => ({
+    id: row.id,
+    userEmail: row.user_email,
+    deviceId: row.device_id,
+    deviceType: row.device_type,
+    deviceName: row.device_name,
+    ipAddress: row.ip_address,
+    location: row.location || '',
+    latitude: row.latitude,
+    longitude: row.longitude,
+    lastSeen: row.last_seen,
+    createdAt: row.created_at,
+  }));
 }
 
 export async function revokeSession(sessionId, revokedBy = 'system') {

@@ -14,7 +14,7 @@ import {
   addAttendanceRecord 
 } from './services/attendanceService';
 import apiClient from './services/apiClient';
-import { restoreAuth, logout as authLogout, getStoredUser } from './services/authService';
+import { restoreAuth, logout as authLogout, getStoredUser, consumePendingLastLogin, type ActiveSessionInfo } from './services/authService';
 import { getUserDisplayName as utilGetUserDisplayName } from './utils/dataCleaning';
 import { canMutateLead } from './utils/leadPermissions';
 import { getAssignedLeads } from './utils/leadVisibility';
@@ -65,6 +65,9 @@ import { useSessionGuard } from './hooks/useSessionGuard';
 import { useMeetingPresenceWatch } from './hooks/useMeetingPresenceWatch';
 import { useAdminMeetingAlerts } from './hooks/useAdminMeetingAlerts';
 import AdminMeetingAlertBanner from './components/AdminMeetingAlertBanner';
+import LastLoginPopup from './components/LastLoginPopup';
+import LastLoginInfo from './components/LastLoginInfo';
+import UserAvatar from './components/UserAvatar';
 import { parseViewFromHash, syncViewHash } from './utils/appView';
 
 const CONFIGURED_SUPER_ADMINS = ['canamrakesh@gmail.com', 'manchandapranjal01@gmail.com'];
@@ -134,6 +137,7 @@ const App: React.FC = () => {
   }, [readNotificationIds]);
   const [showSessionTimeoutModal, setShowSessionTimeoutModal] = useState(false);
   const [logoutNotice, setLogoutNotice] = useState<string | null>(null);
+  const [lastLoginInfo, setLastLoginInfo] = useState<ActiveSessionInfo | null>(null);
   const [dismissedNotificationIds, setDismissedNotificationIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('crm_dismissed_notification_ids');
@@ -353,6 +357,7 @@ const App: React.FC = () => {
   const handleLogin = (email: string) => {
       const u = getStoredUser();
       setCurrentUser(u?.email ?? email);
+      setLastLoginInfo(consumePendingLastLogin());
       return true;
   };
 
@@ -762,9 +767,10 @@ const App: React.FC = () => {
                     {view === 'usage-report' && (<> <span className="sm:hidden">Usage</span><span className="hidden sm:inline">Usage Report</span></>)}
                     {view === 'database-admin' && (<> <span className="sm:hidden">DB</span><span className="hidden sm:inline">Database</span></>)}
                     {view === 'data-export' && (<> <span className="sm:hidden">Export</span><span className="hidden sm:inline">Data Export</span></>)}
+                    {view === 'last-login-info' && (<> <span className="sm:hidden">Logins</span><span className="hidden sm:inline">Last Login Info</span></>)}
                     {view === 'meeting-photos' && <><span className="sm:hidden">Photos</span><span className="hidden sm:inline">Meeting Photos Gallery</span></>}
                     {view === 'website-control' && (<> <span className="sm:hidden">Site</span><span className="hidden sm:inline">Website Control</span></>)}
-                    {!['leads', 'pipeline', 'meetings', 'followups', 'live-tracking', 'travel-claims', 'reports', 'calls-report', 'bulk-email', 'notifications', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'meeting-photos', 'website-control'].includes(view) && view.replace(/-/g, ' ')}
+                    {!['leads', 'pipeline', 'meetings', 'followups', 'live-tracking', 'travel-claims', 'reports', 'calls-report', 'bulk-email', 'notifications', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'meeting-photos', 'website-control'].includes(view) && view.replace(/-/g, ' ')}
                   </h1>
                 </div>
                 <div className="app-header-actions flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
@@ -812,8 +818,8 @@ const App: React.FC = () => {
                     onNavigateToLead={handleNavigateToLead}
                     onOpenNotificationsCenter={() => setView('notifications')}
                   />
-                  <button onClick={() => setUserProfileOpen(true)} title="Profile" aria-label="Profile" className="app-header-btn app-header-btn--ghost">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  <button onClick={() => setUserProfileOpen(true)} title="Profile" aria-label="Profile" className="app-header-btn app-header-btn--ghost !p-0 overflow-hidden">
+                    <UserAvatar name={utilGetUserDisplayName(currentUser || '', availableUsers) || currentUser} size="sm" />
                   </button>
                 </div>
               </div>
@@ -964,13 +970,14 @@ const App: React.FC = () => {
                     {view === 'usage-report' && isAdmin && <UsageReport currentUser={currentUser} isAdmin={isAdmin} />}
                     {view === 'database-admin' && isAdmin && <DatabaseAdmin />}
                     {view === 'data-export' && isAdmin && <DataExport leads={leadsForReports} isAdmin={isAdmin} />}
+                    {view === 'last-login-info' && isAdmin && <LastLoginInfo availableUsers={availableUsers} />}
                     {view === 'meeting-photos' && <MeetingPhotosAdmin isOpen={true} onClose={() => setView('leads')} />}
                     {view === 'website-control' && isAdmin && (
                         <div className="bg-white p-4 rounded-xl shadow">
                             <WebsiteControlPanel isAdmin={isAdmin} />
                         </div>
                     )}
-                    {!['leads', 'pipeline', 'reports', 'meetings', 'followups', 'notifications', 'calls-report', 'travel-claims', 'bulk-email', 'live-tracking', 'website-control', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'meeting-photos'].includes(view) && (
+                    {!['leads', 'pipeline', 'reports', 'meetings', 'followups', 'notifications', 'calls-report', 'travel-claims', 'bulk-email', 'live-tracking', 'website-control', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'meeting-photos'].includes(view) && (
                         <div className="text-slate-600 text-center py-8">Select a section from the sidebar.</div>
                     )}
                 </>
@@ -1075,6 +1082,9 @@ const App: React.FC = () => {
         <MobileCacheButton />
         <PWAInstallPrompt />
 
+        {lastLoginInfo && (
+          <LastLoginPopup info={lastLoginInfo} onClose={() => setLastLoginInfo(null)} />
+        )}
         {renderTimeoutModal()}
       </div>
     </SubdomainRouter>

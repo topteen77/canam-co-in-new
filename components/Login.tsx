@@ -18,6 +18,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [blockedSession, setBlockedSession] = useState<ActiveSessionInfo | null>(null);
+  const [needsForceLogin, setNeedsForceLogin] = useState(false);
   const [canForceLogin, setCanForceLogin] = useState(false);
 
   const handleEmailLogin = async () => {
@@ -29,6 +30,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       setError(null);
       setSuccess(null);
       setBlockedSession(null);
+      setNeedsForceLogin(false);
       setCanForceLogin(false);
       const { user } = await apiLogin(trimmedEmail, trimmedPassword, rememberMe);
       setSuccess('Login successful! Redirecting...');
@@ -37,6 +39,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       const blocked = readSessionActiveError(err);
       if (blocked) {
         setBlockedSession(blocked.activeSession);
+        setNeedsForceLogin(true);
         setCanForceLogin(blocked.canForceLogin);
         setError(null);
       } else {
@@ -166,7 +169,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           )}
-          {!showRegister && blockedSession && (
+          {!showRegister && needsForceLogin && (
             <ForceLoginOtp
               email={email.trim()}
               password={password}

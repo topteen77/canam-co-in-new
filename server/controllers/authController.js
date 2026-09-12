@@ -27,12 +27,39 @@ import {
   normalizeEnvironment,
   deviceNameFromUa,
   ensureTables,
+  getMostRecentSession,
+  listLastLogins,
+  recordForceLoginInfo,
 } from '../services/sessionService.js';
 
 function newId() {
   return typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `id-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+}
+
+function isPrivateIp(ip = '') {
+  const value = String(ip || '').replace('::ffff:', '');
+  return !value
+    || value === '127.0.0.1'
+    || value === '::1'
+    || value.startsWith('10.')
+    || value.startsWith('192.168.')
+    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(value);
+}
+
+async function lookupIpLocation(ip) {
+  if (isPrivateIp(ip)) return '';
+  try {
+    const res = await fetch(`https://ipwho.is/${encodeURIComponent(String(ip).replace('::ffff:', ''))}`, {
+      signal: AbortSignal.timeout(2500),
+    });
+    const data = await res.json();
+    if (!data?.success) return '';
+    return [data.city, data.region, data.country].filter(Boolean).join(', ');
+  } catch {
+    return '';
+  }
 }
 
 function devicePayload(req) {
@@ -43,7 +70,19 @@ function devicePayload(req) {
     || `dev-${crypto.createHash('sha256').update(`${userAgent}|${ip}`).digest('hex').slice(0, 24)}`;
   const deviceName = String(req.body.deviceName || '').trim() || deviceNameFromUa(userAgent, deviceType);
   const environment = normalizeEnvironment(req.body.environment);
-  return { deviceId, deviceType, deviceName, userAgent, ip, environment };
+  const latitude = Number(req.body.latitude);
+  const longitude = Number(req.body.longitude);
+  return {
+    deviceId,
+    deviceType,
+    deviceName,
+    userAgent,
+    ip,
+    environment,
+    location: String(req.body.location || '').trim(),
+    latitude: Number.isFinite(latitude) ? latitude : null,
+    longitude: Number.isFinite(longitude) ? longitude : null,
+  };
 }
 
 function signToken(user, sessionId) {
@@ -89,6 +128,20 @@ async function verifyUserPassword(email, password) {
 async function issueLogin(user, passwordCol, device, force = false) {
   const safeUser = sanitizeUser(user, passwordCol);
   await ensureTables();
+  const previous = force
+    ? (
+      await getActiveSession(safeUser.email, device.environment)
+      || (await getActiveSessionsAll(safeUser.email))[0]
+      || await getMostRecentSession(safeUser.email)
+    )
+    : null;
+  if (!device.location) {
+    device.location = await lookupIpLocation(device.ip);
+  }
+  let lastLogin = null;
+  if (force && previous) {
+    lastLogin = await recordForceLoginInfo(previous);
+  }
   if (force) {
     await revokeAllSessions(safeUser.email, safeUser.email, null, device.environment);
   }
@@ -103,6 +156,7 @@ async function issueLogin(user, passwordCol, device, force = false) {
     token,
     user: safeUser,
     session: publicSession(session),
+    lastLogin: force ? lastLogin : null,
   };
 }
 
@@ -310,6 +364,32 @@ export const adminListDevices = async (req, res) => {
   try {
     const devices = await listDevices();
     res.json(devices);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const adminLastLogins = async (req, res) => {
+  try {
+    const logins = await listLastLogins();
+    res.json(logins);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const adminDeviceSummary = async (req, res) => {
+  try {
+    const devices = await listDevices();
+    res.json(devices.map((row) => ({
+      userEmail: row.userEmail,
+      deviceId: row.deviceId,
+      deviceType: row.deviceType,
+      deviceName: row.deviceName,
+      lastSeen: row.lastSeen,
+      hasActiveSession: row.hasActiveSession,
+      environment: row.environment,
+    })));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

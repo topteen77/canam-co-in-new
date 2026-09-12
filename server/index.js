@@ -76,6 +76,10 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'canam-crm-api' });
+});
+
 // --- 🔎 DEBUG ROUTE (Now placed safely AFTER db import) ---
 app.get('/api/leads/debug', async (req, res) => {
   try {
@@ -355,6 +359,8 @@ app.post('/api/auth/session/heartbeat', authenticateToken, authController.heartb
 app.post('/api/auth/logout', authenticateToken, authController.logoutCurrent);
 app.post('/api/admin/master/unlock', otpLimiter, authenticateToken, requireAdmin, authController.unlockMaster);
 app.get('/api/admin/login-intel', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminLoginIntel);
+app.get('/api/admin/device-summary', authenticateToken, requireAdmin, authController.adminDeviceSummary);
+app.get('/api/admin/last-logins', authenticateToken, requireAdmin, authController.adminLastLogins);
 app.get('/api/admin/devices', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminListDevices);
 app.get('/api/admin/sessions', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminListSessions);
 app.post('/api/admin/sessions/:id/logout', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminLogoutSession);

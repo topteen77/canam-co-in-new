@@ -17,6 +17,7 @@ export interface AuthUser {
 
 export interface ActiveSessionInfo {
   id?: string;
+  userEmail?: string;
   deviceId?: string;
   deviceType?: string;
   deviceName?: string;
@@ -24,6 +25,31 @@ export interface ActiveSessionInfo {
   lastSeen?: string;
   createdAt?: string;
   environment?: string;
+  location?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+const LAST_LOGIN_KEY = 'crm_last_login_info';
+
+export function storePendingLastLogin(info: ActiveSessionInfo | null | undefined): void {
+  if (typeof window === 'undefined') return;
+  if (!info) {
+    sessionStorage.removeItem(LAST_LOGIN_KEY);
+    return;
+  }
+  sessionStorage.setItem(LAST_LOGIN_KEY, JSON.stringify(info));
+}
+
+export function consumePendingLastLogin(): ActiveSessionInfo | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(LAST_LOGIN_KEY);
+    sessionStorage.removeItem(LAST_LOGIN_KEY);
+    return raw ? JSON.parse(raw) as ActiveSessionInfo : null;
+  } catch {
+    return null;
+  }
 }
 
 export class SessionActiveError extends Error {
@@ -83,12 +109,34 @@ function clearAuthStorage(): void {
   sessionStorage.removeItem(CRM_TOKEN);
 }
 
-function loginBody(email: string, password: string, extra: Record<string, unknown> = {}) {
+async function collectLoginLocation(): Promise<{ latitude?: number; longitude?: number; location?: string }> {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return {};
+  try {
+    const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: false,
+        timeout: 2500,
+        maximumAge: 300000,
+      });
+    });
+    return {
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+      location: `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`,
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function loginBody(email: string, password: string, extra: Record<string, unknown> = {}) {
+  const location = await collectLoginLocation();
   return {
     email: email.trim().toLowerCase(),
     password: password.trim(),
     ...getDeviceFingerprint(),
     environment: getSessionEnvironment(),
+    ...location,
     ...extra,
   };
 }
@@ -108,11 +156,15 @@ function throwIfSessionActive(err: any): never {
 
 export async function login(email: string, password: string, rememberMe = true): Promise<{ user: AuthUser; token: string }> {
   try {
-    const res = await apiClient.post<{ success: boolean; token: string; user: AuthUser }>('/auth/login', loginBody(email, password));
+    const res = await apiClient.post<{ success: boolean; token: string; user: AuthUser; lastLogin?: ActiveSessionInfo | null }>(
+      '/auth/login',
+      await loginBody(email, password)
+    );
     if (!res.data?.token || !res.data?.user) throw new Error('Invalid response from server');
     const { token, user } = res.data;
     persistAuth(token, user, rememberMe);
     setAuthHeader(token);
+    storePendingLastLogin(null);
     return { user, token };
   } catch (err) {
     throwIfSessionActive(err);
@@ -137,20 +189,28 @@ export function masterUnlockHeaders(): Record<string, string> {
 }
 
 export async function requestForceLoginOtp(email: string, password: string): Promise<{ success: boolean; message?: string }> {
-  const res = await apiClient.post('/auth/force-login/request-otp', loginBody(email, password));
+  const res = await apiClient.post('/auth/force-login/request-otp', await loginBody(email, password));
   return res.data;
 }
 
-export async function forceLogin(email: string, password: string, masterPassword: string, rememberMe = true): Promise<{ user: AuthUser; token: string }> {
-  const res = await apiClient.post<{ success: boolean; token: string; user: AuthUser }>(
+export async function forceLogin(
+  email: string,
+  password: string,
+  masterPassword: string,
+  rememberMe = true,
+  fallbackLastLogin?: ActiveSessionInfo | null
+): Promise<{ user: AuthUser; token: string; lastLogin: ActiveSessionInfo | null }> {
+  const res = await apiClient.post<{ success: boolean; token: string; user: AuthUser; lastLogin?: ActiveSessionInfo | null }>(
     '/auth/force-login',
-    loginBody(email, password, { masterPassword: masterPassword.trim() })
+    await loginBody(email, password, { masterPassword: masterPassword.trim() })
   );
   if (!res.data?.token || !res.data?.user) throw new Error('Invalid response from server');
-  const { token, user } = res.data;
+  const { token, user, lastLogin } = res.data;
   persistAuth(token, user, rememberMe);
   setAuthHeader(token);
-  return { user, token };
+  const previous = lastLogin || fallbackLastLogin || { userEmail: email.trim().toLowerCase() };
+  storePendingLastLogin(previous);
+  return { user, token, lastLogin: previous };
 }
 
 export async function unlockMaster(masterPassword: string): Promise<void> {

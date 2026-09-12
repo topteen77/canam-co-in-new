@@ -5,6 +5,7 @@ import { generateDefaultPasswordsForAllUsers } from '../services/passwordService
 import { getUserDisplayName as utilGetUserDisplayName, cleanCorruptedData } from '../utils/dataCleaning';
 import CompanyManagement from './CompanyManagement';
 import DeviceSessions from './DeviceSessions';
+import UserAvatar from './UserAvatar';
 
 export type AppRole = 'Admin' | 'SubAdmin' | 'Account Manager' | 'Sales' | 'Operations' | 'Pending';
 
@@ -56,6 +57,17 @@ const AdminUsers: React.FC<AdminUsersProps> = ({
   const effectiveUserRole = userRole || 'Account Manager';
   const effectiveCurrentUser = currentUser || '';
   const [activeTab, setActiveTab] = useState<'users' | 'devices' | 'costs' | 'usage' | 'company-management'>('users');
+  const [userQuery, setUserQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [deviceFilter, setDeviceFilter] = useState('all');
+  const [deviceRows, setDeviceRows] = useState<Array<{
+    userEmail?: string;
+    deviceId?: string;
+    deviceType?: string;
+    deviceName?: string;
+    lastSeen?: string;
+    hasActiveSession?: boolean;
+  }>>([]);
 
   const getUserDisplayName = (email: string): string =>
     utilGetUserDisplayName(email, Array.isArray(users) ? users : []);
@@ -75,6 +87,13 @@ const AdminUsers: React.FC<AdminUsersProps> = ({
   useEffect(() => {
     if (hasAdminAccess || effectiveCurrentUser) loadUsers();
   }, [hasAdminAccess, effectiveCurrentUser]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    apiClient.get('/admin/device-summary')
+      .then((res) => setDeviceRows(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setDeviceRows([]));
+  }, [isAdmin]);
 
   const updateUser = async (userId: string, updates: Partial<AppUser>) => {
     try {
@@ -468,6 +487,54 @@ Continue?
 
   const roleOptions: AppRole[] = useMemo(() => ['Admin', 'SubAdmin', 'Account Manager', 'Sales', 'Operations', 'Pending'], []);
 
+  const latestDeviceByEmail = useMemo(() => {
+    const map = new Map<string, (typeof deviceRows)[number]>();
+    deviceRows.forEach((row) => {
+      const email = String(row.userEmail || '').toLowerCase();
+      if (!email) return;
+      const prev = map.get(email);
+      if (!prev || new Date(row.lastSeen || 0).getTime() > new Date(prev.lastSeen || 0).getTime()) {
+        map.set(email, row);
+      }
+    });
+    return map;
+  }, [deviceRows]);
+
+  const filteredUsers = useMemo(() => {
+    const q = userQuery.trim().toLowerCase();
+    return (Array.isArray(users) ? users : []).filter((user) => {
+      const role = user.role || 'Pending';
+      if (roleFilter !== 'all' && role !== roleFilter) return false;
+      const device = latestDeviceByEmail.get(String(user.email || '').toLowerCase());
+      const deviceType = String(device?.deviceType || '').toLowerCase();
+      if (deviceFilter === 'none' && device) return false;
+      if (deviceFilter !== 'all' && deviceFilter !== 'none' && deviceType !== deviceFilter) return false;
+      if (!q) return true;
+      const hay = [
+        user.name,
+        user.email,
+        role,
+        device?.deviceName,
+        device?.deviceType,
+        device?.deviceId,
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }, [users, userQuery, roleFilter, deviceFilter, latestDeviceByEmail]);
+
+  const clearUserFilters = () => {
+    setUserQuery('');
+    setRoleFilter('all');
+    setDeviceFilter('all');
+  };
+
+  const deviceLabel = (email?: string) => {
+    const device = latestDeviceByEmail.get(String(email || '').toLowerCase());
+    if (!device) return 'No device yet';
+    const name = device.deviceName || device.deviceType || 'Unknown';
+    return device.hasActiveSession ? `${name} · Live` : name;
+  };
+
   if (!hasAdminAccess && !effectiveCurrentUser) {
     return (
       <div className="space-y-3">
@@ -641,6 +708,59 @@ Continue?
             </details>
           </div>
 
+          <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex-1 min-w-0">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Search</label>
+                <input
+                  type="search"
+                  value={userQuery}
+                  onChange={(e) => setUserQuery(e.target.value)}
+                  placeholder="Name, email, or device"
+                  className="w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px]"
+                />
+              </div>
+              <div className="sm:w-48">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Role</label>
+                <select
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                >
+                  <option value="all">All roles</option>
+                  {roleOptions.map((role) => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:w-48">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Device</label>
+                <select
+                  value={deviceFilter}
+                  onChange={(e) => setDeviceFilter(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                >
+                  <option value="all">All devices</option>
+                  <option value="desktop">Desktop</option>
+                  <option value="mobile">Mobile</option>
+                  <option value="tablet">Tablet</option>
+                  <option value="unknown">Unknown</option>
+                  <option value="none">No device yet</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={clearUserFilters}
+                className="px-3 py-2 text-sm border-2 border-slate-300 rounded-lg min-h-[44px] text-slate-700 hover:bg-slate-50"
+              >
+                Clear
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Showing {filteredUsers.length} of {users.length} users
+            </p>
+          </div>
+
           {loading ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -648,9 +768,14 @@ Continue?
             </div>
           ) : (
             <>
+              {filteredUsers.length === 0 && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600 text-center">
+                  No users match this role or device filter.
+                </div>
+              )}
               {/* Mobile cards */}
               <div className="space-y-2.5 md:hidden pb-16">
-                {(Array.isArray(users) ? users : []).map((u) => {
+                {filteredUsers.map((u) => {
                   const displayName = getUserDisplayName(u.email || '') || u.name || 'Unnamed';
                   const email = cleanCorruptedData(u.email || '');
                   return (
@@ -659,12 +784,16 @@ Continue?
                       className={`admin-user-card ${u.role === 'Admin' ? 'admin-user-card--admin' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex items-start gap-2">
+                          <UserAvatar name={displayName || email} size="sm" />
+                          <div className="min-w-0">
                           <h4 className="text-[15px] font-semibold text-slate-900 break-words leading-snug">
                             {displayName}
                             {u.role === 'Admin' ? ' · Admin' : ''}
                           </h4>
                           <p className="mt-0.5 text-[12px] text-slate-500 break-all">{email}</p>
+                          <p className="mt-1 text-[12px] text-slate-600">📱 {deviceLabel(u.email)}</p>
+                          </div>
                         </div>
                         <span className={`lead-chip shrink-0 ${
                           u.status === 'Active' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
@@ -743,16 +872,18 @@ Continue?
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Password</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {users.map((u) => (
+                      {filteredUsers.map((u) => (
                         <tr key={u.id} className={`text-sm ${u.role === 'Admin' ? 'bg-yellow-50 border-yellow-200' : ''}`}>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-2">
+                              <UserAvatar name={getUserDisplayName(u.email || '') || u.name || u.email} size="sm" />
                               {getUserDisplayName(u.email || '')}
                               {u.role === 'Admin' && <span className="text-yellow-600" title="Admin User">★</span>}
                             </div>
@@ -769,6 +900,9 @@ Continue?
                             }`}>
                               {u.role || 'Pending'}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-slate-700">
+                            {deviceLabel(u.email)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-2 py-1 rounded-full text-xs ${
@@ -848,7 +982,7 @@ Continue?
       )}
 
       {isAdmin && activeTab === 'devices' && (
-        <DeviceSessions />
+        <DeviceSessions users={users} />
       )}
 
       {activeTab === 'costs' && (

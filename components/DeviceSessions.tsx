@@ -58,7 +58,11 @@ function formatWhen(value?: string) {
   return date.toLocaleString();
 }
 
-const DeviceSessions: React.FC = () => {
+interface DeviceSessionsProps {
+  users?: Array<{ email?: string; role?: string }>;
+}
+
+const DeviceSessions: React.FC<DeviceSessionsProps> = ({ users = [] }) => {
   const [unlocked, setUnlocked] = useState(() => Boolean(getMasterUnlockToken()));
   const [masterPassword, setMasterPassword] = useState('');
   const [unlocking, setUnlocking] = useState(false);
@@ -68,7 +72,19 @@ const DeviceSessions: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [deviceTypeFilter, setDeviceTypeFilter] = useState('all');
   const thisDeviceId = getDeviceFingerprint().deviceId;
+
+  const roleByEmail = useMemo(() => {
+    const map = new Map<string, string>();
+    users.forEach((user) => {
+      if (user.email) map.set(user.email.toLowerCase(), user.role || 'Pending');
+    });
+    return map;
+  }, [users]);
+
+  const roleFor = (email?: string) => roleByEmail.get(String(email || '').toLowerCase()) || 'Unknown';
 
   const lockAgain = () => {
     clearMasterUnlockToken();
@@ -128,14 +144,18 @@ const DeviceSessions: React.FC = () => {
 
   const filteredDevices = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return devices;
-    return devices.filter((row) =>
-      [row.userEmail, row.deviceId, row.deviceType, row.deviceName, row.lastIp, row.mostUsedLogin?.userEmail, row.likelyOwner?.userEmail]
+    return devices.filter((row) => {
+      const role = roleFor(row.userEmail);
+      if (roleFilter !== 'all' && role !== roleFilter) return false;
+      const type = String(row.deviceType || 'unknown').toLowerCase();
+      if (deviceTypeFilter !== 'all' && type !== deviceTypeFilter) return false;
+      if (!q) return true;
+      return [row.userEmail, row.deviceId, row.deviceType, row.deviceName, row.lastIp, row.mostUsedLogin?.userEmail, row.likelyOwner?.userEmail, role]
         .join(' ')
         .toLowerCase()
-        .includes(q)
-    );
-  }, [devices, filter]);
+        .includes(q);
+    });
+  }, [devices, filter, roleFilter, deviceTypeFilter, roleByEmail]);
 
   const withMaster = { headers: masterUnlockHeaders() };
 
@@ -166,7 +186,16 @@ const DeviceSessions: React.FC = () => {
     await load();
   };
 
-  const activeSessions = sessions.filter((row) => row.status === 'active');
+  const activeSessions = sessions.filter((row) => {
+    if (row.status !== 'active') return false;
+    const role = roleFor(row.userEmail);
+    if (roleFilter !== 'all' && role !== roleFilter) return false;
+    const type = String(row.deviceType || 'unknown').toLowerCase();
+    if (deviceTypeFilter !== 'all' && type !== deviceTypeFilter) return false;
+    const q = filter.trim().toLowerCase();
+    if (!q) return true;
+    return [row.userEmail, row.deviceId, row.deviceType, row.deviceName, role].join(' ').toLowerCase().includes(q);
+  });
 
   if (!unlocked) {
     return (
@@ -257,19 +286,58 @@ const DeviceSessions: React.FC = () => {
         )}
       </div>
 
-      <input
-        type="search"
-        placeholder="Filter by email, device ID, type, or most-used login"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
-      />
+      <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1 min-w-0">
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Search</label>
+            <input
+              type="search"
+              placeholder="Email, device ID, type, or most-used login"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm min-h-[44px]"
+            />
+          </div>
+          <div className="sm:w-48">
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Role</label>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white min-h-[44px]"
+            >
+              <option value="all">All roles</option>
+              <option value="Admin">Admin</option>
+              <option value="SubAdmin">SubAdmin</option>
+              <option value="Account Manager">Account Manager</option>
+              <option value="Sales">Sales</option>
+              <option value="Operations">Operations</option>
+              <option value="Pending">Pending</option>
+            </select>
+          </div>
+          <div className="sm:w-48">
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Device</label>
+            <select
+              value={deviceTypeFilter}
+              onChange={(e) => setDeviceTypeFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white min-h-[44px]"
+            >
+              <option value="all">All devices</option>
+              <option value="desktop">Desktop</option>
+              <option value="mobile">Mobile</option>
+              <option value="tablet">Tablet</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500">Showing {filteredDevices.length} devices</p>
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <tr>
               <th className="px-3 py-2">Recorded as</th>
+              <th className="px-3 py-2">Role</th>
               <th className="px-3 py-2">Env</th>
               <th className="px-3 py-2">Device ID</th>
               <th className="px-3 py-2">Type</th>
@@ -282,11 +350,12 @@ const DeviceSessions: React.FC = () => {
           </thead>
           <tbody>
             {filteredDevices.length === 0 && (
-              <tr><td className="px-3 py-6 text-slate-500" colSpan={9}>No devices recorded yet. Users must sign in again after this update.</td></tr>
+              <tr><td className="px-3 py-6 text-slate-500" colSpan={10}>No devices match this role or device filter.</td></tr>
             )}
             {filteredDevices.map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
                 <td className="px-3 py-2">{row.userEmail}</td>
+                <td className="px-3 py-2">{roleFor(row.userEmail)}</td>
                 <td className="px-3 py-2">{row.environment || '—'}</td>
                 <td className="px-3 py-2 font-mono text-xs break-all">
                   {row.deviceId}
@@ -344,6 +413,7 @@ const DeviceSessions: React.FC = () => {
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <tr>
               <th className="px-3 py-2">User</th>
+              <th className="px-3 py-2">Role</th>
               <th className="px-3 py-2">Env</th>
               <th className="px-3 py-2">Device ID</th>
               <th className="px-3 py-2">Type</th>
@@ -354,11 +424,12 @@ const DeviceSessions: React.FC = () => {
           </thead>
           <tbody>
             {activeSessions.length === 0 && (
-              <tr><td className="px-3 py-6 text-slate-500" colSpan={7}>No live sessions.</td></tr>
+              <tr><td className="px-3 py-6 text-slate-500" colSpan={8}>No live sessions.</td></tr>
             )}
             {activeSessions.map((row) => (
               <tr key={row.id} className="border-t border-slate-100">
                 <td className="px-3 py-2">{row.userEmail}</td>
+                <td className="px-3 py-2">{roleFor(row.userEmail)}</td>
                 <td className="px-3 py-2">{row.environment || '—'}</td>
                 <td className="px-3 py-2 font-mono text-xs break-all">{row.deviceId}</td>
                 <td className="px-3 py-2">{row.deviceName || row.deviceType}</td>

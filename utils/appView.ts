@@ -13,6 +13,7 @@ export const APP_VIEWS = [
   'usage-report',
   'database-admin',
   'data-export',
+  'last-login-info',
   'meeting-photos',
   'website-control',
 ] as const;

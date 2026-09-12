@@ -20,6 +20,7 @@ const CompanyLogin: React.FC<CompanyLoginProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [blockedSession, setBlockedSession] = useState<ActiveSessionInfo | null>(null);
+  const [needsForceLogin, setNeedsForceLogin] = useState(false);
   const [canForceLogin, setCanForceLogin] = useState(false);
 
   const safeCompanyId = (companyId || 'canam').toLowerCase();
@@ -35,6 +36,7 @@ const CompanyLogin: React.FC<CompanyLoginProps> = ({
       setLoading(true);
       setError(null);
       setBlockedSession(null);
+      setNeedsForceLogin(false);
       setCanForceLogin(false);
       const user = await login(email.trim(), password);
       try {
@@ -53,6 +55,7 @@ const CompanyLogin: React.FC<CompanyLoginProps> = ({
       const blocked = readSessionActiveError(err);
       if (blocked) {
         setBlockedSession(blocked.activeSession);
+        setNeedsForceLogin(true);
         setCanForceLogin(blocked.canForceLogin);
         setError(null);
       } else {
@@ -120,7 +123,7 @@ const CompanyLogin: React.FC<CompanyLoginProps> = ({
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
-          {blockedSession && (
+          {needsForceLogin && (
             <ForceLoginOtp
               email={email.trim()}
               password={password}

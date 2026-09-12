@@ -13,6 +13,7 @@ export const ImprovedLogin: React.FC<LoginProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [blockedSession, setBlockedSession] = useState<ActiveSessionInfo | null>(null);
+  const [needsForceLogin, setNeedsForceLogin] = useState(false);
   const [canForceLogin, setCanForceLogin] = useState(false);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
@@ -26,6 +27,7 @@ export const ImprovedLogin: React.FC<LoginProps> = ({ onLogin }) => {
       setError(null);
       setSuccess(null);
       setBlockedSession(null);
+      setNeedsForceLogin(false);
       setCanForceLogin(false);
       const { user } = await apiLogin(email.trim(), password);
       setSuccess('Login successful! Redirecting...');
@@ -34,6 +36,7 @@ export const ImprovedLogin: React.FC<LoginProps> = ({ onLogin }) => {
       const blocked = readSessionActiveError(err);
       if (blocked) {
         setBlockedSession(blocked.activeSession);
+        setNeedsForceLogin(true);
         setCanForceLogin(blocked.canForceLogin);
         setError(null);
       } else {
@@ -98,7 +101,7 @@ export const ImprovedLogin: React.FC<LoginProps> = ({ onLogin }) => {
             <span>{loading ? 'Signing in...' : 'Sign in'}</span>
           </button>
         </form>
-        {blockedSession && (
+        {needsForceLogin && (
           <ForceLoginOtp
             email={email.trim()}
             password={password}

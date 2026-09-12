@@ -49,6 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'usage-report', label: 'Usage Report', icon: '📊', view: 'usage-report' },
       // { id: 'database', label: 'Database', icon: '🗄️', view: 'database-admin' },
       { id: 'export', label: 'Export', icon: '📥', view: 'data-export' },
+      ...(isAdmin ? [{ id: 'last-login-info', label: 'Last login info', icon: '🕘', view: 'last-login-info' }] : []),
       // { id: 'meeting-photos', label: 'Meeting Photos', icon: '📸', view: 'meeting-photos' }
     ] : [])
   ];

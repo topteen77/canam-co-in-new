@@ -1,7 +1,33 @@
 import axios from 'axios';
 
-// Backend API: use VITE_API_URL in .env or default to port 3001 (must match server/index.js PORT)
-const API_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || 'https://canam.co.in/api'; 
+function isLocalHost(host: string): boolean {
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '0.0.0.0' ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  );
+}
+
+function resolveApiUrl(): string {
+  const configured = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '';
+  if (typeof window !== 'undefined' && isLocalHost(window.location.hostname)) {
+    try {
+      if (configured && isLocalHost(new URL(configured, window.location.origin).hostname)) {
+        return configured.replace(/\/$/, '');
+      }
+    } catch {
+      // ignore invalid VITE_API_URL and use this machine's API
+    }
+    const port = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_PORT) || '5002';
+    return `${window.location.protocol}//${window.location.hostname}:${port}/api`;
+  }
+  return (configured || 'https://canam.co.in/api').replace(/\/$/, '');
+}
+
+const API_URL = resolveApiUrl();
 
 const apiClient = axios.create({
   baseURL: API_URL,
