@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
-// 🟢 SAFE FIX: Extend the Window interface for non-standard properties
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
@@ -10,33 +9,48 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
-declare global {
-  interface Window {
-    deferredPrompt?: BeforeInstallPromptEvent | null;
-  }
-}
+const isStandaloneApp = () =>
+  window.matchMedia('(display-mode: standalone)').matches ||
+  (window.navigator as Navigator & { standalone?: boolean }).standalone === true ||
+  document.referrer.includes('android-app://');
+
+const isIosDevice = () => {
+  const ua = navigator.userAgent;
+  const classic = /iPad|iPhone|iPod/.test(ua);
+  const iPadOs = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  return (classic || iPadOs) && !(window as Window & { MSStream?: unknown }).MSStream;
+};
+
+const isIosSafari = () => isIosDevice() && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
+
+const ShareIcon = () => (
+  <svg className="h-4 w-4 shrink-0 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12v8h8v-8M12 4v12M8.5 7.5 12 4l3.5 3.5" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-1" />
+  </svg>
+);
 
 const PWAInstallPrompt: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [iosMode, setIosMode] = useState(false);
+  const [showIosGuide, setShowIosGuide] = useState(false);
 
   useEffect(() => {
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
-                        (window.navigator as any).standalone === true || 
-                        document.referrer.includes('android-app://');
-
-    if (isStandalone) {
+    if (isStandaloneApp()) {
       setIsInstalled(true);
       return;
     }
 
+    const ios = isIosDevice();
+    setIosMode(ios);
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      const dismissed = sessionStorage.getItem('pwa-prompt-dismissed');
-      if (!dismissed) {
-          setShowInstallPrompt(true);
+      if (!sessionStorage.getItem('pwa-prompt-dismissed')) {
+        setShowInstallPrompt(true);
       }
     };
 
@@ -49,9 +63,11 @@ const PWAInstallPrompt: React.FC = () => {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    if (isIOS && !sessionStorage.getItem('pwa-prompt-dismissed')) {
-      const timer = window.setTimeout(() => setShowInstallPrompt(true), 1200);
+    if (ios && !sessionStorage.getItem('pwa-prompt-dismissed')) {
+      const timer = window.setTimeout(() => {
+        setShowInstallPrompt(true);
+        setShowIosGuide(true);
+      }, 800);
       return () => {
         window.clearTimeout(timer);
         window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -65,86 +81,104 @@ const PWAInstallPrompt: React.FC = () => {
     };
   }, []);
 
+  const dismiss = () => {
+    setShowInstallPrompt(false);
+    sessionStorage.setItem('pwa-prompt-dismissed', 'true');
+  };
+
   const handleInstallClick = async () => {
+    if (iosMode) {
+      setShowIosGuide(true);
+      return;
+    }
+
     if (!deferredPrompt) {
-      // Fallback for browsers that don't support the prompt (like iOS Safari)
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-      
-      if (isIOS) {
-          alert('To install this app on iOS:\n\n1. Tap the "Share" button\n2. Scroll down and tap "Add to Home Screen"');
-      } else {
-          alert('To install this app:\n\n1. Tap the menu button (⋮) in your browser\n2. Select "Add to Home screen" or "Install app"');
-      }
+      setShowIosGuide(true);
       return;
     }
 
     try {
-      // Show the install prompt
       await deferredPrompt.prompt();
-      
-      // Wait for the user to respond to the prompt
-      const { outcome } = await deferredPrompt.userChoice;
-      
-      if (outcome === 'accepted') {
-        console.log('User accepted the install prompt');
-      } else {
-        console.log('User dismissed the install prompt');
-      }
-      
+      await deferredPrompt.userChoice;
       setDeferredPrompt(null);
       setShowInstallPrompt(false);
-    } catch (error) {
-      console.error('Error showing install prompt:', error);
+    } catch {
       setShowInstallPrompt(false);
     }
   };
 
-  const handleDismiss = () => {
-    setShowInstallPrompt(false);
-    // Don't show again for this session
-    sessionStorage.setItem('pwa-prompt-dismissed', 'true');
-  };
-
-  // Don't show if already installed or dismissed or no prompt available (unless we fallback)
   if (isInstalled || !showInstallPrompt) {
     return null;
   }
 
+  const title = iosMode ? 'Add to Home Screen' : 'Install Canam CRM';
+  const actionLabel = iosMode ? 'Add to Home Screen' : 'Install App';
+
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:max-w-sm animate-fade-in-up">
-      <div className="bg-white rounded-lg shadow-lg border border-slate-200 p-4">
+    <div className="fixed inset-x-4 z-50 bottom-[max(1rem,env(safe-area-inset-bottom))] md:inset-x-auto md:right-4 md:max-w-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0">
-            <img src="/canam-crm-logo-light.png" alt="Canam CRM" className="h-8 w-auto object-contain" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-900">Install Canam CRM</h3>
-            <p className="text-sm text-slate-600 mt-1">
-              Get quick access and a better experience by installing our app on your home screen.
+          <img
+            src="/canam-crm-favicon.png"
+            alt=""
+            className="h-11 w-11 shrink-0 rounded-xl bg-white object-contain"
+          />
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+            <p className="mt-1 text-sm leading-5 text-slate-600">
+              {iosMode
+                ? 'Add Canam CRM to your iPhone home screen for one-tap access.'
+                : 'Install the app for faster access from your home screen.'}
             </p>
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={handleInstallClick}
-                className="flex-1 bg-indigo-600 text-white text-sm font-medium py-2 px-3 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
-              >
-                Install App
-              </button>
-              <button
-                onClick={handleDismiss}
-                className="text-slate-500 text-sm font-medium py-2 px-3 rounded-md hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 transition-colors"
-              >
-                Not now
-              </button>
-            </div>
           </div>
           <button
-            onClick={handleDismiss}
-            className="flex-shrink-0 text-slate-400 hover:text-slate-600 focus:outline-none p-1 rounded-full hover:bg-slate-100"
+            type="button"
+            onClick={dismiss}
+            className="app-icon-btn -mr-1 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             aria-label="Close"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
+          </button>
+        </div>
+
+        {(iosMode || showIosGuide) && (
+          <ol className="mt-3 space-y-2 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-700">
+            {!isIosSafari() && iosMode && (
+              <li className="font-medium text-slate-800">Open this page in Safari first.</li>
+            )}
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 font-semibold text-slate-500">1.</span>
+              <span className="flex items-center gap-1.5">
+                Tap <ShareIcon /> Share
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 font-semibold text-slate-500">2.</span>
+              <span>Scroll and tap <strong>Add to Home Screen</strong></span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 font-semibold text-slate-500">3.</span>
+              <span>Tap <strong>Add</strong></span>
+            </li>
+          </ol>
+        )}
+
+        <div className="mt-3 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={handleInstallClick}
+            className="min-h-[44px] w-full rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            {actionLabel}
+          </button>
+          <button
+            type="button"
+            onClick={dismiss}
+            className="min-h-[44px] w-full rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+          >
+            Not now
           </button>
         </div>
       </div>
