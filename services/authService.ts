@@ -114,16 +114,16 @@ async function collectLoginLocation(): Promise<{ latitude?: number; longitude?: 
   try {
     const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: false,
-        timeout: 2500,
-        maximumAge: 300000,
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 60000,
       });
     });
-    return {
-      latitude: pos.coords.latitude,
-      longitude: pos.coords.longitude,
-      location: `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`,
-    };
+    const latitude = pos.coords.latitude;
+    const longitude = pos.coords.longitude;
+    const { reverseGeocode } = await import('./ipLocation');
+    const location = await reverseGeocode(latitude, longitude);
+    return { latitude, longitude, location };
   } catch {
     return {};
   }

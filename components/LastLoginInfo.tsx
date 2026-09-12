@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import apiClient from '../services/apiClient';
 import type { ActiveSessionInfo } from '../services/authService';
-import { lastLoginRows } from './LastLoginPopup';
+import { withIpLocation } from '../services/ipLocation';
+import { LastLoginLocation, lastLoginRows } from './LastLoginPopup';
 import UserAvatar from './UserAvatar';
 
 interface LastLoginInfoProps {
@@ -34,7 +35,8 @@ const LastLoginInfo: React.FC<LastLoginInfoProps> = ({ availableUsers = [] }) =>
       setLoading(true);
       setError(null);
       const { data } = await apiClient.get('/admin/last-logins');
-      setRows(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setRows(await Promise.all(list.map((row) => withIpLocation(row))));
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 404) {
@@ -107,16 +109,14 @@ const LastLoginInfo: React.FC<LastLoginInfoProps> = ({ availableUsers = [] }) =>
                   {lastLoginRows(row).map((item) => (
                     <div key={item.label}>
                       <dt className="text-xs font-semibold text-slate-500">{item.label}</dt>
-                      <dd className="text-slate-800 break-all">
-                        {item.href ? (
-                          <a href={item.href} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">
-                            {item.value}
-                          </a>
-                        ) : item.value}
-                      </dd>
+                      <dd className="text-slate-800 break-all">{item.value}</dd>
                     </div>
                   ))}
                 </dl>
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-xs font-semibold text-slate-500 mb-1">Location</p>
+                  <LastLoginLocation info={row} />
+                </div>
                 <p className="mt-2 text-xs text-slate-400">Recorded {formatWhen(row.lastSeen)}</p>
               </article>
             );

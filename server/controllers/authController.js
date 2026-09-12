@@ -30,36 +30,13 @@ import {
   getMostRecentSession,
   listLastLogins,
   recordForceLoginInfo,
+  lookupIpGeo,
 } from '../services/sessionService.js';
 
 function newId() {
   return typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `id-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-}
-
-function isPrivateIp(ip = '') {
-  const value = String(ip || '').replace('::ffff:', '');
-  return !value
-    || value === '127.0.0.1'
-    || value === '::1'
-    || value.startsWith('10.')
-    || value.startsWith('192.168.')
-    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(value);
-}
-
-async function lookupIpLocation(ip) {
-  if (isPrivateIp(ip)) return '';
-  try {
-    const res = await fetch(`https://ipwho.is/${encodeURIComponent(String(ip).replace('::ffff:', ''))}`, {
-      signal: AbortSignal.timeout(2500),
-    });
-    const data = await res.json();
-    if (!data?.success) return '';
-    return [data.city, data.region, data.country].filter(Boolean).join(', ');
-  } catch {
-    return '';
-  }
 }
 
 function devicePayload(req) {
@@ -136,7 +113,10 @@ async function issueLogin(user, passwordCol, device, force = false) {
     )
     : null;
   if (!device.location) {
-    device.location = await lookupIpLocation(device.ip);
+    const geo = await lookupIpGeo(device.ip);
+    device.location = geo.location;
+    if (device.latitude == null) device.latitude = geo.latitude;
+    if (device.longitude == null) device.longitude = geo.longitude;
   }
   let lastLogin = null;
   if (force && previous) {

@@ -21,6 +21,64 @@ const ADMIN_EMAILS = new Set(
 
 let tablesReady = false;
 
+export function isPrivateIp(ip = '') {
+  const value = String(ip || '').replace('::ffff:', '').trim();
+  return !value
+    || value === '127.0.0.1'
+    || value === '::1'
+    || value.startsWith('10.')
+    || value.startsWith('192.168.')
+    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(value);
+}
+
+async function fetchJson(url, timeoutMs = 2500) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  return res.json();
+}
+
+export async function lookupIpGeo(ip) {
+  const value = String(ip || '').replace('::ffff:', '').trim();
+  if (!value || isPrivateIp(value)) {
+    return { location: '', latitude: null, longitude: null };
+  }
+  try {
+    const data = await fetchJson(`https://ipwho.is/${encodeURIComponent(value)}`);
+    if (data?.success) {
+      return {
+        location: [data.city, data.region, data.country].filter(Boolean).join(', '),
+        latitude: Number.isFinite(Number(data.latitude)) ? Number(data.latitude) : null,
+        longitude: Number.isFinite(Number(data.longitude)) ? Number(data.longitude) : null,
+      };
+    }
+  } catch {
+    // try fallback below
+  }
+  try {
+    const data = await fetchJson(`http://ip-api.com/json/${encodeURIComponent(value)}?fields=status,country,regionName,city,lat,lon`);
+    if (data?.status === 'success') {
+      return {
+        location: [data.city, data.regionName, data.country].filter(Boolean).join(', '),
+        latitude: Number.isFinite(Number(data.lat)) ? Number(data.lat) : null,
+        longitude: Number.isFinite(Number(data.lon)) ? Number(data.lon) : null,
+      };
+    }
+  } catch {
+    // leave empty
+  }
+  return { location: '', latitude: null, longitude: null };
+}
+
+export async function fillMissingLocation(row = {}) {
+  const existing = String(row.location || '').trim();
+  const latitude = row.latitude ?? null;
+  const longitude = row.longitude ?? null;
+  if (existing) return { location: existing, latitude, longitude };
+  if (latitude != null && longitude != null) {
+    return { location: `${Number(latitude).toFixed(4)}, ${Number(longitude).toFixed(4)}`, latitude, longitude };
+  }
+  return lookupIpGeo(row.ip_address || row.ipAddress || row.ip || '');
+}
+
 export function isAdminAccount(user = {}) {
   const role = String(user.role || '').toLowerCase().replace(/[\s_]/g, '');
   const email = String(user.email || user.userEmail || '').trim().toLowerCase();
@@ -299,6 +357,10 @@ export async function getMostRecentSession(email, exceptSessionId = null) {
 export async function recordForceLoginInfo(sessionRow) {
   if (!sessionRow) return null;
   await ensureTables();
+  const geo = await fillMissingLocation(sessionRow);
+  sessionRow.location = geo.location;
+  sessionRow.latitude = sessionRow.latitude ?? geo.latitude;
+  sessionRow.longitude = sessionRow.longitude ?? geo.longitude;
   const info = publicSession(sessionRow);
   const id = newId();
   await db.query(
@@ -312,13 +374,13 @@ export async function recordForceLoginInfo(sessionRow) {
       info.deviceType || '',
       info.deviceName || '',
       info.ipAddress || '',
-      info.location || '',
-      info.latitude ?? null,
-      info.longitude ?? null,
+      info.location || geo.location || '',
+      info.latitude ?? geo.latitude ?? null,
+      info.longitude ?? geo.longitude ?? null,
       info.lastSeen || null,
     ]
   );
-  return { ...info, id };
+  return { ...info, id, location: info.location || geo.location || '', latitude: info.latitude ?? geo.latitude, longitude: info.longitude ?? geo.longitude };
 }
 
 export async function listLastLogins() {
@@ -334,19 +396,40 @@ export async function listLastLogins() {
       ON latest.user_email = l.user_email AND latest.created_at = l.created_at
     ORDER BY l.created_at DESC
   `);
-  return (rows || []).map((row) => ({
-    id: row.id,
-    userEmail: row.user_email,
-    deviceId: row.device_id,
-    deviceType: row.device_type,
-    deviceName: row.device_name,
-    ipAddress: row.ip_address,
-    location: row.location || '',
-    latitude: row.latitude,
-    longitude: row.longitude,
-    lastSeen: row.last_seen,
-    createdAt: row.created_at,
-  }));
+  const mapped = [];
+  for (const row of rows || []) {
+    const item = {
+      id: row.id,
+      userEmail: row.user_email,
+      deviceId: row.device_id,
+      deviceType: row.device_type,
+      deviceName: row.device_name,
+      ipAddress: row.ip_address,
+      location: row.location || '',
+      latitude: row.latitude,
+      longitude: row.longitude,
+      lastSeen: row.last_seen,
+      createdAt: row.created_at,
+    };
+    if (!String(item.location || '').trim() && item.ipAddress) {
+      const geo = await fillMissingLocation({
+        ipAddress: item.ipAddress,
+        latitude: item.latitude,
+        longitude: item.longitude,
+      });
+      item.location = geo.location;
+      item.latitude = item.latitude ?? geo.latitude;
+      item.longitude = item.longitude ?? geo.longitude;
+      if (geo.location) {
+        await db.query(
+          `UPDATE last_login_info SET location = ?, latitude = ?, longitude = ? WHERE id = ?`,
+          [item.location, item.latitude, item.longitude, item.id]
+        );
+      }
+    }
+    mapped.push(item);
+  }
+  return mapped;
 }
 
 export async function revokeSession(sessionId, revokedBy = 'system') {
