@@ -21,7 +21,16 @@ const isIosDevice = () => {
   return (classic || iPadOs) && !(window as Window & { MSStream?: unknown }).MSStream;
 };
 
-const isIosSafari = () => isIosDevice() && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
+const isInAppBrowser = () =>
+  /FBAN|FBAV|Instagram|Line\/|Twitter|LinkedInApp|GSA\/|wv\)/i.test(navigator.userAgent);
+
+const isIosSafari = () =>
+  isIosDevice() &&
+  !isInAppBrowser() &&
+  !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/i.test(navigator.userAgent);
+
+const canUseIosHomeScreen = () =>
+  isIosSafari() && typeof navigator.share === 'function';
 
 const ShareIcon = () => (
   <svg className="h-4 w-4 shrink-0 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
@@ -35,7 +44,6 @@ const PWAInstallPrompt: React.FC = () => {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [iosMode, setIosMode] = useState(false);
-  const [showIosGuide, setShowIosGuide] = useState(false);
 
   useEffect(() => {
     if (isStandaloneApp()) {
@@ -43,12 +51,15 @@ const PWAInstallPrompt: React.FC = () => {
       return;
     }
 
-    const ios = isIosDevice();
-    setIosMode(ios);
+    const iosHomeScreen = canUseIosHomeScreen();
+    setIosMode(iosHomeScreen);
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
+      // iPhone/iPad only support Add to Home Screen in Safari, not Chrome install.
+      if (isIosDevice()) return;
       setDeferredPrompt(e as BeforeInstallPromptEvent);
+      setIosMode(false);
       if (!sessionStorage.getItem('pwa-prompt-dismissed')) {
         setShowInstallPrompt(true);
       }
@@ -63,11 +74,10 @@ const PWAInstallPrompt: React.FC = () => {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    if (ios && !sessionStorage.getItem('pwa-prompt-dismissed')) {
-      const timer = window.setTimeout(() => {
-        setShowInstallPrompt(true);
-        setShowIosGuide(true);
-      }, 800);
+    // iPhone/iPad Safari can add to Home Screen. Other browsers stay hidden
+    // unless they fire beforeinstallprompt (Chrome/Edge/Android).
+    if (iosHomeScreen && !sessionStorage.getItem('pwa-prompt-dismissed')) {
+      const timer = window.setTimeout(() => setShowInstallPrompt(true), 800);
       return () => {
         window.clearTimeout(timer);
         window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -87,13 +97,20 @@ const PWAInstallPrompt: React.FC = () => {
   };
 
   const handleInstallClick = async () => {
-    if (iosMode) {
-      setShowIosGuide(true);
+    if (iosMode && canUseIosHomeScreen()) {
+      try {
+        await navigator.share({
+          title: 'Canam CRM',
+          url: `${window.location.origin}/`,
+        });
+      } catch {
+        // User closed the share sheet.
+      }
       return;
     }
 
     if (!deferredPrompt) {
-      setShowIosGuide(true);
+      setShowInstallPrompt(false);
       return;
     }
 
@@ -107,7 +124,7 @@ const PWAInstallPrompt: React.FC = () => {
     }
   };
 
-  if (isInstalled || !showInstallPrompt) {
+  if (isInstalled || !showInstallPrompt || (!iosMode && !deferredPrompt)) {
     return null;
   }
 
@@ -127,7 +144,7 @@ const PWAInstallPrompt: React.FC = () => {
             <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
             <p className="mt-1 text-sm leading-5 text-slate-600">
               {iosMode
-                ? 'Add Canam CRM to your iPhone home screen for one-tap access.'
+                ? 'Tap Add to Home Screen to open the iPhone share menu, then choose Add to Home Screen.'
                 : 'Install the app for faster access from your home screen.'}
             </p>
           </div>
@@ -143,20 +160,17 @@ const PWAInstallPrompt: React.FC = () => {
           </button>
         </div>
 
-        {(iosMode || showIosGuide) && (
+        {iosMode && (
           <ol className="mt-3 space-y-2 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-700">
-            {!isIosSafari() && iosMode && (
-              <li className="font-medium text-slate-800">Open this page in Safari first.</li>
-            )}
             <li className="flex items-start gap-2">
               <span className="mt-0.5 font-semibold text-slate-500">1.</span>
               <span className="flex items-center gap-1.5">
-                Tap <ShareIcon /> Share
+                Tap the button below to open <ShareIcon /> Share
               </span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 font-semibold text-slate-500">2.</span>
-              <span>Scroll and tap <strong>Add to Home Screen</strong></span>
+              <span>Tap <strong>Add to Home Screen</strong></span>
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 font-semibold text-slate-500">3.</span>
