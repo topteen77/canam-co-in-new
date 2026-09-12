@@ -75,11 +75,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-blue-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
-          <img src="/icon.svg" alt="Canam STUDYABROAD" className="h-16 w-auto mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">Canam CRM</h1>
+          <div className="mx-auto mb-5 w-fit">
+            <img src="/canam-crm-logo-light.png" alt="Canam CRM" className="h-12 w-auto mx-auto" />
+          </div>
           <p className="text-gray-600">Sign in to continue</p>
         </div>
 

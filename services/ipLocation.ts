@@ -34,6 +34,16 @@ export function mapsUrl(lat?: number | null, lng?: number | null): string | null
   return `https://www.google.com/maps?q=${lat},${lng}`;
 }
 
+function distanceKm(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h = sinLat * sinLat + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * sinLng * sinLng;
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
   try {
     const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
@@ -81,25 +91,44 @@ export async function lookupIpLocation(ip?: string): Promise<Pick<ActiveSessionI
   }
 }
 
-export async function withIpLocation(info: ActiveSessionInfo): Promise<ActiveSessionInfo> {
-  let next = { ...info };
-  let coords = parseCoords(next);
-  if (!coords && next.ipAddress) {
-    const geo = await lookupIpLocation(next.ipAddress);
-    next = {
-      ...next,
-      location: next.location || geo.location,
-      latitude: next.latitude ?? geo.latitude,
-      longitude: next.longitude ?? geo.longitude,
+export async function resolveLoginLocation(info: ActiveSessionInfo): Promise<ActiveSessionInfo> {
+  const stored = parseCoords(info);
+  const ipGeo = info.ipAddress ? await lookupIpLocation(info.ipAddress) : { location: '' };
+  const ipCoords = parseCoords(ipGeo);
+  const looksLikeGps = Boolean(
+    info.locationSource === 'gps'
+    || (stored && ipCoords && distanceKm(stored, ipCoords) > 2)
+    || (stored && !ipCoords && info.locationSource !== 'ip')
+  );
+
+  if (looksLikeGps && stored) {
+    const current = String(info.location || '').trim();
+    const location = !current || COORDS_ONLY.test(current) || current.split(',').length < 4
+      ? await reverseGeocode(stored.latitude, stored.longitude)
+      : current;
+    return {
+      ...info,
+      location,
+      latitude: stored.latitude,
+      longitude: stored.longitude,
+      locationSource: 'gps',
     };
-    coords = parseCoords(next);
   }
-  if (!coords) return next;
-  next.latitude = coords.latitude;
-  next.longitude = coords.longitude;
-  const current = String(next.location || '').trim();
-  if (!current || COORDS_ONLY.test(current) || current.split(',').length < 4) {
-    next.location = await reverseGeocode(coords.latitude, coords.longitude);
+
+  if (ipCoords || ipGeo.location) {
+    const location = ipGeo.location || (ipCoords ? await reverseGeocode(ipCoords.latitude, ipCoords.longitude) : '');
+    return {
+      ...info,
+      location,
+      latitude: ipCoords?.latitude ?? info.latitude,
+      longitude: ipCoords?.longitude ?? info.longitude,
+      locationSource: 'ip',
+    };
   }
-  return next;
+
+  return info;
+}
+
+export async function withIpLocation(info: ActiveSessionInfo): Promise<ActiveSessionInfo> {
+  return resolveLoginLocation(info);
 }

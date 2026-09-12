@@ -59,6 +59,9 @@ function devicePayload(req) {
     location: String(req.body.location || '').trim(),
     latitude: Number.isFinite(latitude) ? latitude : null,
     longitude: Number.isFinite(longitude) ? longitude : null,
+    locationSource: String(req.body.locationSource || '').trim() === 'gps' && Number.isFinite(latitude) && Number.isFinite(longitude)
+      ? 'gps'
+      : (Number.isFinite(latitude) && Number.isFinite(longitude) ? 'gps' : ''),
   };
 }
 
@@ -112,11 +115,12 @@ async function issueLogin(user, passwordCol, device, force = false) {
       || await getMostRecentSession(safeUser.email)
     )
     : null;
-  if (!device.location) {
+  if (device.locationSource !== 'gps') {
     const geo = await lookupIpGeo(device.ip);
-    device.location = geo.location;
+    device.location = device.location || geo.location;
     if (device.latitude == null) device.latitude = geo.latitude;
     if (device.longitude == null) device.longitude = geo.longitude;
+    if (geo.location || geo.latitude != null) device.locationSource = 'ip';
   }
   let lastLogin = null;
   if (force && previous) {

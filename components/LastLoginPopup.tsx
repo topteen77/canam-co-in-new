@@ -28,12 +28,14 @@ export function LastLoginLocation({ info }: { info: ActiveSessionInfo }) {
   const coords = parseCoords(info);
   const gps = coords ? formatGps(coords.latitude, coords.longitude) : '';
   const mapUrl = coords ? mapsUrl(coords.latitude, coords.longitude) : null;
+  const isGps = info.locationSource === 'gps';
   const address = info.location && !/^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(info.location)
     ? info.location
     : (gps || (info.ipAddress ? 'Looking up…' : 'Unknown'));
   return (
     <div className="text-sm">
-      <p className="text-slate-800 break-words">{address}</p>
+      <p className="text-xs font-semibold text-slate-500">{isGps ? 'GPS' : 'IP location'}</p>
+      <p className="text-slate-800 break-words mt-0.5">{address}</p>
       {gps && <p className="text-xs text-slate-500 mt-1">{gps}</p>}
       {mapUrl && (
         <a

@@ -1,23 +1,25 @@
-// Auto-Update Service for PWA
-// Handles automatic app updates on logout/login cycles
-
-interface UpdateInfo {
-  version: string;
-  buildTime: string;
-  updateAvailable: boolean;
-  forceUpdate: boolean;
-}
+const RELOAD_FLAG = 'crm_reloading_for_update';
+const KNOWN_BUILD = 'crmKnownBuild';
 
 class UpdateService {
   private static instance: UpdateService;
-  private currentVersion: string;
-  private updateCheckInterval: number = 5 * 60 * 1000; // 5 minutes
-  private updateTimer: NodeJS.Timeout | null = null;
-  private isUpdateInProgress: boolean = false;
+  private currentBuild = '';
+  private updateTimer: ReturnType<typeof setInterval> | null = null;
+  private isUpdateInProgress = false;
+  private justReloaded = false;
 
   private constructor() {
-    this.currentVersion = this.initializeVersion();
+    this.justReloaded = sessionStorage.getItem(RELOAD_FLAG) === '1';
+    if (this.justReloaded) {
+      sessionStorage.removeItem(RELOAD_FLAG);
+      setTimeout(() => {
+        this.justReloaded = false;
+      }, 15000);
+    }
+    this.currentBuild = localStorage.getItem(KNOWN_BUILD) || '';
     this.initializeServiceWorker();
+    this.startPeriodicUpdateCheck();
+    this.bindVisibilityCheck();
   }
 
   public static getInstance(): UpdateService {
@@ -27,246 +29,123 @@ class UpdateService {
     return UpdateService.instance;
   }
 
-  private initializeVersion(): string {
-    // Get version from package.json or use build timestamp
-    const buildTime = new Date().toISOString();
-    const version = '2.0.2'; // Update this when deploying new versions
-    return `${version}-${buildTime}`;
+  private bindVisibilityCheck(): void {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this.checkForUpdates();
+    });
+    window.addEventListener('focus', () => this.checkForUpdates());
   }
 
   private async initializeServiceWorker(): Promise<void> {
-    if (!('serviceWorker' in navigator)) {
-      console.warn('⚠️ Service Worker not supported in this browser');
-      return;
-    }
+    if (!('serviceWorker' in navigator)) return;
     try {
-      const registration = await navigator.serviceWorker.ready;
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        if (newWorker) {
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              this.handleUpdateAvailable();
-            }
-          });
+      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      this.watchRegistration(registration);
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (this.justReloaded) return;
+        this.reloadOnce();
+      });
+      await this.checkForUpdates();
+    } catch (error) {
+      console.warn('Service worker update setup failed:', error);
+    }
+  }
+
+  private watchRegistration(registration: ServiceWorkerRegistration): void {
+    const track = (worker: ServiceWorker | null) => {
+      if (!worker) return;
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          worker.postMessage({ type: 'SKIP_WAITING' });
+          this.isUpdateInProgress = true;
         }
       });
-    } catch (error) {
-      console.warn('⚠️ Service Worker ready check failed:', error);
-    }
+    };
+    track(registration.installing);
+    registration.addEventListener('updatefound', () => track(registration.installing));
   }
 
   private startPeriodicUpdateCheck(): void {
-    // Polling disabled as per user request
+    if (this.updateTimer) clearInterval(this.updateTimer);
+    this.updateTimer = setInterval(() => this.checkForUpdates(), 60 * 1000);
   }
 
   private async checkForUpdates(): Promise<void> {
-    if (this.isUpdateInProgress) return;
-
+    if (this.isUpdateInProgress || this.justReloaded) return;
     try {
-      // Force service worker to check for updates
-      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: 'CHECK_UPDATE' });
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration();
+        await registration?.update();
+        const waiting = registration?.waiting;
+        if (waiting) {
+          waiting.postMessage({ type: 'SKIP_WAITING' });
+          this.isUpdateInProgress = true;
+        }
       }
 
-      // Check if cache version has changed
-      const cacheVersion = await this.getCacheVersion();
-      if (cacheVersion && cacheVersion !== this.currentVersion) {
-        console.log('🔄 Cache version mismatch detected');
-        this.handleUpdateAvailable();
+      const remoteBuild = await this.getRemoteBuild();
+      if (!remoteBuild) return;
+      if (!this.currentBuild) {
+        this.currentBuild = remoteBuild;
+        localStorage.setItem(KNOWN_BUILD, remoteBuild);
+        return;
+      }
+      if (remoteBuild !== this.currentBuild) {
+        this.currentBuild = remoteBuild;
+        localStorage.setItem(KNOWN_BUILD, remoteBuild);
+        await this.applyUpdate();
       }
     } catch (error) {
-      console.warn('⚠️ Update check failed:', error);
+      console.warn('Update check failed:', error);
     }
   }
 
-  private async getCacheVersion(): Promise<string | null> {
+  private async getRemoteBuild(): Promise<string | null> {
     try {
-      const response = await fetch('/version.json?' + Date.now(), {
-        cache: 'no-cache',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
+      const response = await fetch(`/version.json?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
       });
-      
-      if (response.ok) {
-        const versionInfo = await response.json();
-        return versionInfo.version;
-      }
-    } catch (error) {
-      console.warn('⚠️ Could not fetch version info:', error);
+      if (!response.ok) return null;
+      const info = await response.json();
+      return String(info.buildNumber || info.buildTime || info.version || '');
+    } catch {
+      return null;
     }
-    return null;
-  }
-
-  private handleUpdateAvailable(): void {
-    // Store update flag in localStorage
-    localStorage.setItem('appUpdateAvailable', 'true');
-    localStorage.setItem('appUpdateTimestamp', Date.now().toString());
-    
-    // Show update notification if user is logged in
-    // DISABLED: Update notification pop-up disabled per user request
-    // this.showUpdateNotification();
-  }
-
-  private showUpdateNotification(): void {
-    // Create a subtle update notification
-    const notification = document.createElement('div');
-    notification.id = 'update-notification';
-    notification.innerHTML = `
-      <div style="
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: #10b981;
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 10000;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        font-size: 14px;
-        max-width: 300px;
-        animation: slideIn 0.3s ease-out;
-      ">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span>🔄</span>
-          <span>App update available</span>
-          <button onclick="window.updateService.applyUpdate()" style="
-            background: rgba(255,255,255,0.2);
-            border: none;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            margin-left: 8px;
-          ">Update Now</button>
-          <button onclick="this.parentElement.parentElement.remove()" style="
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-            font-size: 16px;
-            margin-left: 8px;
-          ">×</button>
-        </div>
-      </div>
-      <style>
-        @keyframes slideIn {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-      </style>
-    `;
-
-    // Remove existing notification
-    const existing = document.getElementById('update-notification');
-    if (existing) {
-      existing.remove();
-    }
-
-    document.body.appendChild(notification);
-
-    // Auto-remove after 10 seconds
-    setTimeout(() => {
-      const notification = document.getElementById('update-notification');
-      if (notification) {
-        notification.remove();
-      }
-    }, 10000);
   }
 
   public async applyUpdate(): Promise<void> {
-    if (this.isUpdateInProgress) return;
-
+    if (this.isUpdateInProgress && sessionStorage.getItem(RELOAD_FLAG) === '1') return;
     this.isUpdateInProgress = true;
-    
     try {
-      console.log('🔄 Applying app update...');
-
-      // Clear all caches
-      await this.clearAllCaches();
-
-      // Unregister old service workers
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(
-          registrations.map(registration => registration.unregister())
-        );
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map((name) => caches.delete(name)));
       }
-
-      // Clear update flags
-      localStorage.removeItem('appUpdateAvailable');
-      localStorage.removeItem('appUpdateTimestamp');
-
-      // Force reload with cache bypass
-      window.location.reload();
-
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration();
+        registration?.waiting?.postMessage({ type: 'SKIP_WAITING' });
+      }
+      this.reloadOnce();
     } catch (error) {
-      console.error('❌ Update failed:', error);
+      console.error('Update failed:', error);
       this.isUpdateInProgress = false;
     }
   }
 
-  private async clearAllCaches(): Promise<void> {
-    try {
-      // Clear Cache API
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(
-          cacheNames.map(cacheName => caches.delete(cacheName))
-        );
-      }
-
-      // Clear IndexedDB
-      if ('indexedDB' in window) {
-        const databases = await indexedDB.databases();
-        await Promise.all(
-          databases.map(db => {
-            if (db.name) {
-              return indexedDB.deleteDatabase(db.name);
-            }
-          })
-        );
-      }
-
-      console.log('✅ All caches cleared for update');
-    } catch (error) {
-      console.warn('⚠️ Cache clearing failed:', error);
-    }
+  private reloadOnce(): void {
+    if (sessionStorage.getItem(RELOAD_FLAG) === '1') return;
+    sessionStorage.setItem(RELOAD_FLAG, '1');
+    window.location.reload();
   }
 
   public async checkForUpdatesOnLogin(): Promise<void> {
-    // Check if update was available before logout
-    const updateAvailable = localStorage.getItem('appUpdateAvailable');
-    const updateTimestamp = localStorage.getItem('appUpdateTimestamp');
-    
-    if (updateAvailable === 'true' && updateTimestamp) {
-      const timeSinceUpdate = Date.now() - parseInt(updateTimestamp);
-      const fiveMinutes = 5 * 60 * 1000;
-      
-      // If update was detected within last 5 minutes, apply it
-      if (timeSinceUpdate < fiveMinutes) {
-        console.log('🔄 Applying pending update after login');
-        await this.applyUpdate();
-        return;
-      }
-    }
-
-    // Check for new updates
     await this.checkForUpdates();
   }
 
   public async handleLogout(): Promise<void> {
-    // Check for updates before logout
     await this.checkForUpdates();
-    
-    // Store current session info for update detection
-    localStorage.setItem('lastLogoutTime', Date.now().toString());
-    localStorage.setItem('lastKnownVersion', this.currentVersion);
   }
 
   public stopUpdateChecks(): void {
@@ -277,11 +156,12 @@ class UpdateService {
   }
 
   public getCurrentVersion(): string {
-    return this.currentVersion;
+    return this.currentBuild;
   }
 }
 
-// Make it globally accessible
-(window as any).updateService = UpdateService.getInstance();
+if (typeof window !== 'undefined') {
+  (window as any).updateService = UpdateService.getInstance();
+}
 
 export default UpdateService;

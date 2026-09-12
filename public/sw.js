@@ -1,5 +1,5 @@
 // Canam CRM service worker — app shell + offline fallback
-const CACHE_NAME = 'canam-crm-pwa-v8';
+const CACHE_NAME = 'canam-crm-pwa-v10';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -12,7 +12,10 @@ const APP_SHELL = [
   '/icon-maskable-512.png',
   '/apple-touch-icon.png',
   '/favicon.svg',
-  '/splash-1080x1920.png'
+  '/splash-1080x1920.png',
+  '/canam-crm-logo.png',
+  '/canam-crm-logo-light.png',
+  '/canam-crm-favicon.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -39,6 +42,7 @@ self.addEventListener('activate', (event) => {
 
 function isBypassed(url) {
   if (url.pathname.startsWith('/api/')) return true;
+  if (url.pathname === '/version.json' || url.pathname === '/sw.js') return true;
   const host = url.hostname;
   return (
     host.includes('googleapis.com') ||
@@ -98,6 +102,9 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  if (event.data && event.data.type === 'CHECK_UPDATE' && self.registration) {
+    self.registration.update();
   }
 });
 

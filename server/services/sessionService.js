@@ -194,6 +194,7 @@ export async function ensureTables() {
   await addColumnIfMissing('user_sessions', 'location', "ADD COLUMN location VARCHAR(512) DEFAULT ''");
   await addColumnIfMissing('user_sessions', 'latitude', 'ADD COLUMN latitude DECIMAL(10,7) NULL');
   await addColumnIfMissing('user_sessions', 'longitude', 'ADD COLUMN longitude DECIMAL(10,7) NULL');
+  await addColumnIfMissing('user_sessions', 'location_source', "ADD COLUMN location_source VARCHAR(16) DEFAULT ''");
   await db.query(`
     CREATE TABLE IF NOT EXISTS last_login_info (
       id VARCHAR(64) PRIMARY KEY,
@@ -211,6 +212,7 @@ export async function ensureTables() {
       INDEX idx_last_login_created (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+  await addColumnIfMissing('last_login_info', 'location_source', "ADD COLUMN location_source VARCHAR(16) DEFAULT ''");
   await db.query(`
     CREATE TABLE IF NOT EXISTS restricted_devices (
       device_id VARCHAR(128) PRIMARY KEY,
@@ -250,6 +252,7 @@ function publicSession(row) {
     location: row.location || '',
     latitude: row.latitude,
     longitude: row.longitude,
+    locationSource: row.location_source || '',
   };
 }
 
@@ -322,19 +325,20 @@ export async function upsertDevice({ userId, email, deviceId, deviceType, device
   return { deviceId: idValue, deviceType: type, deviceName: name, environment: env };
 }
 
-export async function createSession({ userId, email, deviceId, deviceType, deviceName, userAgent, ip, environment, location, latitude, longitude }) {
+export async function createSession({ userId, email, deviceId, deviceType, deviceName, userAgent, ip, environment, location, latitude, longitude, locationSource }) {
   await ensureTables();
   const sessionId = newId();
   const userEmail = String(email || '').trim().toLowerCase();
   const type = normalizeDeviceType(deviceType, userAgent);
   const name = deviceName || deviceNameFromUa(userAgent, type);
   const env = normalizeEnvironment(environment);
+  const source = locationSource === 'gps' ? 'gps' : (latitude != null && longitude != null ? (locationSource || 'ip') : (locationSource || ''));
   await upsertDevice({ userId, email: userEmail, deviceId, deviceType: type, deviceName: name, userAgent, ip, environment: env });
   await db.query(
     `INSERT INTO user_sessions
-      (id, user_id, user_email, device_id, device_type, device_name, user_agent, ip_address, environment, location, latitude, longitude, status, created_at, last_seen)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())`,
-    [sessionId, String(userId || ''), userEmail, deviceId, type, name, userAgent || '', ip || '', env, location || '', latitude ?? null, longitude ?? null]
+      (id, user_id, user_email, device_id, device_type, device_name, user_agent, ip_address, environment, location, latitude, longitude, location_source, status, created_at, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())`,
+    [sessionId, String(userId || ''), userEmail, deviceId, type, name, userAgent || '', ip || '', env, location || '', latitude ?? null, longitude ?? null, source]
   );
   return getSessionById(sessionId);
 }
@@ -357,16 +361,20 @@ export async function getMostRecentSession(email, exceptSessionId = null) {
 export async function recordForceLoginInfo(sessionRow) {
   if (!sessionRow) return null;
   await ensureTables();
-  const geo = await fillMissingLocation(sessionRow);
-  sessionRow.location = geo.location;
-  sessionRow.latitude = sessionRow.latitude ?? geo.latitude;
-  sessionRow.longitude = sessionRow.longitude ?? geo.longitude;
+  if (sessionRow.location_source !== 'gps') {
+    const hadCoords = sessionRow.latitude != null && sessionRow.longitude != null;
+    const geo = await fillMissingLocation(sessionRow);
+    sessionRow.location = sessionRow.location || geo.location;
+    sessionRow.latitude = sessionRow.latitude ?? geo.latitude;
+    sessionRow.longitude = sessionRow.longitude ?? geo.longitude;
+    if (!sessionRow.location_source) sessionRow.location_source = hadCoords ? '' : 'ip';
+  }
   const info = publicSession(sessionRow);
   const id = newId();
   await db.query(
     `INSERT INTO last_login_info
-      (id, user_email, device_id, device_type, device_name, ip_address, location, latitude, longitude, last_seen, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      (id, user_email, device_id, device_type, device_name, ip_address, location, latitude, longitude, location_source, last_seen, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
     [
       id,
       info.userEmail || '',
@@ -374,13 +382,14 @@ export async function recordForceLoginInfo(sessionRow) {
       info.deviceType || '',
       info.deviceName || '',
       info.ipAddress || '',
-      info.location || geo.location || '',
-      info.latitude ?? geo.latitude ?? null,
-      info.longitude ?? geo.longitude ?? null,
+      info.location || '',
+      info.latitude ?? null,
+      info.longitude ?? null,
+      info.locationSource || sessionRow.location_source || '',
       info.lastSeen || null,
     ]
   );
-  return { ...info, id, location: info.location || geo.location || '', latitude: info.latitude ?? geo.latitude, longitude: info.longitude ?? geo.longitude };
+  return { ...info, id };
 }
 
 export async function listLastLogins() {
@@ -408,10 +417,11 @@ export async function listLastLogins() {
       location: row.location || '',
       latitude: row.latitude,
       longitude: row.longitude,
+      locationSource: row.location_source || '',
       lastSeen: row.last_seen,
       createdAt: row.created_at,
     };
-    if (!String(item.location || '').trim() && item.ipAddress) {
+    if (item.locationSource !== 'gps' && !String(item.location || '').trim() && item.ipAddress) {
       const geo = await fillMissingLocation({
         ipAddress: item.ipAddress,
         latitude: item.latitude,
@@ -420,10 +430,11 @@ export async function listLastLogins() {
       item.location = geo.location;
       item.latitude = item.latitude ?? geo.latitude;
       item.longitude = item.longitude ?? geo.longitude;
+      item.locationSource = 'ip';
       if (geo.location) {
         await db.query(
-          `UPDATE last_login_info SET location = ?, latitude = ?, longitude = ? WHERE id = ?`,
-          [item.location, item.latitude, item.longitude, item.id]
+          `UPDATE last_login_info SET location = ?, latitude = ?, longitude = ?, location_source = ? WHERE id = ?`,
+          [item.location, item.latitude, item.longitude, 'ip', item.id]
         );
       }
     }

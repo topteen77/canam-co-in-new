@@ -68,6 +68,7 @@ import AdminMeetingAlertBanner from './components/AdminMeetingAlertBanner';
 import LastLoginPopup from './components/LastLoginPopup';
 import LastLoginInfo from './components/LastLoginInfo';
 import UserAvatar from './components/UserAvatar';
+import PageLoader from './components/PageLoader';
 import { parseViewFromHash, syncViewHash } from './utils/appView';
 
 const CONFIGURED_SUPER_ADMINS = ['canamrakesh@gmail.com', 'manchandapranjal01@gmail.com'];
@@ -358,6 +359,7 @@ const App: React.FC = () => {
       const u = getStoredUser();
       setCurrentUser(u?.email ?? email);
       setLastLoginInfo(consumePendingLastLogin());
+      UpdateService.getInstance().checkForUpdatesOnLogin();
       return true;
   };
 
@@ -710,9 +712,8 @@ const App: React.FC = () => {
             />
             <div className="absolute top-0 left-0 h-full w-[min(18.5rem,88vw)] bg-slate-900 text-white shadow-2xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
               <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-700 flex-shrink-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <img src="/icon-192x192.png" alt="" className="w-8 h-8 rounded-lg bg-white object-contain flex-shrink-0" />
-                  <h2 className="text-base font-semibold truncate">Canam CRM</h2>
+                <div className="flex items-center min-w-0">
+                  <img src="/canam-crm-logo.png" alt="Canam CRM" className="h-7 w-auto object-contain" />
                 </div>
                 <button
                   type="button"
@@ -836,10 +837,7 @@ const App: React.FC = () => {
             )}
             <div className="main-content-area px-1.5 sm:px-4 py-2 sm:py-4 pb-24 md:pb-8 w-full max-w-full min-w-0">
               {isLoadingLeads && ['leads', 'pipeline'].includes(view) && (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                  <span className="ml-2 text-slate-600">Loading leads...</span>
-                </div>
+                <PageLoader label="Loading leads…" />
               )}
               {(view !== 'leads' && view !== 'pipeline') || !isLoadingLeads ? (
                  <>
@@ -928,7 +926,7 @@ const App: React.FC = () => {
                         </>
                     )}
                     {view === 'followups' && (
-                        <Suspense fallback={<div className="flex justify-center items-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /><span className="ml-2 text-slate-600">Loading Follow-ups…</span></div>}>
+                        <Suspense fallback={<PageLoader label="Loading Follow-ups…" />}>
                             <FollowUps leads={displayedLeads} currentUser={currentUser} isAdmin={isAdmin} availableUsers={availableUsers} onUpdateLead={handleUpdateLead} />
                         </Suspense>
                     )}

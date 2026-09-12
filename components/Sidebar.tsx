@@ -88,9 +88,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
           {isExpanded && (
-            <div className="flex items-center gap-2 min-w-0">
-              <img src="/icon-192x192.png" alt="" className="w-8 h-8 rounded-lg bg-white object-contain flex-shrink-0" />
-              <h1 className="text-lg font-bold text-white truncate">Canam CRM</h1>
+            <div className="flex items-center min-w-0">
+              <img src="/canam-crm-logo.png" alt="Canam CRM" className="h-8 w-auto object-contain" />
             </div>
           )}
         </div>

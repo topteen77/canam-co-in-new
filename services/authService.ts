@@ -28,6 +28,7 @@ export interface ActiveSessionInfo {
   location?: string;
   latitude?: number | null;
   longitude?: number | null;
+  locationSource?: 'gps' | 'ip' | string;
 }
 
 const LAST_LOGIN_KEY = 'crm_last_login_info';
@@ -123,7 +124,7 @@ async function collectLoginLocation(): Promise<{ latitude?: number; longitude?: 
     const longitude = pos.coords.longitude;
     const { reverseGeocode } = await import('./ipLocation');
     const location = await reverseGeocode(latitude, longitude);
-    return { latitude, longitude, location };
+    return { latitude, longitude, location, locationSource: 'gps' };
   } catch {
     return {};
   }

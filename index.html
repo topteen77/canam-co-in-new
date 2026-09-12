@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" /> 
     <!-- Favicon and App Icons -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/icon-16x16.png" />
+    <link rel="icon" type="image/png" href="/canam-crm-favicon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/canam-crm-favicon.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/canam-crm-favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192x192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512x512.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/canam-crm-favicon.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/canam-crm-favicon.png" />
 
     <!-- Microsoft Tiles -->
     <meta name="msapplication-TileColor" content="#cc0000" />
@@ -84,12 +84,12 @@
         align-items: center;
         justify-content: center;
         background:
-          radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.08), transparent 55%),
-          linear-gradient(180deg, #ffffff 0%, #f8fafc 48%, #eef2ff 100%);
+          radial-gradient(circle at 50% 38%, rgba(34, 211, 238, 0.16), transparent 34%),
+          linear-gradient(180deg, #020617 0%, #0b1220 58%, #020617 100%);
         overflow: hidden;
         padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
         box-sizing: border-box;
-        transition: opacity 0.4s ease, visibility 0.4s ease;
+        transition: opacity 0.45s ease, visibility 0.45s ease;
       }
       #app-splash.is-done {
         opacity: 0;
@@ -99,69 +99,129 @@
       .splash-content {
         position: relative;
         z-index: 1;
-        width: min(88vw, 360px);
+        width: min(88vw, 340px);
         display: flex;
         flex-direction: column;
         align-items: center;
         text-align: center;
-        animation: splash-pop 0.55s ease-out;
       }
-      .splash-wordmark {
+      .splash-mark {
         display: flex;
         flex-direction: column;
         align-items: center;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
       }
-      .splash-brand {
-        margin: 8px 0 0;
-        font-size: 1.35rem;
-        font-weight: 700;
-        letter-spacing: -0.03em;
-        color: #111827;
+      .splash-logo {
+        display: block;
+        width: min(72vw, 220px);
+        height: auto;
+        opacity: 0;
+        transform: scale(0.9);
+        animation: splash-logo-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.08s forwards;
+        filter: drop-shadow(0 0 18px rgba(34, 211, 238, 0.22));
       }
       .splash-sub {
-        margin: 2px 0 0;
-        font-size: 0.68rem;
-        font-weight: 600;
-        letter-spacing: 0.2em;
-        color: #cc0000;
+        margin: 8px 0 10px;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.32em;
+        color: #67e8f9;
+        opacity: 0;
+        animation: splash-fade 0.4s ease 0.4s forwards;
       }
       .splash-funnel {
-        width: min(78vw, 300px);
-        margin: 8px 0 4px;
-        filter: drop-shadow(0 18px 28px rgba(79, 70, 229, 0.16));
-        animation: splash-funnel-in 0.7s ease-out;
+        width: min(78vw, 280px);
+        background: transparent;
       }
-      .splash-funnel img {
+      .splash-funnel svg {
         display: block;
         width: 100%;
         height: auto;
-        max-height: min(52vh, 340px);
-        object-fit: contain;
+        max-height: min(42vh, 280px);
       }
-      .splash-loader {
-        width: 24px;
-        height: 24px;
-        margin-top: 16px;
-        border-radius: 50%;
-        border: 3px solid #e0e7ff;
-        border-top-color: #4f46e5;
-        animation: splash-spin 0.75s linear infinite;
+      .sf-lead { opacity: 0; animation: sf-drop 0.55s ease-out forwards; }
+      .sf-lead-1 { animation-delay: 0.35s; }
+      .sf-lead-2 { animation-delay: 0.42s; }
+      .sf-lead-3 { animation-delay: 0.48s; }
+      .sf-lead-4 { animation-delay: 0.54s; }
+      .sf-lead-5 { animation-delay: 0.60s; }
+      .sf-arrow { opacity: 0; animation: sf-arrow 0.7s ease-out forwards; }
+      .sf-arrow-1 { animation-delay: 0.58s; }
+      .sf-arrow-2 { animation-delay: 0.64s; }
+      .sf-arrow-3 { animation-delay: 0.70s; }
+      .sf-layer { transform-box: fill-box; transform-origin: 50% 0%; opacity: 0; animation: sf-layer 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+      .sf-layer-1 { animation-delay: 0.72s; }
+      .sf-layer-2 { animation-delay: 0.86s; }
+      .sf-layer-3 { animation-delay: 1.00s; }
+      .sf-layer-4 { animation-delay: 1.14s; }
+      .sf-copy { opacity: 0; animation: sf-fade 0.4s ease-out forwards; }
+      .sf-copy-1 { animation-delay: 0.88s; }
+      .sf-copy-2 { animation-delay: 1.02s; }
+      .sf-copy-3 { animation-delay: 1.16s; }
+      .sf-copy-4 { animation-delay: 1.30s; }
+      .sf-tip { opacity: 0; animation: sf-tip 0.45s ease-out 1.35s forwards, sf-pulse 1.6s ease-in-out 1.8s infinite; }
+      .sf-glow { opacity: 0; animation: sf-glow 2.2s ease-in-out 1.1s infinite; }
+      .splash-loader-track {
+        width: min(56vw, 180px);
+        height: 4px;
+        margin-top: 14px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.22);
+        overflow: hidden;
       }
-      @media (max-height: 700px) {
-        .splash-funnel img { max-height: 42vh; }
-        .splash-brand { font-size: 1.15rem; }
+      .splash-loader-bar {
+        display: block;
+        height: 100%;
+        width: 38%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #22d3ee, #38bdf8);
+        animation: splash-sweep 1.15s ease-in-out infinite;
       }
-      @keyframes splash-spin {
-        to { transform: rotate(360deg); }
+      @media (max-height: 740px) {
+        .splash-funnel svg { max-height: 36vh; }
+        .splash-logo { width: min(64vw, 190px); }
       }
-      @keyframes splash-pop {
-        from { opacity: 0; transform: translateY(10px); }
+      @keyframes splash-spin { to { transform: rotate(360deg); } }
+      @keyframes splash-logo-in {
+        to { opacity: 1; transform: scale(1); }
+      }
+      @keyframes splash-fade { to { opacity: 1; } }
+      @keyframes splash-sweep {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(280%); }
+      }
+      @keyframes sf-drop {
+        from { opacity: 0; transform: translateY(-14px); }
         to { opacity: 1; transform: translateY(0); }
       }
-      @keyframes splash-funnel-in {
-        from { opacity: 0; transform: translateY(16px) scale(0.96); }
+      @keyframes sf-arrow {
+        from { opacity: 0; transform: translateY(-8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes sf-layer {
+        from { opacity: 0; transform: translateY(12px) scaleY(0.86); }
+        to { opacity: 1; transform: translateY(0) scaleY(1); }
+      }
+      @keyframes sf-fade { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes sf-tip {
+        from { opacity: 0; transform: translateY(-6px) scale(0.7); }
         to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes sf-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.12); }
+      }
+      @keyframes sf-glow {
+        0%, 100% { opacity: 0.12; }
+        50% { opacity: 0.28; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .splash-logo, .splash-sub, .splash-loader-bar,
+        .sf-lead, .sf-arrow, .sf-layer, .sf-copy, .sf-tip, .sf-glow {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+        }
       }
       @keyframes fade-in-up {
         from { opacity: 0; transform: translateY(20px); }
@@ -188,14 +248,66 @@
   <body>
     <div id="app-splash" aria-hidden="true">
       <div class="splash-content">
-        <div class="splash-wordmark">
-          <p class="splash-brand">Canam CRM</p>
-          <p class="splash-sub">STUDYABROAD</p>
+        <div class="splash-mark">
+          <img class="splash-logo" src="/canam-crm-logo.png" alt="Canam CRM" />
         </div>
-        <div class="splash-funnel">
-          <img src="/splash-funnel.png" alt="Attract, Engage, Retain, Grow" />
+        <p class="splash-sub">STUDYABROAD</p>
+        <div class="splash-funnel" role="img" aria-label="Attract, Engage, Retain, Grow">
+          <svg viewBox="0 0 360 400" xmlns="http://www.w3.org/2000/svg">
+            <style>text { font-family: Inter, system-ui, sans-serif; }</style>
+            <ellipse class="sf-glow" cx="180" cy="236" rx="132" ry="100" fill="#22d3ee"/>
+            <g class="sf-lead sf-lead-1">
+              <circle cx="70" cy="18" r="4" fill="#ff5c8a"/>
+              <circle cx="70" cy="32" r="5.5" fill="none" stroke="#cbd5e1" stroke-width="1.8"/>
+              <path d="M61 46c2-6.5 16-6.5 18 0" fill="none" stroke="#cbd5e1" stroke-width="1.8" stroke-linecap="round"/>
+            </g>
+            <g class="sf-lead sf-lead-2">
+              <circle cx="125" cy="14" r="4" fill="#ffc727"/>
+              <circle cx="125" cy="28" r="5.5" fill="none" stroke="#cbd5e1" stroke-width="1.8"/>
+              <path d="M116 42c2-6.5 16-6.5 18 0" fill="none" stroke="#cbd5e1" stroke-width="1.8" stroke-linecap="round"/>
+            </g>
+            <g class="sf-lead sf-lead-3">
+              <circle cx="180" cy="10" r="4" fill="#34d399"/>
+              <circle cx="180" cy="24" r="5.5" fill="none" stroke="#cbd5e1" stroke-width="1.8"/>
+              <path d="M171 38c2-6.5 16-6.5 18 0" fill="none" stroke="#cbd5e1" stroke-width="1.8" stroke-linecap="round"/>
+            </g>
+            <g class="sf-lead sf-lead-4">
+              <circle cx="235" cy="14" r="4" fill="#38bdf8"/>
+              <circle cx="235" cy="28" r="5.5" fill="none" stroke="#cbd5e1" stroke-width="1.8"/>
+              <path d="M226 42c2-6.5 16-6.5 18 0" fill="none" stroke="#cbd5e1" stroke-width="1.8" stroke-linecap="round"/>
+            </g>
+            <g class="sf-lead sf-lead-5">
+              <circle cx="290" cy="18" r="4" fill="#7c5cff"/>
+              <circle cx="290" cy="32" r="5.5" fill="none" stroke="#cbd5e1" stroke-width="1.8"/>
+              <path d="M281 46c2-6.5 16-6.5 18 0" fill="none" stroke="#cbd5e1" stroke-width="1.8" stroke-linecap="round"/>
+            </g>
+            <g fill="none" stroke-width="2" stroke-linecap="round">
+              <path class="sf-arrow sf-arrow-1" d="M125 54 C125 78 160 90 174 108" stroke="#34d399"/>
+              <path class="sf-arrow sf-arrow-2" d="M180 46 L180 108" stroke="#38bdf8"/>
+              <path class="sf-arrow sf-arrow-3" d="M235 54 C235 78 200 90 186 108" stroke="#38bdf8"/>
+            </g>
+            <path class="sf-layer sf-layer-1" d="M28 118h304l-22 58H50z" fill="#ffc727"/>
+            <path class="sf-layer sf-layer-2" d="M58 180h244l-22 58H80z" fill="#ff5c8a"/>
+            <path class="sf-layer sf-layer-3" d="M88 242h184l-22 58H110z" fill="#2dd4bf"/>
+            <path class="sf-layer sf-layer-4" d="M118 304h124l-20 46H138z" fill="#7c5cff"/>
+            <g class="sf-copy sf-copy-1" fill="#fff" text-anchor="middle">
+              <text x="180" y="154" font-size="16" font-weight="800">ATTRACT</text>
+            </g>
+            <g class="sf-copy sf-copy-2" fill="#fff" text-anchor="middle">
+              <text x="180" y="216" font-size="16" font-weight="800">ENGAGE</text>
+            </g>
+            <g class="sf-copy sf-copy-3" fill="#fff" text-anchor="middle">
+              <text x="180" y="278" font-size="16" font-weight="800">RETAIN</text>
+            </g>
+            <g class="sf-copy sf-copy-4" fill="#fff" text-anchor="middle">
+              <text x="180" y="334" font-size="16" font-weight="800">GROW</text>
+            </g>
+            <path class="sf-tip" d="M180 358l9 11-9 7-9-7z" fill="#6d28d9"/>
+          </svg>
         </div>
-        <div class="splash-loader" role="status" aria-label="Loading"></div>
+        <div class="splash-loader-track" role="status" aria-label="Loading">
+          <span class="splash-loader-bar"></span>
+        </div>
       </div>
     </div>
     <div id="root"></div>

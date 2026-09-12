@@ -115,7 +115,7 @@ const PWAInstallPrompt: React.FC = () => {
       <div className="bg-white rounded-lg shadow-lg border border-slate-200 p-4">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0">
-            <img src="/icon-192x192.png" alt="Canam CRM" className="w-10 h-10 rounded-lg bg-white object-contain border border-slate-200" />
+            <img src="/canam-crm-logo-light.png" alt="Canam CRM" className="h-8 w-auto object-contain" />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-slate-900">Install Canam CRM</h3>
