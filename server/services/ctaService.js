@@ -129,3 +129,7 @@ export const getCTAReport = async () => {
     return [];
   }
 };
+
+export const addCTAActivity = addCTA;
+export const updateCTAActivity = updateCTA;
+export const getRecentActivities = getCTAReport;

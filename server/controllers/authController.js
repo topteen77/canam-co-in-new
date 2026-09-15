@@ -32,6 +32,7 @@ import {
   recordForceLoginInfo,
   lookupIpGeo,
 } from '../services/sessionService.js';
+import { logActivity } from '../services/activityService.js';
 
 function newId() {
   return typeof crypto.randomUUID === 'function'
@@ -134,6 +135,23 @@ async function issueLogin(user, passwordCol, device, force = false) {
     email: safeUser.email,
     ...device,
   });
+  try {
+    await logActivity({
+      userId: safeUser.id,
+      userEmail: safeUser.email,
+      action: 'login',
+      description: `Signed in from ${device.deviceName || device.deviceType || 'device'}`,
+      deviceId: device.deviceId,
+      device: device.deviceType,
+      details: {
+        sessionId: session.id,
+        environment: device.environment,
+        ip: device.ip,
+      },
+    });
+  } catch (error) {
+    console.warn('Login activity log skipped:', error.message);
+  }
   const token = signToken(safeUser, session.id);
   return {
     success: true,
@@ -196,27 +214,10 @@ export const login = async (req, res) => {
         deviceId: device.deviceId,
       });
     }
-    const safeUser = sanitizeUser(user, passwordCol);
-    const active = await getActiveSession(safeUser.email, device.environment);
-    const allActive = (await getActiveSessionsAll(safeUser.email)).map(publicSession);
-
-    if (active && active.device_id !== device.deviceId) {
-      return res.status(409).json({
-        error: 'SESSION_ACTIVE',
-        message: `This account is already signed in on ${device.environment}. You can still have a separate session on the other environment.`,
-        canForceLogin: isAdminAccount(safeUser),
-        environment: device.environment,
-        activeSession: publicSession(active),
-        otherSessions: allActive,
-      });
-    }
-
-    if (active && active.device_id === device.deviceId) {
-      await revokeSession(active.id, safeUser.email);
-    }
 
     const payload = await issueLogin(user, passwordCol, device, false);
-    console.log('✅ Login Successful for user:', safeUser.email, 'device:', device.deviceId);
+    const safeUser = sanitizeUser(user, passwordCol);
+    console.log('✅ Login Successful for user:', safeUser.email, 'userId:', safeUser.id, 'device:', device.deviceId);
     res.json(payload);
   } catch (error) {
     console.error('🔴 REAL ERROR IN TERMINAL:', error);

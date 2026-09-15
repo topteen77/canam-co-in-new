@@ -14,15 +14,17 @@ function isLocalHost(host: string): boolean {
 function resolveApiUrl(): string {
   const configured = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '';
   if (typeof window !== 'undefined' && isLocalHost(window.location.hostname)) {
+    const pageHost = window.location.hostname;
+    const port = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_PORT) || '5002';
     try {
-      if (configured && isLocalHost(new URL(configured, window.location.origin).hostname)) {
-        return configured.replace(/\/$/, '');
+      if (configured) {
+        const configuredHost = new URL(configured, window.location.origin).hostname;
+        if (configuredHost === pageHost) return configured.replace(/\/$/, '');
       }
     } catch {
-      // ignore invalid VITE_API_URL and use this machine's API
+      // ignore invalid VITE_API_URL
     }
-    const port = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_PORT) || '5002';
-    return `${window.location.protocol}//${window.location.hostname}:${port}/api`;
+    return `${window.location.protocol}//${pageHost}:${port}/api`;
   }
   return (configured || 'https://canam.co.in/api').replace(/\/$/, '');
 }

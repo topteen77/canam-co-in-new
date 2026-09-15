@@ -359,7 +359,7 @@ const DeviceSessions: React.FC<DeviceSessionsProps> = ({ users = [] }) => {
                 <td className="px-3 py-2">{row.environment || '—'}</td>
                 <td className="px-3 py-2 font-mono text-xs break-all">
                   {row.deviceId}
-                  {row.deviceId === thisDeviceId ? <div className="text-blue-600">This browser</div> : null}
+                  {row.deviceId === thisDeviceId ? <div className="text-blue-600">This device</div> : null}
                 </td>
                 <td className="px-3 py-2">{row.deviceName || row.deviceType}</td>
                 <td className="px-3 py-2">

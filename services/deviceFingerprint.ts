@@ -16,7 +16,24 @@ function fnv1a(input: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-function hardwareSignature(): string {
+function osFamily(): string {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const platform = typeof navigator !== 'undefined' ? navigator.platform || '' : '';
+  if (/iPhone/i.test(ua) || /iPhone/i.test(platform)) return 'iphone';
+  if (/iPad/i.test(ua) || /iPad/i.test(platform)) return 'ipad';
+  if (/Android/i.test(ua)) return 'android';
+  if (/Win/i.test(platform) || /Windows/i.test(ua)) return 'windows';
+  if (/Mac/i.test(platform) || /Mac OS|Macintosh/i.test(ua)) return 'mac';
+  if (/Linux/i.test(platform) || /Linux/i.test(ua)) return 'linux';
+  return 'unknown';
+}
+
+/**
+ * Machine-level signals only. Browser name, vendor, userAgent, and Chrome-only
+ * fields like deviceMemory are omitted so Chrome and Firefox on the same PC
+ * produce the same device id.
+ */
+function machineSignature(): string {
   if (typeof navigator === 'undefined' || typeof screen === 'undefined') return 'unknown';
   const timezone = (() => {
     try {
@@ -26,26 +43,22 @@ function hardwareSignature(): string {
     }
   })();
   return [
-    navigator.userAgent || '',
-    navigator.platform || '',
-    navigator.language || '',
-    (navigator.languages || []).join(','),
+    osFamily(),
     String(screen.width || 0),
     String(screen.height || 0),
+    String(screen.availWidth || 0),
+    String(screen.availHeight || 0),
     String(screen.colorDepth || 0),
-    String(screen.pixelDepth || 0),
     String(window.devicePixelRatio || 1),
     timezone,
     String(navigator.hardwareConcurrency || 0),
-    String((navigator as any).deviceMemory || 0),
     String(navigator.maxTouchPoints || 0),
-    String((navigator as any).vendor || ''),
   ].join('|');
 }
 
-/** Stable device id from browser/hardware signals. No random UUID. */
+/** Stable id for the computer/phone, shared across browsers on that system. */
 export function getActualDeviceId(): string {
-  const signature = hardwareSignature();
+  const signature = machineSignature();
   return `dev-${fnv1a(signature)}-${fnv1a(signature.split('').reverse().join(''))}`;
 }
 

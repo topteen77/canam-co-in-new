@@ -6,8 +6,19 @@ function newId() {
   return `id-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
 }
 
+function osFamilyFromUa(userAgent = '') {
+  const ua = String(userAgent || '');
+  if (/iPhone/i.test(ua)) return 'iphone';
+  if (/iPad/i.test(ua)) return 'ipad';
+  if (/Android/i.test(ua)) return 'android';
+  if (/Windows/i.test(ua)) return 'windows';
+  if (/Mac OS|Macintosh/i.test(ua)) return 'mac';
+  if (/Linux/i.test(ua)) return 'linux';
+  return 'unknown';
+}
+
 function deviceIdFromSignals(userAgent = '', ip = '') {
-  const raw = `${String(userAgent || '')}|${String(ip || '')}`;
+  const raw = `${osFamilyFromUa(userAgent)}|${String(ip || '').replace('::ffff:', '')}`;
   return `dev-${crypto.createHash('sha256').update(raw).digest('hex').slice(0, 24)}`;
 }
 import db from '../db.js';
@@ -301,6 +312,21 @@ export async function getSessionById(sessionId) {
   return rows[0] || null;
 }
 
+export async function touchUserLastLogin(email) {
+  const userEmail = String(email || '').trim().toLowerCase();
+  if (!userEmail) return;
+  try {
+    const table = await resolveTableNameOrFallback(['users', 'Users'], 'users');
+    const cols = await getColumns(table);
+    const emailCol = cols.has('email') ? 'email' : 'userEmail';
+    const lastCol = cols.has('last_login') ? 'last_login' : (cols.has('lastLogin') ? 'lastLogin' : null);
+    if (!lastCol) return;
+    await db.query(`UPDATE ${table} SET \`${lastCol}\` = NOW() WHERE \`${emailCol}\` = ?`, [userEmail]);
+  } catch (error) {
+    console.warn('touchUserLastLogin skipped:', error.message);
+  }
+}
+
 export async function upsertDevice({ userId, email, deviceId, deviceType, deviceName, userAgent, ip, environment }) {
   await ensureTables();
   const userEmail = String(email || '').trim().toLowerCase();
@@ -340,6 +366,7 @@ export async function createSession({ userId, email, deviceId, deviceType, devic
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())`,
     [sessionId, String(userId || ''), userEmail, deviceId, type, name, userAgent || '', ip || '', env, location || '', latitude ?? null, longitude ?? null, source]
   );
+  await touchUserLastLogin(userEmail);
   return getSessionById(sessionId);
 }
 
@@ -539,6 +566,7 @@ export async function touchSession(sessionId, { deviceId, deviceType, deviceName
     ip: ip || session.ip_address,
     environment: session.environment,
   });
+  await touchUserLastLogin(session.user_email);
   return getSessionById(sessionId);
 }
 

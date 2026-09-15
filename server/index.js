@@ -9,6 +9,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import Joi from 'joi';
 import { createTransport } from 'nodemailer';
+import { installFileLogger, expressErrorLogger } from './utils/fileLogger.js';
 
 // --- IMPORTS FOR SERVICES ---
 import db from './db.js'; // 👈 IMPORTING DB HERE
@@ -43,6 +44,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const envPath = path.resolve(__dirname, '../.env');
 dotenv.config({ path: envPath });
+installFileLogger();
 
 const app = express();
 const PORT = process.env.PORT || 5002;
@@ -59,20 +61,47 @@ if (process.env.FORCE_HTTPS === '1' || process.env.FORCE_HTTPS === 'true') {
 }
 
 const corsOrigins = [
-  'https://agent-follow-up-crm.web.app', 
-    'http://localhost:5173', 
-    'http://localhost:3000',
-    'http://127.0.0.1:5173', 
-    'http://43.204.23.58:3000',
-	'http://43.204.23.58:5002',
+  'https://agent-follow-up-crm.web.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3001',
+  'http://10.0.0.118:3001',
+  'http://10.0.0.118:3000',
+  'http://43.204.23.58:3000',
+  'http://43.204.23.58:5002',
   'https://canam.co.in:3000/',
   'https://canam.co.in:5002/',
   ...(process.env.PUBLIC_SITE_ORIGIN ? [process.env.PUBLIC_SITE_ORIGIN] : []),
   ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) : []),
 ];
+
+function isPrivateLanHost(hostname) {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  );
+}
+
 app.use(cors({
-  origin: corsOrigins,
-  credentials: true
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const normalized = origin.replace(/\/$/, '');
+    if (corsOrigins.map((item) => item.replace(/\/$/, '')).includes(normalized)) {
+      return callback(null, true);
+    }
+    try {
+      if (isPrivateLanHost(new URL(origin).hostname)) return callback(null, true);
+    } catch {
+      // ignore
+    }
+    return callback(null, false);
+  },
+  credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
 
@@ -83,9 +112,15 @@ app.get('/api/health', (_req, res) => {
 // --- 🔎 DEBUG ROUTE (Now placed safely AFTER db import) ---
 app.get('/api/leads/debug', async (req, res) => {
   try {
-    console.log("🔍 Checking SQL Connection...");
-    const [rows] = await db.execute('SELECT * FROM `Leads` LIMIT 1');
-    res.json(rows);
+    const [names] = await db.query(
+      "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = 'leads' LIMIT 1"
+    );
+    if (!names[0]) {
+      return res.status(404).json({ error: 'leads table not found', database: (await db.query('SELECT DATABASE() AS db'))[0][0].db });
+    }
+    const table = names[0].TABLE_NAME;
+    const [rows] = await db.query('SELECT * FROM ?? LIMIT 1', [table]);
+    res.json({ database: (await db.query('SELECT DATABASE() AS db'))[0][0].db, table, sample: rows[0] || null });
   } catch (error) {
     console.error("🔥 DEBUG ERROR:", error.message);
     res.status(500).json({ error: error.message });
@@ -873,6 +908,8 @@ ensureSessionTables().then(() => {
 }).catch((err) => {
   console.error('⚠️ Could not prepare session tables:', err.message);
 });
+
+app.use(expressErrorLogger);
 
 function startListening() {
   if (useHttps) {
