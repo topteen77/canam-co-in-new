@@ -1,5 +1,5 @@
 // Canam CRM service worker — app shell + offline fallback
-const CACHE_NAME = 'canam-crm-pwa-v11';
+const CACHE_NAME = 'canam-crm-pwa-v12';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -13,6 +13,7 @@ const APP_SHELL = [
   '/apple-touch-icon.png',
   '/favicon.svg',
   '/splash-1080x1920.png',
+  '/iapply-canam-logo.png',
   '/canam-crm-logo.png',
   '/canam-crm-logo-light.png',
   '/canam-crm-favicon.png'

@@ -12,8 +12,8 @@ const PageLoader: React.FC<PageLoaderProps> = ({ label = 'Loading…', fullScree
       <div className="relative flex items-center justify-center">
         <span className="page-loader-ring" />
         <span className="page-loader-ring page-loader-ring-delay" />
-        <div className="relative z-10 rounded-2xl bg-slate-950/90 px-5 py-3 shadow-xl shadow-cyan-500/10">
-          <BrandLogo heightClass="h-9 sm:h-11" />
+        <div className="relative z-10 rounded-xl overflow-hidden shadow-xl shadow-rose-500/20">
+          <BrandLogo heightClass="h-9 sm:h-11" animate />
         </div>
       </div>
       <div className="w-40 h-1 rounded-full bg-slate-800 overflow-hidden">

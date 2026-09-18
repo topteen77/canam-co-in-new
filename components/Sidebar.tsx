@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import BrandLogo from './BrandLogo';
 
 interface SidebarProps {
   currentView: string;
@@ -89,7 +90,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
           {isExpanded && (
             <div className="flex items-center min-w-0">
-              <img src="/canam-crm-logo.png" alt="Canam CRM" className="h-8 w-auto object-contain" />
+              <BrandLogo heightClass="h-8" />
             </div>
           )}
         </div>

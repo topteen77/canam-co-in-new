@@ -84,8 +84,9 @@
         align-items: center;
         justify-content: center;
         background:
-          radial-gradient(circle at 50% 38%, rgba(34, 211, 238, 0.16), transparent 34%),
-          linear-gradient(180deg, #020617 0%, #0b1220 58%, #020617 100%);
+          radial-gradient(circle at 72% 36%, rgba(225, 29, 72, 0.22), transparent 32%),
+          radial-gradient(circle at 50% 38%, rgba(148, 163, 184, 0.12), transparent 34%),
+          linear-gradient(180deg, #0b1a28 0%, #142433 58%, #0b1a28 100%);
         overflow: hidden;
         padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
         box-sizing: border-box;
@@ -113,19 +114,22 @@
       }
       .splash-logo {
         display: block;
-        width: min(72vw, 220px);
+        width: min(78vw, 280px);
         height: auto;
+        border-radius: 12px;
         opacity: 0;
-        transform: scale(0.9);
-        animation: splash-logo-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.08s forwards;
-        filter: drop-shadow(0 0 18px rgba(34, 211, 238, 0.22));
+        transform: scale(0.88) translateY(10px);
+        animation:
+          splash-logo-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.08s forwards,
+          splash-logo-float 3.2s ease-in-out 0.9s infinite;
+        filter: drop-shadow(0 10px 24px rgba(225, 29, 72, 0.28));
       }
       .splash-sub {
         margin: 8px 0 10px;
         font-size: 0.62rem;
         font-weight: 700;
         letter-spacing: 0.32em;
-        color: #67e8f9;
+        color: #fda4af;
         opacity: 0;
         animation: splash-fade 0.4s ease 0.4s forwards;
       }
@@ -174,16 +178,20 @@
         height: 100%;
         width: 38%;
         border-radius: 999px;
-        background: linear-gradient(90deg, #22d3ee, #38bdf8);
+        background: linear-gradient(90deg, #e11d48, #fb7185);
         animation: splash-sweep 1.15s ease-in-out infinite;
       }
       @media (max-height: 740px) {
         .splash-funnel svg { max-height: 36vh; }
-        .splash-logo { width: min(64vw, 190px); }
+        .splash-logo { width: min(70vw, 240px); }
       }
       @keyframes splash-spin { to { transform: rotate(360deg); } }
       @keyframes splash-logo-in {
-        to { opacity: 1; transform: scale(1); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
+      @keyframes splash-logo-float {
+        0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 10px 24px rgba(225, 29, 72, 0.28)); }
+        50% { transform: translateY(-6px) scale(1.02); filter: drop-shadow(0 16px 28px rgba(225, 29, 72, 0.42)); }
       }
       @keyframes splash-fade { to { opacity: 1; } }
       @keyframes splash-sweep {
@@ -221,6 +229,7 @@
           animation: none !important;
           opacity: 1 !important;
           transform: none !important;
+          filter: none !important;
         }
       }
       @keyframes fade-in-up {
@@ -249,7 +258,7 @@
     <div id="app-splash" aria-hidden="true">
       <div class="splash-content">
         <div class="splash-mark">
-          <img class="splash-logo" src="/canam-crm-logo.png" alt="Canam CRM" />
+          <img class="splash-logo" src="/iapply-canam-logo.png" alt="iApply Canam" />
         </div>
         <p class="splash-sub">STUDYABROAD</p>
         <div class="splash-funnel" role="img" aria-label="Attract, Engage, Retain, Grow">

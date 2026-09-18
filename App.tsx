@@ -24,6 +24,7 @@ import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES, COUNTRY_OPTIONS } from '
 
 // Components
 import { Login } from './components/Login';
+import BrandLogo from './components/BrandLogo';
 import { NotificationBell } from './components/NotificationBell';
 import NotificationsCenter from './components/NotificationsCenter';
 import AdminUsers from './components/AdminUsers';
@@ -732,7 +733,7 @@ const App: React.FC = () => {
             <div className="absolute top-0 left-0 h-full w-[min(18.5rem,88vw)] bg-slate-900 text-white shadow-2xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
               <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-700 flex-shrink-0">
                 <div className="flex items-center min-w-0">
-                  <img src="/canam-crm-logo.png" alt="Canam CRM" className="h-7 w-auto object-contain" />
+                  <BrandLogo heightClass="h-7" />
                 </div>
                 <button
                   type="button"

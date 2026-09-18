@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { login as apiLogin, register, readSessionActiveError, type ActiveSessionInfo } from '../services/authService';
 import { ForceLoginOtp } from './ForceLoginOtp';
+import BrandLogo from './BrandLogo';
 
 interface LoginProps {
   onLogin: (username: string) => boolean;
@@ -79,7 +80,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mx-auto mb-5 w-fit">
-            <img src="/canam-crm-logo-light.png" alt="Canam CRM" className="h-12 w-auto mx-auto" />
+            <BrandLogo heightClass="h-14" variant="light" animate className="mx-auto" />
           </div>
           <p className="text-gray-600">Sign in to continue</p>
         </div>
