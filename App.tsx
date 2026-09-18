@@ -6,7 +6,7 @@ import AttendanceTracker from './components/AttendanceTracker';
 
 const FollowUps = lazy(() => import('./components/FollowUps').then(m => ({ default: m.FollowUps })));
 // SQL Services
-import { getAllLeads, addLead, updateLead, subscribeToLeads, deleteLead, appendFollowUp } from './services/leadsService';
+import { getAllLeads, getLeadById, addLead, updateLead, subscribeToLeads, deleteLead, appendFollowUp } from './services/leadsService';
 import { getLeadTags, addLeadTag, subscribeToLeadTags } from './services/leadTagService';
 import { 
   subscribeToAttendanceRecords, 
@@ -17,8 +17,9 @@ import apiClient from './services/apiClient';
 import { restoreAuth, logout as authLogout, getStoredUser, consumePendingLastLogin, type ActiveSessionInfo } from './services/authService';
 import { getUserDisplayName as utilGetUserDisplayName } from './utils/dataCleaning';
 import { canMutateLead } from './utils/leadPermissions';
+import { appendLeadFollowUp, mergeLeadFields, sameLeadId } from './utils/leadState';
 import { getAssignedLeads } from './utils/leadVisibility';
-import type { Lead, AttendanceRecord, MeetingCheckInRecord } from './types';
+import type { FollowUp, Lead, AttendanceRecord, MeetingCheckInRecord } from './types';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES, COUNTRY_OPTIONS } from './types';
 
 // Components
@@ -380,38 +381,56 @@ const App: React.FC = () => {
       if(lead) handleViewLead(lead, followUpId);
   };
 
-  /** Update lead and refetch from server so changes persist (fixes revert on refresh) */
+  const applyLeadUpdate = useCallback((id: string, updater: (lead: Lead) => Lead) => {
+      setLeads(prev => prev.map(l => sameLeadId(l.id, id) ? updater(l) : l));
+      setSelectedLead(prev => (prev && sameLeadId(prev.id, id) ? updater(prev) : prev));
+  }, []);
+
+  const refreshLeadInBackground = useCallback((id: string) => {
+      void getLeadById(id).then((updated) => {
+          if (updated) applyLeadUpdate(id, () => updated);
+      });
+  }, [applyLeadUpdate]);
+
+  const findLeadById = useCallback((id: string) => {
+      if (selectedLead && sameLeadId(selectedLead.id, id)) return selectedLead;
+      return leads.find(l => sameLeadId(l.id, id));
+  }, [selectedLead, leads]);
+
+  /** Update lead locally after the write so the UI does not wait on GET /leads/all. */
   const handleUpdateLead = useCallback(async (id: string, data: Partial<Lead>) => {
-      const existing = leads.find(l => String(l.id) === String(id));
+      const existing = findLeadById(id);
       if (existing && !canMutateLead(existing, { currentUser, isAdmin })) {
           return;
       }
       await updateLead(id, data);
-      const list = await getAllLeads();
-      setLeads(list);
-      if (selectedLead && (String(selectedLead.id) === String(id))) {
-          const updated = list.find(l => String(l.id) === String(id));
-          if (updated) setSelectedLead(updated);
+      applyLeadUpdate(id, (lead) => mergeLeadFields(lead, data));
+      refreshLeadInBackground(id);
+  }, [findLeadById, currentUser, isAdmin, applyLeadUpdate, refreshLeadInBackground]);
+
+  const handleAddFollowUp = useCallback(async (id: string, f: Omit<FollowUp, 'id'> & { id?: string }) => {
+      const existing = findLeadById(id);
+      if (existing && !canMutateLead(existing, { currentUser, isAdmin })) {
+          return;
       }
-  }, [selectedLead?.id, leads, currentUser, isAdmin]);
+      const followUp = { ...f, id: f.id || Date.now().toString() };
+      await appendFollowUp(id, followUp);
+      applyLeadUpdate(id, (lead) => appendLeadFollowUp(lead, followUp));
+      refreshLeadInBackground(id);
+  }, [findLeadById, currentUser, isAdmin, applyLeadUpdate, refreshLeadInBackground]);
 
   const handleAddMeeting = useCallback(async (leadId: string, meetingDetails: { date: string; notes?: string; durationMinutes?: number }) => {
-      const lead = leads.find(l => String(l.id) === String(leadId));
+      const lead = findLeadById(leadId);
       if (!lead) return;
-      const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
       const durationNote = meetingDetails.durationMinutes ? `Duration: ${meetingDetails.durationMinutes} min.\n` : '';
-      const newMeeting = {
-          id: String(Date.now()),
-          type: 'Meeting' as const,
-          status: 'Planned' as const,
+      await handleAddFollowUp(leadId, {
+          type: 'Meeting',
+          status: 'Planned',
           date: meetingDetails.date,
           notes: durationNote + (meetingDetails.notes || ''),
-      };
-      await updateLead(leadId, { followUps: [...safeFollowUps, newMeeting] });
-      const list = await getAllLeads();
-      setLeads(list);
+      });
       setPlanMeetingModalOpen(false);
-  }, [leads]);
+  }, [findLeadById, handleAddFollowUp]);
 
   const handleBulkAddLeads = useCallback(async (newLeads: Array<Partial<Lead>>) => {
     const allResults: Array<{ index: number; agencyName: string; success: boolean; error?: string; isDuplicate?: boolean }> = [];
@@ -906,13 +925,7 @@ const App: React.FC = () => {
                                     availableUsers={availableUsers}
                                     onAssignLead={(id, am, sp) => handleUpdateLead(id, {accountManager: am, salesPerson: sp})}
                                     onUpdateLead={handleUpdateLead}
-                                    onAddFollowUp={async (id, f) => {
-                                        const existing = leads.find(l => String(l.id) === String(id));
-                                        if (existing && !canMutateLead(existing, { currentUser, isAdmin })) return;
-                                        await appendFollowUp(id, { ...f, id: Date.now().toString() });
-                                        const list = await getAllLeads();
-                                        setLeads(list);
-                                    }}
+                                    onAddFollowUp={handleAddFollowUp}
                                 />
                             </div>
                         </div>
@@ -927,7 +940,7 @@ const App: React.FC = () => {
                     )}
                     {view === 'followups' && (
                         <Suspense fallback={<PageLoader label="Loading Follow-ups…" />}>
-                            <FollowUps leads={displayedLeads} currentUser={currentUser} isAdmin={isAdmin} availableUsers={availableUsers} onUpdateLead={handleUpdateLead} />
+                            <FollowUps leads={displayedLeads} currentUser={currentUser} isAdmin={isAdmin} availableUsers={availableUsers} onUpdateLead={handleUpdateLead} onAddFollowUp={handleAddFollowUp} />
                         </Suspense>
                     )}
                     {view === 'notifications' && (
@@ -1050,12 +1063,7 @@ const App: React.FC = () => {
                 isAdmin={isAdmin}
                 userRole={userRole || ''}
                 onUpdateLead={handleUpdateLead}
-                onAddFollowUp={async (id, f) => {
-                    if (selectedLead && !canMutateLead(selectedLead, { currentUser, isAdmin })) return;
-                    await appendFollowUp(id, { ...f, id: Date.now().toString() });
-                    const list = await getAllLeads();
-                    setLeads(list);
-                }}
+                onAddFollowUp={handleAddFollowUp}
                 availableUsers={availableUsers}
                 meetingCheckIns={meetingCheckIns}
                 availableTags={leadTags}

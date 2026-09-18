@@ -7,12 +7,7 @@ const parseJSON = (data) => {
     try { return JSON.parse(data); } catch (e) { return []; }
 };
 
-export const getAllLeads = async (req, res) => {
-  try {
-    const leads = await leadsService.getAllLeads();
-    
-    // --- KEY FIX: Map EITHER Snake_Case OR CamelCase to Frontend ---
-    const formattedLeads = leads.map(lead => ({
+const formatLead = (lead) => ({
       ...lead,
       id: lead.id,
       firebase_id: lead.firebase_id,
@@ -44,7 +39,12 @@ export const getAllLeads = async (req, res) => {
       
       remarks: lead.remarks || '',
       websiteLink: lead.websiteLink || lead.website_link || ''
-    }));
+});
+
+export const getAllLeads = async (req, res) => {
+  try {
+    const leads = await leadsService.getAllLeads();
+    const formattedLeads = leads.map(formatLead);
 
     console.log(`✅ Controller: Sending ${formattedLeads.length} leads to frontend.`);
     res.json(formattedLeads);
@@ -52,6 +52,19 @@ export const getAllLeads = async (req, res) => {
   } catch (error) {
     console.error("❌ Controller Error:", error);
     res.status(500).json({ error: 'Failed to fetch leads' });
+  }
+};
+
+export const getLeadById = async (req, res) => {
+  try {
+    const lead = await leadsService.getLeadById(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+    res.json(formatLead(lead));
+  } catch (error) {
+    console.error('❌ getLeadById error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch lead' });
   }
 };
 

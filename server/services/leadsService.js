@@ -86,6 +86,31 @@ function parseJsonField(val, fallback) {
     }
 }
 
+function mapLeadRow(r, idCol, firebaseIdCol) {
+    const idVal = getRowVal(r, idCol);
+    const firebaseVal = getRowVal(r, firebaseIdCol);
+    const rawId = idVal ?? firebaseVal ?? '';
+    const idStr = (rawId !== '' && rawId != null && String(rawId).trim() !== '' && String(rawId) !== 'null')
+        ? String(rawId).trim()
+        : (firebaseVal != null && String(firebaseVal).trim() !== '')
+            ? String(firebaseVal).trim()
+            : String(rawId ?? '').trim();
+    const normalized = normalizeRowToCamel(r);
+    const out = { ...normalized, id: idStr || null, firebase_id: firebaseVal };
+    let followUpsRaw = parseJsonField(out.followUps, []);
+    out.followUps = Array.isArray(followUpsRaw) ? followUpsRaw.map((f) => {
+        if (!f || typeof f !== 'object') return f;
+        const type = (f.type === 'Meeting' || String(f.type || '').toLowerCase() === 'meeting') ? 'Meeting' : (f.type || 'Call');
+        const status = (f.status === 'Done' || String(f.status || '').toLowerCase() === 'done') ? 'Done' : (f.status === 'Planned' || String(f.status || '').toLowerCase() === 'planned') ? 'Planned' : (f.status || 'Planned');
+        return { ...f, type, status };
+    }) : [];
+    out.contacts = parseJsonField(out.contacts, []);
+    out.tags = parseJsonField(out.tags, []);
+    out.countryInterest = parseJsonField(out.countryInterest, []);
+    if (out.agencyDocuments != null) out.agencyDocuments = parseJsonField(out.agencyDocuments, undefined);
+    return hydrateTrainingFields(out);
+}
+
 export const getAllLeads = async () => {
     const table = await getLeadsTable();
     const cols = await getLeadsColumns();
@@ -94,30 +119,37 @@ export const getAllLeads = async () => {
     const firebaseIdCol = colList.find((c) => c.toLowerCase() === 'firebase_id') || 'firebase_id';
     const orderCol = (await resolveColumnName('createdAt')) || 'createdAt';
     const [rows] = await db.query(`SELECT * FROM ${table} ORDER BY \`${orderCol}\` DESC`);
-    return rows.map((r) => {
-        const idVal = getRowVal(r, idCol);
-        const firebaseVal = getRowVal(r, firebaseIdCol);
-        const rawId = idVal ?? firebaseVal ?? '';
-        const idStr = (rawId !== '' && rawId != null && String(rawId).trim() !== '' && String(rawId) !== 'null')
-            ? String(rawId).trim()
-            : (firebaseVal != null && String(firebaseVal).trim() !== '')
-                ? String(firebaseVal).trim()
-                : String(rawId ?? '').trim();
-        const normalized = normalizeRowToCamel(r);
-        const out = { ...normalized, id: idStr || null, firebase_id: firebaseVal };
-        let followUpsRaw = parseJsonField(out.followUps, []);
-        out.followUps = Array.isArray(followUpsRaw) ? followUpsRaw.map((f) => {
-            if (!f || typeof f !== 'object') return f;
-            const type = (f.type === 'Meeting' || String(f.type || '').toLowerCase() === 'meeting') ? 'Meeting' : (f.type || 'Call');
-            const status = (f.status === 'Done' || String(f.status || '').toLowerCase() === 'done') ? 'Done' : (f.status === 'Planned' || String(f.status || '').toLowerCase() === 'planned') ? 'Planned' : (f.status || 'Planned');
-            return { ...f, type, status };
-        }) : [];
-        out.contacts = parseJsonField(out.contacts, []);
-        out.tags = parseJsonField(out.tags, []);
-        out.countryInterest = parseJsonField(out.countryInterest, []);
-        if (out.agencyDocuments != null) out.agencyDocuments = parseJsonField(out.agencyDocuments, undefined);
-        return hydrateTrainingFields(out);
-    });
+    return rows.map((r) => mapLeadRow(r, idCol, firebaseIdCol));
+};
+
+export const getLeadById = async (id) => {
+    const rawId = id == null ? '' : String(id).trim();
+    if (!rawId || rawId === 'undefined' || rawId === 'null') return null;
+
+    const table = await getLeadsTable();
+    const cols = await getLeadsColumns();
+    const colList = [...cols];
+    const idCol = colList.find((c) => c.toLowerCase() === 'id') || 'id';
+    const firebaseIdCol = colList.find((c) => c.toLowerCase() === 'firebase_id') || 'firebase_id';
+
+    const clauses = [];
+    const params = [];
+    if (idCol) {
+        clauses.push(`\`${idCol}\` = ?`);
+        params.push(rawId);
+    }
+    if (firebaseIdCol) {
+        clauses.push(`\`${firebaseIdCol}\` = ?`);
+        params.push(rawId);
+    }
+    if (clauses.length === 0) return null;
+
+    const [rows] = await db.query(
+        `SELECT * FROM ${table} WHERE ${clauses.join(' OR ')} LIMIT 1`,
+        params
+    );
+    if (!rows || rows.length === 0) return null;
+    return mapLeadRow(rows[0], idCol, firebaseIdCol);
 };
 
 function parsePortalTrainingRemarks(remarks) {

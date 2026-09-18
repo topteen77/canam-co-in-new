@@ -13,39 +13,45 @@ const parseDate = (dateValue: any): any => {
   };
 };
 
+const normalizeLead = (lead: any): Lead => {
+  const a = lead.id, b = lead.firebase_id;
+  const idStr = (a != null && String(a).trim() !== '' && String(a) !== 'null')
+    ? String(a).trim()
+    : (b != null && String(b).trim() !== '')
+      ? String(b).trim()
+      : String(a ?? b ?? '').trim();
+  return {
+    ...lead,
+    id: idStr,
+    agencyName: lead.agencyName || lead.agency_name,
+    accountManager: lead.accountManager || lead.account_manager,
+    salesPerson: lead.salesPerson || lead.sales_person,
+    createdAt: parseDate(lead.createdAt || lead.created_at),
+    updatedAt: parseDate(lead.updatedAt || lead.updated_at),
+    tags: typeof lead.tags === 'string' ? JSON.parse(lead.tags || '[]') : (lead.tags || []),
+    contacts: typeof lead.contacts === 'string' ? JSON.parse(lead.contacts || '[]') : (lead.contacts || []),
+    followUps: typeof lead.followUps === 'string' ? JSON.parse(lead.followUps || '[]') : (lead.followUps || [])
+  };
+};
+
 // --- GET ALL LEADS ---
 export const getAllLeads = async (): Promise<Lead[]> => {
   try {
     const response = await apiClient.get('/leads/all');
-
-    // Convert every single lead into the format React expects.
-    // Use id ?? firebase_id so we never send the literal "null" when DB id is null.
-    return (response.data || []).map((lead: any) => {
-      const a = lead.id, b = lead.firebase_id;
-      const idStr = (a != null && String(a).trim() !== '' && String(a) !== 'null')
-        ? String(a).trim()
-        : (b != null && String(b).trim() !== '')
-          ? String(b).trim()
-          : String(a ?? b ?? '').trim();
-      return {
-      ...lead,
-      id: idStr,
-      // Fix camelCase vs snake_case issues
-      agencyName: lead.agencyName || lead.agency_name,
-      accountManager: lead.accountManager || lead.account_manager,
-      salesPerson: lead.salesPerson || lead.sales_person,
-      // APPLY THE DATE FIX
-      createdAt: parseDate(lead.createdAt || lead.created_at),
-      updatedAt: parseDate(lead.updatedAt || lead.updated_at),
-      // Handle JSON strings
-      tags: typeof lead.tags === 'string' ? JSON.parse(lead.tags || '[]') : (lead.tags || []),
-      contacts: typeof lead.contacts === 'string' ? JSON.parse(lead.contacts || '[]') : (lead.contacts || []),
-      followUps: typeof lead.followUps === 'string' ? JSON.parse(lead.followUps || '[]') : (lead.followUps || [])
-    };
-    });
+    return (response.data || []).map(normalizeLead);
   } catch (error) {
     console.error('Error fetching leads:', error);
     return [];
+  }
+};
+
+export const getLeadById = async (id: string): Promise<Lead | null> => {
+  try {
+    const response = await apiClient.get(`/leads/${encodeURIComponent(id)}`);
+    return response.data ? normalizeLead(response.data) : null;
+  } catch (error) {
+    console.error('Error fetching lead:', error);
+    return null;
   }
 };
 
