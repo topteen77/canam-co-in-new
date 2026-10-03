@@ -543,6 +543,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
               <option value="Agent Review meeting">Agent Review meeting</option>
               <option value="Follow-up Meeting">Follow-up Meeting</option>
               <option value="Demo">Demo</option>
+              <option value="Product training & Ielts ,University">Product training & Ielts ,University</option>
             </select>
           </div>
 

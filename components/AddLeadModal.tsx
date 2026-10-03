@@ -20,6 +20,7 @@ import { IcpScoringModal, TRAINING_SCORE_ROWS, clampIcpScore, emptyTrainingCateg
 import type { Lead, AgencyDocuments } from '../types';
 import type { ExtractedLeadData } from '../services/ocrService';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES } from '../types';
+import { CountryInterestSelector } from './LeadDetailsModal';
 
 const PHONE_RE = /^\d{10}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -77,6 +78,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     pocDesignation: '',
     status: 'New' as Lead['status'],
     agentCategory: 'Beginner' as Lead['agentCategory'],
+    countryInterest: ['Canada'] as string[],
     leadSource: 'Website' as Lead['leadSource'],
     tags: [] as string[],
     accountManager: '',
@@ -288,6 +290,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         agencyName: formData.agencyName.trim(),
         status: formData.status,
         agentCategory: formData.agentCategory,
+        countryInterest: formData.countryInterest,
         leadSource: formData.leadSource,
         tags: formData.tags || [],
         accountManager: formData.accountManager.trim() || undefined,
@@ -561,38 +564,52 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         </div>
 
         {/* Lead Classification */}
-        <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
-          <h3 className="text-lg font-bold text-slate-800 mb-3">🏷️ Lead Classification</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-bold text-slate-800 mb-1">📊 Status</label>
-              <select
-                value={formData.status}
-                onChange={(e) => handleInputChange('status', e.target.value)}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
-              >
-                {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
+            <h3 className="text-lg font-bold text-slate-800 mb-3">🏷️ Lead Classification</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">📊 Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => handleInputChange('status', e.target.value)}
+                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                >
+                  {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">🔍 Lead Source</label>
+                <select
+                  value={formData.leadSource}
+                  onChange={(e) => handleInputChange('leadSource', e.target.value)}
+                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                >
+                  {LEAD_SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-bold text-slate-800 mb-1">⭐ Agent Category</label>
-              <select
-                value={formData.agentCategory}
-                onChange={(e) => handleInputChange('agentCategory', e.target.value)}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
-              >
-                {AGENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-slate-800 mb-1">🔍 Lead Source</label>
-              <select
-                value={formData.leadSource}
-                onChange={(e) => handleInputChange('leadSource', e.target.value)}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
-              >
-                {LEAD_SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+          </div>
+          <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200 lg:col-span-2">
+            <h3 className="text-lg font-bold text-slate-800 mb-3">⭐ Agent Category</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">⭐ Agent Category</label>
+                <select
+                  value={formData.agentCategory}
+                  onChange={(e) => handleInputChange('agentCategory', e.target.value)}
+                  className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                >
+                  {AGENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1">🌍 Country Interest (Highest to Lowest)</label>
+                <CountryInterestSelector
+                  value={formData.countryInterest}
+                  onChange={(countries) => setFormData((prev) => ({ ...prev, countryInterest: countries }))}
+                />
+              </div>
             </div>
           </div>
         </div>

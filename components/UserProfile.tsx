@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../services/apiClient';
+import { isAppInstalled, startPwaInstall, subscribePwaInstall } from '../services/pwaInstall';
 import type { Lead, User } from '../types';
 
 interface UserProfileProps {
@@ -363,6 +364,12 @@ export const UserProfile: React.FC<UserProfileProps> = ({
   const [showCustomPassword, setShowCustomPassword] = useState(false);
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [appInstalled, setAppInstalled] = useState(() => isAppInstalled());
+  const [installNote, setInstallNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    return subscribePwaInstall(() => setAppInstalled(isAppInstalled()));
+  }, []);
 
   React.useEffect(() => {
     const loadUserData = async () => {
@@ -587,6 +594,12 @@ export const UserProfile: React.FC<UserProfileProps> = ({
     }
   };
 
+  const handleDownloadApp = async () => {
+    const result = await startPwaInstall();
+    setAppInstalled(isAppInstalled());
+    setInstallNote(result.message || null);
+  };
+
   const handleLogout = () => {
     if (onLogout) {
       onLogout();
@@ -764,7 +777,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b overflow-x-auto">
+        <div className="flex flex-wrap items-center border-b">
           <button
             onClick={() => setActiveTab('profile')}
             className={`px-6 py-3 text-sm font-medium whitespace-nowrap ${
@@ -801,7 +814,25 @@ export const UserProfile: React.FC<UserProfileProps> = ({
           >
             📚 CRM TRAINING
           </button>
+          {!appInstalled && (
+            <button
+              type="button"
+              onClick={handleDownloadApp}
+              className="ml-auto mr-2 my-1.5 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 whitespace-nowrap max-sm:mx-3 max-sm:mb-3 max-sm:w-[calc(100%-1.5rem)]"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 18h14" />
+              </svg>
+              Download App
+            </button>
+          )}
         </div>
+
+        {installNote && (
+          <div className="mx-4 mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {installNote}
+          </div>
+        )}
 
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[60vh]">

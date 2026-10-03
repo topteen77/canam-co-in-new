@@ -424,6 +424,7 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
               <option value="Agent Review meeting">Agent Review meeting</option>
               <option value="Follow-up Meeting">Follow-up Meeting</option>
               <option value="Demo">Demo</option>
+              <option value="Product training & Ielts ,University">Product training & Ielts ,University</option>
               <option value="Team Meeting">Team Meeting</option>
               <option value="Presentation">Presentation</option>
               <option value="Training Session">Training Session</option>

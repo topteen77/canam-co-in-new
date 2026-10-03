@@ -35,7 +35,7 @@ interface LeadDetailsModalProps {
 const FOLLOW_UP_STATUSES: FollowUpStatus[] = ['Planned'];
 
 // Country Interest Selector Component
-const CountryInterestSelector: React.FC<{ value: string[], onChange: (countries: string[]) => void }> = ({ value, onChange }) => {
+export const CountryInterestSelector: React.FC<{ value: string[], onChange: (countries: string[]) => void }> = ({ value, onChange }) => {
   // 🟢 SAFE FIX: Ensure value is always an array
   const safeValue = Array.isArray(value) ? value : ['Canada'];
   const [selectedCountries, setSelectedCountries] = useState<string[]>(safeValue);
@@ -725,7 +725,14 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">{lead.status}</p>
                     )}
                   </div>
+                </div>
+              </div>
 
+              <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200 lg:col-span-2">
+                <h3 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+                  ⭐ Agent Category
+                </h3>
+                <div className="space-y-3">
                   <div>
                     <label className="block text-sm font-bold text-slate-800 mb-1">⭐ Agent Category</label>
                     {isEditing ? (

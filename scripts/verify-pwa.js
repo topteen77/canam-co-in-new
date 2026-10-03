@@ -104,6 +104,14 @@ else fail('service worker should not intercept API calls');
 const app = read('App.tsx')?.toString('utf8') || '';
 if (app.includes('PWAInstallPrompt')) ok('PWAInstallPrompt is mounted');
 else fail('PWAInstallPrompt is not used');
+
+const installPrompt = read('components/PWAInstallPrompt.tsx')?.toString('utf8') || '';
+if (!installPrompt.includes('setShowInstallPrompt')) ok('install popup does not auto-open');
+else fail('install popup still auto-opens');
+
+const profile = read('components/UserProfile.tsx')?.toString('utf8') || '';
+if (profile.includes('Download App') && profile.includes('startPwaInstall')) ok('Download App button is in user profile');
+else fail('Download App button missing from user profile');
 if (app.includes('parseViewFromHash')) ok('hash view routing wired in App');
 else fail('hash view routing not wired');
 
