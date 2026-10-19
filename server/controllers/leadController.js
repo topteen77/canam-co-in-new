@@ -72,10 +72,15 @@ export const getLeadById = async (req, res) => {
 export const addLead = async (req, res) => {
   try {
     const result = await leadsService.addLead(req.body);
-    const mailchimp = await syncLeadToMailchimp(
-      { ...req.body, form_id: 'crm_agent_lead' },
-      { source: 'crm_agent_lead', leadId: result.id }
-    );
+    let mailchimp = { ok: false, status: 'error', detail: 'Mailchimp sync did not run.' };
+    try {
+      mailchimp = await syncLeadToMailchimp(
+        { ...req.body, form_id: 'crm_agent_lead' },
+        { source: 'crm_agent_lead', leadId: result.id }
+      );
+    } catch (syncError) {
+      mailchimp = { ok: false, status: 'error', detail: syncError.message || 'Mailchimp sync failed.' };
+    }
     res.json({ ...result, mailchimp });
   } catch (error) {
     res.status(500).json({ error: error.message });

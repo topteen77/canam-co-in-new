@@ -92,11 +92,13 @@ async function runMock() {
       form_id: 'become_partner',
       consent: { email: true, whatsapp: true, sms: false, calls: false },
     }, { source: 'become_partner', leadId: 'lead-1' });
-    assert(subscribed.ok === true && subscribed.status === 'subscribed', JSON.stringify(subscribed));
+    assert(subscribed.ok === true && subscribed.status === 'transactional', JSON.stringify(subscribed));
     const put = hits.find((h) => h.method === 'PUT');
     assert(put, 'expected a PUT to create or update the member');
     assert(put.body.email_address === 'priya@globaledu.in', 'email was not sent');
-    assert(put.body.status_if_new === 'subscribed', 'Email consent should subscribe a new member');
+    assert(put.body.status_if_new === 'transactional', 'a new lead must be stored without subscribing');
+    assert(!hits.some((h) => h.method === 'PATCH'), 'must not change status to subscribed or pending');
+    assert(!hits.some((h) => /campaigns|automations/.test(h.url)), 'must not call a send endpoint');
     assert(put.body.merge_fields.FNAME === 'Priya', 'first name was not split');
     assert(put.body.merge_fields.PHONE === '+919876543210', '10-digit phone should be sent as +91');
     assert(put.auth.startsWith('Basic '), 'Mailchimp auth header missing');
@@ -118,6 +120,7 @@ async function runMock() {
     const quietPut = hits.find((h) => h.method === 'PUT');
     assert(quietPut.url.includes('/lists/aud123/'), 'partner lead must be written to the Agents list');
     assert(quietPut.body.status_if_new === 'transactional', 'no Email tick must stay transactional');
+    assert(!hits.some((h) => h.method === 'PATCH' && h.body?.status), 'status must stay untouched');
 
     process.env.MAILCHIMP_STUDENTS_AUDIENCE_ID = 'students1';
     hits.length = 0;
@@ -164,7 +167,7 @@ async function runMock() {
 
     console.log('MOCK OK');
     console.log('- skipped when the lead has no email');
-    console.log('- subscribed + tags when Email consent is ticked');
+    console.log('- new lead is added as transactional even if Email consent is ticked; no send call');
     console.log('- transactional crm_agent_lead written to the Agents list, not students');
     console.log('- not_configured when the key is missing or has no datacenter');
     console.log('- error recorded when Mailchimp returns 401:', failed.detail);

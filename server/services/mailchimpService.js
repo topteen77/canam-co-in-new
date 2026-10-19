@@ -174,13 +174,15 @@ export async function syncLeadToMailchimp(lead, meta = {}) {
   try {
     const hash = crypto.createHash('md5').update(input.email).digest('hex');
     const [first, ...rest] = input.fullName.split(/\s+/).filter(Boolean);
+    // Store the person in the audience only. transactional does not receive campaigns
+    // and does not trigger Mailchimp's confirmation email. Sending is a later step.
     const member = await mc(
       config,
       `/lists/${audience.id}/members/${hash}?skip_merge_validation=true`,
       'PUT',
       {
         email_address: input.email,
-        status_if_new: input.consent.email ? 'subscribed' : 'transactional',
+        status_if_new: 'transactional',
         merge_fields: {
           FNAME: first || input.fullName || 'Partner',
           LNAME: rest.join(' '),
@@ -188,15 +190,7 @@ export async function syncLeadToMailchimp(lead, meta = {}) {
         },
       }
     );
-
-    let status = member.status;
-    if (input.consent.email && status === 'transactional') {
-      const patched = await mc(config, `/lists/${audience.id}/members/${hash}`, 'PATCH', { status: 'subscribed' });
-      status = patched.status || 'subscribed';
-    } else if (input.consent.email && status === 'unsubscribed') {
-      const patched = await mc(config, `/lists/${audience.id}/members/${hash}`, 'PATCH', { status: 'pending' });
-      status = patched.status || 'pending';
-    }
+    const status = member.status;
 
     const channels = ['email', 'whatsapp', 'sms', 'calls'].filter((ch) => input.consent[ch]);
     const label = { email: 'Email', whatsapp: 'WhatsApp', sms: 'SMS', calls: 'Calls' };
@@ -221,7 +215,7 @@ export async function syncLeadToMailchimp(lead, meta = {}) {
     const result = {
       ok: true,
       status,
-      detail: `Mailchimp updated this email as ${status} in audience ${audience.id}.`,
+      detail: `Saved in the Mailchimp audience as ${status}. No email was sent.`,
       email: input.email,
       audienceId: audience.id,
       tags,

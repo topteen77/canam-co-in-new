@@ -716,10 +716,15 @@ app.get('/api/website-signup-leads', async (req, res) => {
 app.post('/api/website-signup-leads', async (req, res) => {
   try {
     const result = await websiteSignupLeadsService.addWebsiteSignupLead(req.body);
-    const mailchimp = await syncLeadToMailchimp(
-      { ...req.body, form_id: 'crm_agent_lead' },
-      { source: 'crm_agent_lead', leadId: result.id }
-    );
+    let mailchimp = { ok: false, status: 'error', detail: 'Mailchimp sync did not run.' };
+    try {
+      mailchimp = await syncLeadToMailchimp(
+        { ...req.body, form_id: 'crm_agent_lead' },
+        { source: 'crm_agent_lead', leadId: result.id }
+      );
+    } catch (syncError) {
+      mailchimp = { ok: false, status: 'error', detail: syncError.message || 'Mailchimp sync failed.' };
+    }
     res.json({ ...result, mailchimp });
   } catch (e) {
     res.status(500).json({ error: e.message });
