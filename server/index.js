@@ -38,6 +38,7 @@ import * as fieldConfigsService from './services/fieldConfigsService.js';
 import * as travelSessionsService from './services/travelSessionsService.js';
 import * as meetingCompletionsService from './services/meetingCompletionsService.js';
 import * as meetingAlertsService from './services/meetingAlertsService.js';
+import { checkMailchimpAudience, syncLeadToMailchimp } from './services/mailchimpService.js';
 
 // Load environment variables
 const __filename = fileURLToPath(import.meta.url);
@@ -715,10 +716,41 @@ app.get('/api/website-signup-leads', async (req, res) => {
 app.post('/api/website-signup-leads', async (req, res) => {
   try {
     const result = await websiteSignupLeadsService.addWebsiteSignupLead(req.body);
-    res.json(result);
+    const mailchimp = await syncLeadToMailchimp(
+      { ...req.body, form_id: 'crm_agent_lead' },
+      { source: 'crm_agent_lead', leadId: result.id }
+    );
+    res.json({ ...result, mailchimp });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+function mailchimpLocalOnly(req, res, next) {
+  const ip = String(req.ip || req.socket?.remoteAddress || '');
+  if (ip === '127.0.0.1' || ip === '::1' || ip.endsWith('127.0.0.1')) return next();
+  return res.status(403).json({ ok: false, detail: 'Open this check on the server: curl http://127.0.0.1:5002/api/mailchimp/status' });
+}
+
+app.get('/api/mailchimp/status', mailchimpLocalOnly, async (_req, res) => {
+  const result = await checkMailchimpAudience();
+  res.json(result);
+});
+
+app.post('/api/mailchimp/test', mailchimpLocalOnly, async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  if (!email) {
+    return res.status(400).json({ ok: false, detail: 'Send JSON { "email": "you@example.com", "full_name": "Test User", "consent": { "email": false } }.' });
+  }
+  const mailchimp = await syncLeadToMailchimp({
+    email,
+    full_name: req.body.full_name || req.body.fullName || 'Mailchimp Test',
+    phone: req.body.phone || '',
+    form_id: req.body.form_id || 'become_partner',
+    step: req.body.step || 'account',
+    consent: req.body.consent || { email: false },
+  }, { source: req.body.form_id || 'become_partner', leadId: 'manual-test' });
+  res.json(mailchimp);
 });
 app.put('/api/website-signup-leads/:id', async (req, res) => {
   try {

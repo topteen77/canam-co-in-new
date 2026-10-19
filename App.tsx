@@ -848,14 +848,14 @@ const App: React.FC = () => {
           </header>
 
           <main className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 min-h-0">
-            {isAdmin && (
+            {isAdmin && view === 'meetings' && (
               <AdminMeetingAlertBanner
                 alerts={meetingAlerts}
                 dismissedIds={dismissedMeetingAlertIds}
                 onDismiss={dismissMeetingAlert}
               />
             )}
-            <div className="main-content-area px-1.5 sm:px-4 py-2 sm:py-4 pb-24 md:pb-8 w-full max-w-full min-w-0">
+            <div className={`main-content-area px-1.5 sm:px-4 w-full max-w-full min-w-0 pb-24 md:pb-8 ${view === 'leads' ? 'pt-0' : 'py-2 sm:py-4'}`}>
               {isLoadingLeads && ['leads', 'pipeline'].includes(view) && (
                 <PageLoader label="Loading leads…" />
               )}
@@ -1003,9 +1003,10 @@ const App: React.FC = () => {
             <AddLeadModal
                 onClose={() => setAddLeadModalOpen(false)}
                 onAddLead={async (data) => {
-                    await addLead({ ...data, createdBy: currentUser ?? undefined });
+                    const saved = await addLead({ ...data, createdBy: currentUser ?? undefined });
                     const list = await getAllLeads();
                     setLeads(list);
+                    return saved;
                 }}
                 currentUser={currentUser}
                 isAdmin={isAdmin}

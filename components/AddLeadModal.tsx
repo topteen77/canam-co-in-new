@@ -47,7 +47,7 @@ function FieldMessage({
 
 interface AddLeadModalProps {
   onClose: () => void;
-  onAddLead: (data: Partial<Lead>) => Promise<void>;
+  onAddLead: (data: Partial<Lead>) => Promise<{ mailchimp?: { ok: boolean; detail?: string } } | void>;
   currentUser: string | null;
   isAdmin: boolean;
   availableUsers: Array<{ id: string; name: string; email: string; role: string }>;
@@ -93,13 +93,14 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formAlert, setFormAlert] = useState<string | null>(null);
-  const formTopRef = useRef<HTMLDivElement>(null);
+  const formTopRef = useRef<HTMLFormElement>(null);
   const isPrimaryMobileValid = PHONE_RE.test(formData.phone.trim());
   const [agencyDocuments, setAgencyDocuments] = useState<AgencyDocuments>({});
   const [newTagName, setNewTagName] = useState('');
   const [tagError, setTagError] = useState('');
   const [isCreatingTag, setIsCreatingTag] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mailchimpNotice, setMailchimpNotice] = useState<string | null>(null);
 
   // ICP Score Modal States
   const [showIcpScoreModal, setShowIcpScoreModal] = useState(false);
@@ -286,7 +287,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     setIsSubmitting(true);
     try {
       const contactId = `contact_${Date.now()}`;
-      await onAddLead({
+      const result = await onAddLead({
         agencyName: formData.agencyName.trim(),
         status: formData.status,
         agentCategory: formData.agentCategory,
@@ -319,6 +320,12 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         }],
         followUps: []
       });
+      const mc = result?.mailchimp;
+      if (mc && !mc.ok) {
+        setMailchimpNotice(`This lead is saved in the CRM. Mailchimp was not updated: ${mc.detail || 'request failed'}`);
+        scrollToFormAlert();
+        return;
+      }
       onClose();
     } catch (err: any) {
       setFormAlert(err?.message || 'Failed to add lead. Please try again.');
@@ -335,23 +342,31 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
       title="Add New Agency/Partner"
       onClose={onClose}
       maxWidth="max-w-5xl"
+      noPadding
       fullScreenOnMobile
       footer={(
         <div>
           <StickyExtractTool />
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 p-3 bg-white">
             <button type="button" onClick={onClose} className="px-6 py-2.5 min-h-[44px] text-sm font-bold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 border-2 border-slate-300">
-              ❌ Cancel
+              {mailchimpNotice ? 'Close' : '❌ Cancel'}
             </button>
+            {!mailchimpNotice && (
             <button type="submit" form="add-lead-form" disabled={isSubmitting} className={`px-6 py-2.5 min-h-[44px] text-sm font-bold text-white rounded-lg border-2 shadow-lg ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 border-indigo-600'}`}>
               {isSubmitting ? '⏳ Adding Lead...' : '✅ Add Lead'}
             </button>
+            )}
           </div>
         </div>
       )}
     >
-      <form id="add-lead-form" onSubmit={handleSubmit} noValidate className="space-y-4 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-lg">
-        <div ref={formTopRef} />
+      <form id="add-lead-form" ref={formTopRef} onSubmit={handleSubmit} noValidate className="space-y-4 bg-gradient-to-br from-blue-50 to-indigo-50 p-3 sm:p-4">
+        {mailchimpNotice && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm" role="status">
+            <p className="text-sm font-semibold text-amber-950">Lead saved. Mailchimp needs attention</p>
+            <p className="mt-1 text-sm text-amber-900">{mailchimpNotice}</p>
+          </div>
+        )}
         {formAlert && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 shadow-sm" role="alert">
             <p className="text-sm font-semibold text-rose-900">Please fix these details</p>

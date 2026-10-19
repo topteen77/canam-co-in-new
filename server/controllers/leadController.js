@@ -1,4 +1,5 @@
 import * as leadsService from '../services/leadsService.js';
+import { syncLeadToMailchimp } from '../services/mailchimpService.js';
 
 // Helper to safely parse JSON strings from DB
 const parseJSON = (data) => {
@@ -71,7 +72,11 @@ export const getLeadById = async (req, res) => {
 export const addLead = async (req, res) => {
   try {
     const result = await leadsService.addLead(req.body);
-    res.json(result);
+    const mailchimp = await syncLeadToMailchimp(
+      { ...req.body, form_id: 'crm_agent_lead' },
+      { source: 'crm_agent_lead', leadId: result.id }
+    );
+    res.json({ ...result, mailchimp });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -58,7 +58,7 @@ export const getLeadById = async (id: string): Promise<Lead | null> => {
 // --- Standard Functions ---
 export const addLead = async (lead: Partial<Lead>) => {
   const res = await apiClient.post('/leads/add', lead);
-  return res.data.id;
+  return res.data;
 };
 export const updateLead = async (id: string, updates: Partial<Lead>) => {
   try {

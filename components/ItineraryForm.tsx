@@ -1436,7 +1436,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
 
   return (
     <div>
-        <div className="sticky top-0 z-[60] bg-white/95 backdrop-blur -mx-1.5 sm:-mx-4 px-1.5 sm:px-4 py-2 sm:py-3 mb-2 sm:mb-3 flex flex-col sm:flex-row justify-between sm:items-center gap-3 sm:gap-4">
+        <div className="sticky top-0 z-[60] bg-white/95 backdrop-blur -mx-1.5 sm:-mx-4 px-1.5 sm:px-4 pt-0 pb-2 mb-2 flex flex-col sm:flex-row justify-between sm:items-center gap-2 sm:gap-3">
             <div className="flex flex-wrap items-center gap-2 sm:gap-4 min-w-0">
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-800 truncate">{title}</h2>
                 <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm flex-wrap">

@@ -53,7 +53,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div 
-      className={`fixed inset-0 bg-black/60 z-50 flex justify-center backdrop-blur-sm transition-opacity ${
+      className={`fixed inset-0 bg-black/60 z-[80] flex justify-center backdrop-blur-sm transition-opacity ${
         fullScreenOnMobile ? 'items-stretch sm:items-center p-0 sm:p-4' : 'items-center p-2 sm:p-4'
       }`}
       onClick={onClose} // Close when clicking the backdrop

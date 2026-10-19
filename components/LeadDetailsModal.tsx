@@ -618,7 +618,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Lead Details: ${lead.agencyName}`} maxWidth="max-w-6xl" noPadding>
       <div className="sticky top-0 z-20 bg-white border-b border-slate-200 shadow-[0_8px_16px_-8px_rgba(15,23,42,0.18)]">
-        <div className="app-chip-row flex px-3 pt-2 pb-2 sm:hidden">
+        <div className="app-chip-row flex px-3 pt-0 pb-2 sm:hidden">
           {[
             { id: 'details', label: 'Lead Details', tone: '' },
             { id: 'followups', label: 'Follow-ups', tone: 'app-chip--yellow' },
@@ -627,7 +627,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`app-chip ${tab.tone} ${activeTab === tab.id ? 'app-chip--active' : ''}`}>{tab.label}</button>
           ))}
         </div>
-        <div className="hidden sm:flex overflow-x-auto px-4 pt-2 gap-1">
+        <div className="hidden sm:flex overflow-x-auto px-4 pt-0 gap-1">
           {[
             { id: 'details', label: '📋 Lead Details' },
             { id: 'followups', label: '📞 Follow-ups' },
@@ -683,7 +683,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         )}
       </div>
 
-      <div className="w-full bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-5">
+      <div className="w-full bg-gradient-to-br from-blue-50 to-indigo-50 px-3 sm:px-4 pt-2 pb-3 sm:pb-4">
         {/* Lead Details Tab */}
         {activeTab === 'details' && (
           <div className="space-y-4">
