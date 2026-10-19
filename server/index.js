@@ -38,7 +38,14 @@ import * as fieldConfigsService from './services/fieldConfigsService.js';
 import * as travelSessionsService from './services/travelSessionsService.js';
 import * as meetingCompletionsService from './services/meetingCompletionsService.js';
 import * as meetingAlertsService from './services/meetingAlertsService.js';
-import { checkMailchimpAudience, syncLeadToMailchimp } from './services/mailchimpService.js';
+import {
+  checkMailchimpAudience,
+  loadMailchimpSettings,
+  publicMailchimpStatus,
+  saveMailchimpSettings,
+  syncLeadToMailchimp,
+  testMailchimpConnection,
+} from './services/mailchimpService.js';
 
 // Load environment variables
 const __filename = fileURLToPath(import.meta.url);
@@ -742,6 +749,38 @@ app.get('/api/mailchimp/status', mailchimpLocalOnly, async (_req, res) => {
   res.json(result);
 });
 
+app.get('/api/admin/mailchimp', authenticateToken, requireAdmin, async (_req, res) => {
+  try {
+    await loadMailchimpSettings();
+    res.json(publicMailchimpStatus());
+  } catch (error) {
+    res.status(500).json({ ok: false, detail: error.message || 'Could not load Mailchimp settings.' });
+  }
+});
+
+app.put('/api/admin/mailchimp', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await saveMailchimpSettings({
+      apiKey: req.body?.apiKey,
+      audienceId: req.body?.audienceId,
+      studentsAudienceId: req.body?.studentsAudienceId,
+      updatedBy: req.user?.email || req.user?.name || 'admin',
+    });
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (error) {
+    res.status(500).json({ ok: false, detail: error.message || 'Could not save Mailchimp settings.' });
+  }
+});
+
+app.post('/api/admin/mailchimp/test', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await testMailchimpConnection(req.body || {});
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (error) {
+    res.status(500).json({ ok: false, detail: error.message || 'Mailchimp test failed.' });
+  }
+});
+
 app.post('/api/mailchimp/test', mailchimpLocalOnly, async (req, res) => {
   const email = String(req.body?.email || '').trim();
   if (!email) {
@@ -945,6 +984,12 @@ ensureSessionTables().then(() => {
   console.log('✅ Session and device tables ready');
 }).catch((err) => {
   console.error('⚠️ Could not prepare session tables:', err.message);
+});
+
+loadMailchimpSettings().then(() => {
+  console.log('✅ Mailchimp settings ready');
+}).catch((err) => {
+  console.error('⚠️ Could not prepare Mailchimp settings:', err.message);
 });
 
 app.use(expressErrorLogger);

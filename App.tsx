@@ -82,6 +82,7 @@ const App: React.FC = () => {
   // --- STATE ---
   const [leads, setLeads] = useState<Lead[]>([]);
   const [view, setView] = useState<string>(() => parseViewFromHash());
+  const [leadSearchRequest, setLeadSearchRequest] = useState(0);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   
   // Modals
@@ -796,6 +797,18 @@ const App: React.FC = () => {
                 </div>
                 <div className="app-header-actions flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                   <button
+                    onClick={() => {
+                      if (view !== 'leads') setView('leads');
+                      setLeadSearchRequest((n) => n + 1);
+                    }}
+                    className="app-header-btn app-header-btn--search"
+                    title="Search leads"
+                    aria-label="Search leads"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    <span className="hidden md:inline">Search</span>
+                  </button>
+                  <button
                     onClick={() => setAddLeadModalOpen(true)}
                     className="app-header-btn app-header-btn--primary"
                     title="Add Lead"
@@ -884,6 +897,7 @@ const App: React.FC = () => {
                             availableUsers={availableUsers}
                             onAssignLead={(id, am, sp) => handleUpdateLead(id, {accountManager: am, salesPerson: sp})}
                             onUpdateLead={handleUpdateLead}
+                            searchRequestId={leadSearchRequest}
                         />
                     )}
 
@@ -927,6 +941,7 @@ const App: React.FC = () => {
                                     onAssignLead={(id, am, sp) => handleUpdateLead(id, {accountManager: am, salesPerson: sp})}
                                     onUpdateLead={handleUpdateLead}
                                     onAddFollowUp={handleAddFollowUp}
+                                    searchRequestId={leadSearchRequest}
                                 />
                             </div>
                         </div>

@@ -44,6 +44,8 @@ interface LeadsDashboardProps {
   onUpdateLead?: (leadId: string, updates: Partial<Lead>) => void;
   /** When set (e.g. from sidebar), this view is used by default. Leads = compact list, Pipeline = board. */
   defaultViewMode?: ViewModeType;
+  /** Increments when the header Search button is pressed. */
+  searchRequestId?: number;
 }
 
 const categoryColors: Record<AgentCategory, string> = {
@@ -1111,6 +1113,9 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
   }, []);
   const [showFilters, setShowFilters] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  useEffect(() => {
+    if (props.searchRequestId) setShowSearchModal(true);
+  }, [props.searchRequestId]);
   const [quickSearchTerm, setQuickSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     status: [] as string[],
@@ -1467,17 +1472,6 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z" />
                     </svg>
                     <span className="hidden sm:inline">Filters</span>
-                </button>
-                <button
-                    onClick={() => setShowSearchModal(true)}
-                    className="app-icon-btn flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border-2 border-green-500 rounded-md hover:bg-green-50 shadow-md min-h-[36px]"
-                    title="Search leads"
-                    aria-label="Search leads"
-                >
-                    <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <span className="hidden sm:inline">Search</span>
                 </button>
                 <div className="flex-grow sm:flex-grow-0 flex items-center p-0.5 sm:p-1 bg-slate-200 rounded-lg mobile-view-selector">
                     <button 
@@ -2205,7 +2199,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
 
         {/* Quick Search Modal */}
         {showSearchModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[80]">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[90]">
                 <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-gray-900">Search Leads</h3>

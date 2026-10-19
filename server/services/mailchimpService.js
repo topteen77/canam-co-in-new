@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import db from '../db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOG_DIR = path.resolve(__dirname, '../logs');
@@ -32,27 +33,39 @@ function logMailchimp(entry) {
   }
 }
 
-export function mailchimpConfig() {
-  const key = String(process.env.MAILCHIMP_API_KEY || '').trim();
-  const audienceId = String(process.env.MAILCHIMP_AUDIENCE_ID || '').trim();
-  const studentsAudienceId = String(process.env.MAILCHIMP_STUDENTS_AUDIENCE_ID || '').trim();
-  if (!key) {
+let savedSettings = null;
+
+function buildConfig({ key, audienceId, studentsAudienceId, source }) {
+  const cleanKey = String(key || '').trim();
+  const cleanAudience = String(audienceId || '').trim();
+  const cleanStudents = String(studentsAudienceId || '').trim();
+  const fromAdmin = source === 'admin';
+  if (!cleanKey) {
     return {
       configured: false,
-      detail: 'Set MAILCHIMP_API_KEY in .env. In Mailchimp open Profile → Extras → API keys. The key must end with the datacenter, for example -us21.',
+      source,
+      detail: fromAdmin
+        ? 'Enter a Mailchimp API key. In Mailchimp open Profile → Extras → API keys. The key must end with the datacenter, for example -us21.'
+        : 'Set MAILCHIMP_API_KEY in .env, or save it from Admin Panel → Mailchimp. The key must end with the datacenter, for example -us21.',
     };
   }
-  const datacenter = key.slice(key.lastIndexOf('-') + 1);
+  const datacenter = cleanKey.slice(cleanKey.lastIndexOf('-') + 1);
   if (!/^[a-z]{2}\d+$/.test(datacenter)) {
     return {
       configured: false,
-      detail: 'MAILCHIMP_API_KEY must end with a datacenter such as -us21. Copy the whole key from Mailchimp.',
+      source,
+      detail: 'The API key must end with a datacenter such as -us21. Copy the whole key from Mailchimp.',
     };
   }
-  if (!audienceId) {
+  if (!cleanAudience) {
     return {
       configured: false,
-      detail: 'Set MAILCHIMP_AUDIENCE_ID in .env. The Agents audience id in the partner spec is 2e5bc4f3ca.',
+      source,
+      key: cleanKey,
+      datacenter,
+      detail: fromAdmin
+        ? 'Enter the Agents audience id. In Mailchimp open the audience and copy the Audience ID.'
+        : 'Set MAILCHIMP_AUDIENCE_ID in .env, or save the Agents audience id from Admin Panel → Mailchimp.',
     };
   }
   const baseOverride = process.env.NODE_ENV !== 'production'
@@ -60,12 +73,125 @@ export function mailchimpConfig() {
     : '';
   return {
     configured: true,
-    key,
-    audienceId,
-    studentsAudienceId,
+    source,
+    key: cleanKey,
+    audienceId: cleanAudience,
+    studentsAudienceId: cleanStudents,
     datacenter,
     base: baseOverride || `https://${datacenter}.api.mailchimp.com/3.0`,
   };
+}
+
+export function mailchimpConfig() {
+  const savedKey = String(savedSettings?.api_key || '').trim();
+  const savedAudience = String(savedSettings?.audience_id || '').trim();
+  if (savedKey || savedAudience) {
+    return buildConfig({
+      key: savedKey,
+      audienceId: savedAudience,
+      studentsAudienceId: savedSettings?.students_audience_id,
+      source: 'admin',
+    });
+  }
+  return buildConfig({
+    key: process.env.MAILCHIMP_API_KEY,
+    audienceId: process.env.MAILCHIMP_AUDIENCE_ID,
+    studentsAudienceId: process.env.MAILCHIMP_STUDENTS_AUDIENCE_ID,
+    source: 'env',
+  });
+}
+
+export function publicMailchimpStatus(config = mailchimpConfig(), extra = {}) {
+  const key = String(config.key || '');
+  return {
+    ok: extra.ok ?? config.configured === true,
+    configured: config.configured === true,
+    source: config.source || 'env',
+    keySet: Boolean(key),
+    keyHint: key ? `••••${key.slice(-4)}` : '',
+    audienceId: config.audienceId || '',
+    studentsAudienceId: config.studentsAudienceId || '',
+    datacenter: config.datacenter || '',
+    detail: extra.detail || config.detail || (config.configured ? 'Mailchimp is configured.' : ''),
+    audienceName: extra.audienceName || null,
+    memberCount: extra.memberCount ?? null,
+  };
+}
+
+export async function loadMailchimpSettings() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS mailchimp_settings (
+      id TINYINT NOT NULL PRIMARY KEY,
+      api_key VARCHAR(255) NOT NULL DEFAULT '',
+      audience_id VARCHAR(64) NOT NULL DEFAULT '',
+      students_audience_id VARCHAR(64) NOT NULL DEFAULT '',
+      updated_at DATETIME NULL,
+      updated_by VARCHAR(255) NULL
+    )
+  `);
+  const [rows] = await db.query(
+    'SELECT api_key, audience_id, students_audience_id, updated_at, updated_by FROM mailchimp_settings WHERE id = 1'
+  );
+  savedSettings = rows[0] || { api_key: '', audience_id: '', students_audience_id: '' };
+  return savedSettings;
+}
+
+export async function saveMailchimpSettings({ apiKey, audienceId, studentsAudienceId, updatedBy } = {}) {
+  if (!savedSettings) await loadMailchimpSettings();
+  const current = mailchimpConfig();
+  const nextKey = String(apiKey || '').trim() || String(savedSettings?.api_key || '').trim() || String(current.key || '').trim();
+  const nextStudents = String(studentsAudienceId || '').trim()
+    || String(savedSettings?.students_audience_id || current.studentsAudienceId || '').trim();
+  const next = buildConfig({
+    key: nextKey,
+    audienceId,
+    studentsAudienceId: nextStudents,
+    source: 'admin',
+  });
+  if (!next.configured) return publicMailchimpStatus(next, { ok: false });
+  await db.query(
+    `INSERT INTO mailchimp_settings (id, api_key, audience_id, students_audience_id, updated_at, updated_by)
+     VALUES (1, ?, ?, ?, NOW(), ?)
+     ON DUPLICATE KEY UPDATE
+       api_key = VALUES(api_key),
+       audience_id = VALUES(audience_id),
+       students_audience_id = VALUES(students_audience_id),
+       updated_at = VALUES(updated_at),
+       updated_by = VALUES(updated_by)`,
+    [next.key, next.audienceId, next.studentsAudienceId || '', String(updatedBy || 'admin').slice(0, 255)]
+  );
+  savedSettings = {
+    api_key: next.key,
+    audience_id: next.audienceId,
+    students_audience_id: next.studentsAudienceId || '',
+  };
+  return publicMailchimpStatus(mailchimpConfig(), { ok: true, detail: 'Mailchimp settings saved. New leads use this audience. No email is sent.' });
+}
+
+export async function testMailchimpConnection(body = {}) {
+  const current = mailchimpConfig();
+  const typedKey = String(body.apiKey || '').trim();
+  const config = buildConfig({
+    key: typedKey || current.key,
+    audienceId: body.audienceId != null && String(body.audienceId).trim() !== '' ? body.audienceId : current.audienceId,
+    studentsAudienceId: body.studentsAudienceId != null ? body.studentsAudienceId : current.studentsAudienceId,
+    source: typedKey ? 'admin' : (current.source || 'env'),
+  });
+  if (!config.configured) return publicMailchimpStatus(config, { ok: false });
+  try {
+    const list = await mc(config, `/lists/${config.audienceId}?fields=id,name,stats.member_count`, 'GET');
+    return publicMailchimpStatus(config, {
+      ok: true,
+      detail: `Connected to audience "${list.name || config.audienceId}". No contact was added and no email was sent.`,
+      audienceName: list.name || null,
+      memberCount: list.stats?.member_count ?? null,
+    });
+  } catch (error) {
+    return publicMailchimpStatus(config, {
+      ok: false,
+      detail: error?.message || 'Mailchimp request failed.',
+    });
+  }
 }
 
 function resolveFormId(lead, source) {
