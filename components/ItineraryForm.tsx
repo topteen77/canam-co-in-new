@@ -1436,7 +1436,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
 
   return (
     <div>
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 sm:mb-6 gap-3 sm:gap-4">
+        <div className="sticky top-0 z-[60] bg-white/95 backdrop-blur -mx-1.5 sm:-mx-4 px-1.5 sm:px-4 py-2 sm:py-3 mb-2 sm:mb-3 flex flex-col sm:flex-row justify-between sm:items-center gap-3 sm:gap-4">
             <div className="flex flex-wrap items-center gap-2 sm:gap-4 min-w-0">
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-800 truncate">{title}</h2>
                 <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm flex-wrap">
@@ -1468,21 +1468,17 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                     </svg>
                     <span className="hidden sm:inline">Filters</span>
                 </button>
-                
-                {/* Search Button - Highlighted */}
-                <div className="flex flex-col gap-1 relative">
-                    <button 
-                        onClick={() => setShowSearchModal(true)} 
-                        className="app-icon-btn flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border-2 border-green-500 rounded-md hover:bg-green-50 shadow-md relative min-h-[36px]"
-                    >
-                        <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        <span className="hidden sm:inline">Search</span>
-                        {/* Green arrow indicator - hide on very small to reduce clutter */}
-                        <div className="absolute -top-1.5 -right-1.5 sm:-top-2 sm:-right-2 w-0 h-0 border-l-[6px] sm:border-l-[8px] border-l-transparent border-r-[6px] sm:border-r-[8px] border-r-transparent border-b-[6px] sm:border-b-[8px] border-b-green-500 hidden sm:block"></div>
-                    </button>
-                </div>
+                <button
+                    onClick={() => setShowSearchModal(true)}
+                    className="app-icon-btn flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-600 bg-white border-2 border-green-500 rounded-md hover:bg-green-50 shadow-md min-h-[36px]"
+                    title="Search leads"
+                    aria-label="Search leads"
+                >
+                    <svg className="h-3.5 w-3.5 sm:h-4 sm:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <span className="hidden sm:inline">Search</span>
+                </button>
                 <div className="flex-grow sm:flex-grow-0 flex items-center p-0.5 sm:p-1 bg-slate-200 rounded-lg mobile-view-selector">
                     <button 
                         onClick={() => setViewMode('mobile-cards')} 
@@ -2209,7 +2205,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
 
         {/* Quick Search Modal */}
         {showSearchModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[80]">
                 <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-gray-900">Search Leads</h3>

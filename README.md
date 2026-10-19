@@ -59,3 +59,45 @@ sudo pm2 logs new-crm-web --lines 80
 ```
 
 Do not start a second copy of `new-crm-api` or `new-crm-web` if they are already online.
+
+Local project run:
+step1:
+/home/itpc6/Public/Rakesh-crm/Rakesh git code/latest code-sep8/canam-co-in-new
+npm install
+cd server && npm install && cd ..
+cp .env.local.example .env.local
+
+step2:
+server/.env 
+DB_HOST=127.0.0.1
+DB_PORT=3307
+DB_USER=phpadmin
+DB_NAME=db_nod_crm
+PORT=5002
+
+step3:
+docker run -d \
+  --name rakesh-crm \
+  --restart unless-stopped \
+  --user 999:65534 \
+  -e MYSQL_ROOT_PASSWORD='YOUR_DB_PASSWORD' \
+  -e MYSQL_DATABASE=db_nod_crm \
+  -e MYSQL_USER=phpadmin \
+  -e MYSQL_PASSWORD='YOUR_DB_PASSWORD' \
+  -p 3307:3306 \
+  -v /home/itpc6/Public/Rakesh-crm/db-data:/var/lib/mysql \
+  mysql:8.0 \
+  mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+step4:
+docker start rakesh-crm
+
+step5:
+cd server
+npm run start-full
+
+step6:
+npm run dev
+
+
+http://localhost:3001/
