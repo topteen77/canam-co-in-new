@@ -37,7 +37,10 @@ const MailchimpSettings: React.FC = () => {
         const { data } = await apiClient.get('/admin/mailchimp');
         if (!cancelled) applyStatus(data);
       } catch (e: any) {
-        if (!cancelled) setError(e?.response?.data?.detail || e?.response?.data?.error || 'Could not load Mailchimp settings.');
+        if (!cancelled) {
+          setStatus({ ok: false, configured: false, detail: e?.response?.data?.detail || e?.response?.data?.error || 'Could not load Mailchimp settings.' });
+          setError(e?.response?.data?.detail || e?.response?.data?.error || 'Could not load Mailchimp settings.');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -59,7 +62,7 @@ const MailchimpSettings: React.FC = () => {
       applyStatus(data);
       setApiKey('');
       setShowApiKey(false);
-      setNotice(data.detail || 'Saved.');
+      setNotice(data.ok ? (data.detail || 'Verified.') : '');
     } catch (e: any) {
       setError(e?.response?.data?.detail || e?.response?.data?.error || 'Could not save Mailchimp settings.');
     } finally {
@@ -73,8 +76,8 @@ const MailchimpSettings: React.FC = () => {
     setNotice('');
     try {
       const { data } = await apiClient.post('/admin/mailchimp/test', payload());
-      setStatus((prev) => ({ ...prev, ...data }));
-      setNotice(data.detail || 'Connected.');
+      applyStatus(data);
+      setNotice(data.ok ? (data.detail || 'Verified.') : '');
     } catch (e: any) {
       const data = e?.response?.data;
       if (data?.detail) setStatus((prev) => ({ ...prev, ...data }));
@@ -97,11 +100,15 @@ const MailchimpSettings: React.FC = () => {
         </p>
       </div>
 
-      <div className={`rounded-lg px-3 py-2 text-sm ${status?.configured ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
-        {status?.configured ? 'Configured' : 'Not configured'}
-        {status?.source === 'admin' ? ' from this screen' : status?.source === 'env' ? ' from the server environment' : ''}
-        {status?.keyHint ? ` · key ${status.keyHint}` : ''}
-        {status?.audienceName ? ` · ${status.audienceName}` : ''}
+      <div className={`rounded-lg px-3 py-2 text-sm ${status?.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
+        <p className="font-semibold">{status?.ok ? 'Verified' : 'Error'}</p>
+        <p className="mt-0.5">
+          {status?.detail
+            || (status?.ok ? 'Mailchimp connection is working.' : 'Mailchimp is not working. Check the API key and Agents audience ID.')}
+          {status?.source === 'admin' ? ' Saved from this screen.' : status?.source === 'env' ? ' Using the server environment.' : ''}
+          {status?.keyHint ? ` Key ${status.keyHint}.` : ''}
+          {status?.audienceName ? ` Audience ${status.audienceName}.` : ''}
+        </p>
       </div>
 
       <label className="block">

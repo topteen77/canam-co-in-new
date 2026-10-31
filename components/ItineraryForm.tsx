@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Lead, LeadStatus, MeetingCheckInRecord, AgentCategory } from '../types';
-import { LEAD_STATUSES } from '../types';
+import { COUNTRY_FLAGS, LEAD_STATUSES } from '../types';
 import { PlusIcon } from './icons/SparklesIcon';
 import { UploadIcon } from './icons/UploadIcon';
 import { Squares2x2Icon } from './icons/ViewIcons';
@@ -917,23 +917,24 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
                                             />
                                         </td>
                                     )}
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm font-medium text-slate-900 flex items-center gap-1">
-                                            {lead.agencyName}
+                                    <td className="px-6 py-4 max-w-[16rem]">
+                                        <div className="text-sm font-medium text-slate-900 flex items-center gap-1 min-w-0">
+                                            <span className="truncate min-w-0" title={lead.agencyName}>{lead.agencyName}</span>
                                             {(() => {
-                                                const countryInterest = Array.isArray(lead.countryInterest) ? lead.countryInterest : ['Canada'];
-                                                const flagMap: Record<string, string> = {
-                                                    'Canada': '🇨🇦',
-                                                    'UK': '🇬🇧',
-                                                    'USA': '🇺🇸'
-                                                };
+                                                const countryInterest = Array.isArray(lead.countryInterest) ? lead.countryInterest.filter(Boolean) : [];
+                                                if (countryInterest.length === 0) return null;
+                                                const shown = countryInterest.slice(0, 3);
+                                                const extra = countryInterest.length - shown.length;
                                                 return (
-                                                    <span className="flex items-center gap-0.5" title={countryInterest.join(' → ')}>
-                                                        {countryInterest.map((country, idx) => (
-                                                            <span key={idx} className="text-sm">
-                                                                {flagMap[country] || country}
+                                                    <span className="inline-flex items-center gap-px shrink-0 max-w-[4.25rem] overflow-hidden" title={countryInterest.join(' → ')}>
+                                                        {shown.map((country, idx) => (
+                                                            <span key={`${country}-${idx}`} className="text-xs leading-none">
+                                                                {COUNTRY_FLAGS[country] || '🏳️'}
                                                             </span>
                                                         ))}
+                                                        {extra > 0 && (
+                                                            <span className="text-[9px] font-semibold text-slate-500">+{extra}</span>
+                                                        )}
                                                     </span>
                                                 );
                                             })()}

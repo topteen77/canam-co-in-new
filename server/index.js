@@ -752,7 +752,8 @@ app.get('/api/mailchimp/status', mailchimpLocalOnly, async (_req, res) => {
 app.get('/api/admin/mailchimp', authenticateToken, requireAdmin, async (_req, res) => {
   try {
     await loadMailchimpSettings();
-    res.json(publicMailchimpStatus());
+    const ping = await checkMailchimpAudience();
+    res.json(publicMailchimpStatus(undefined, ping));
   } catch (error) {
     res.status(500).json({ ok: false, detail: error.message || 'Could not load Mailchimp settings.' });
   }
@@ -760,13 +761,17 @@ app.get('/api/admin/mailchimp', authenticateToken, requireAdmin, async (_req, re
 
 app.put('/api/admin/mailchimp', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const result = await saveMailchimpSettings({
+    const saved = await saveMailchimpSettings({
       apiKey: req.body?.apiKey,
       audienceId: req.body?.audienceId,
       studentsAudienceId: req.body?.studentsAudienceId,
       updatedBy: req.user?.email || req.user?.name || 'admin',
     });
-    res.status(result.ok ? 200 : 400).json(result);
+    if (!saved.configured) {
+      return res.status(400).json(saved);
+    }
+    const ping = await checkMailchimpAudience();
+    res.json(publicMailchimpStatus(undefined, ping));
   } catch (error) {
     res.status(500).json({ ok: false, detail: error.message || 'Could not save Mailchimp settings.' });
   }

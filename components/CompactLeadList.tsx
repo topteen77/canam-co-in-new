@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { Lead, FollowUpType, FollowUpStatus } from '../types';
+import { COUNTRY_FLAGS, type Lead, type FollowUpType, type FollowUpStatus } from '../types';
 import { trackCallAction, trackWhatsAppAction, trackEmailAction } from '../services/ctaTrackingService';
 import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
@@ -673,27 +673,27 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                         )}
                         
                         {column.id === 'agencyName' && (
-                          <div className="truncate" title={lead.agencyName}>
-                            <div className="font-medium text-slate-900 text-xs flex items-center gap-1">
-                              {lead.agencyName}
+                          <div className="min-w-0 truncate" title={lead.agencyName}>
+                            <div className="font-medium text-slate-900 text-xs flex items-center gap-1 min-w-0">
+                              <span className="truncate min-w-0">{lead.agencyName}</span>
                               {(() => {
-                                // 🟢 SAFE FIX: Force it to be an array
-                                const rawInterest = lead.countryInterest;
-                                const countryInterest = Array.isArray(rawInterest) ? rawInterest : ['Canada'];
-
-                                const flagMap: Record<string, string> = {
-                                  'Canada': '🇨🇦',
-                                  'UK': '🇬🇧',
-                                  'USA': '🇺🇸'
-                                };
-                                
+                                const countryInterest = Array.isArray(lead.countryInterest) ? lead.countryInterest.filter(Boolean) : [];
+                                if (countryInterest.length === 0) return null;
+                                const shown = countryInterest.slice(0, 3);
+                                const extra = countryInterest.length - shown.length;
                                 return (
-                                  <span className="flex items-center gap-0.5" title={countryInterest.join(' → ')}>
-                                    {countryInterest.map((country, idx) => (
-                                      <span key={idx} className="text-xs">
-                                        {flagMap[country] || country}
+                                  <span
+                                    className="inline-flex items-center gap-px shrink-0 max-w-[4.25rem] overflow-hidden"
+                                    title={countryInterest.join(' → ')}
+                                  >
+                                    {shown.map((country, idx) => (
+                                      <span key={`${country}-${idx}`} className="text-[11px] leading-none">
+                                        {COUNTRY_FLAGS[country] || '🏳️'}
                                       </span>
                                     ))}
+                                    {extra > 0 && (
+                                      <span className="text-[9px] font-semibold text-slate-500">+{extra}</span>
+                                    )}
                                   </span>
                                 );
                               })()}
