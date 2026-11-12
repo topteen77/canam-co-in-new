@@ -10,6 +10,8 @@ import SimplePagination from './SimplePagination';
 import ListPagination from './ListPagination';
 import { MultiSelect } from './MultiSelect';
 import { trackCallAction, trackWhatsAppAction, trackEmailAction } from '../services/ctaTrackingService';
+import { placeCrmCall } from '../services/placeCall';
+import { useShowCallIcon } from '../hooks/useShowCallIcon';
 import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { IcpScoringModal, clampIcpScore, emptyIcpCategoryScores, parseIcpScoreInput } from './IcpScoringModal';
@@ -168,6 +170,7 @@ const LeadCard: React.FC<{
   currentUser?: string | null;
   onUpdateLead?: (leadId: string, updates: Partial<Lead>) => void;
 }> = ({ lead, onClick, onOpenFollowUps, onOpenRemarks, isSelected, onToggleSelection, showSelection, isAdmin, availableUsers, onAssignLead, currentUser, onUpdateLead }) => {
+  const showCallIcon = useShowCallIcon(Boolean(isAdmin));
   const [showEmailTemplateModal, setShowEmailTemplateModal] = useState(false);
   const [showIcpScoreModal, setShowIcpScoreModal] = useState(false);
   const [categoryScores, setCategoryScores] = useState(emptyIcpCategoryScores);
@@ -379,7 +382,7 @@ const LeadCard: React.FC<{
     {firstContact.phone && (
       <div className="mt-3 pt-3 border-t border-slate-100">
         <div className="flex gap-2">
-        {firstContact.phone && (
+        {firstContact.phone && showCallIcon && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -395,7 +398,13 @@ const LeadCard: React.FC<{
                   lead.agencyName
                 );
               }
-              window.open(`tel:${firstContact.phone}`, '_self');
+              void placeCrmCall({
+                phone: firstContact.phone || '',
+                leadId: lead.id,
+                leadName: lead.agencyName,
+                contactName: firstContact.name,
+                userEmail: currentUser,
+              });
             }}
             className="lead-card-cta flex-1 min-w-0 flex items-center justify-center gap-1.5 px-2 py-2 text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
             title={`Call ${firstContact.phone}`}
@@ -759,8 +768,7 @@ const BoardView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | '
 const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'onMeetingCheckIn' | 'meetingCheckIns' | 'currentUser' | 'onAddLead' | 'isAdmin' | 'selectedLeads' | 'onToggleLeadSelection' | 'onSelectAllLeads' | 'onSelectVisibleLeads' | 'availableUsers' | 'onAssignLead'>> = ({ 
   leads, onSelectLead, onMeetingCheckIn, meetingCheckIns, currentUser, onAddLead, isAdmin, selectedLeads, onToggleLeadSelection, onSelectAllLeads, onSelectVisibleLeads, availableUsers, onAssignLead 
 }) => {
-    
-    
+    const showCallIcon = useShowCallIcon(Boolean(isAdmin));
     const getNextAction = (lead: Lead): { text: string; isMissed: boolean } => {
         // 🟢 SAFE FIX: Array check
         const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
@@ -949,7 +957,7 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
                                             <div className="flex items-center gap-2">
                                                 {firstContact.phone && (
                                                   <>
-                                                    <a href={`tel:${firstContact.phone}`} title="Call" className="text-slate-400 hover:text-indigo-600"><PhoneIcon className="h-4 w-4" /></a>
+                                                    {showCallIcon && <button type="button" title="Call" className="text-slate-400 hover:text-indigo-600" onClick={(e) => { e.stopPropagation(); void placeCrmCall({ phone: firstContact.phone || '', leadId: lead.id, leadName: lead.agencyName, contactName: firstContact.name, userEmail: currentUser }); }}><PhoneIcon className="h-4 w-4" /></button>}
                                                     <a href={createWhatsAppUrl(firstContact.phone)} title="WhatsApp" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-green-600"><WhatsAppIcon className="h-4 w-4" /></a>
                                                   </>
                                                 )}

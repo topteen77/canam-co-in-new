@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import type { CallLog, Lead } from '../types';
 import apiClient from '../services/apiClient';
+import { UserFilterOptions } from './UserFilterOptions';
+import { isInactiveUser } from '../utils/userSelect';
 
 interface CallsReportProps {
   currentUser: string;
   isAdmin: boolean;
-  availableUsers?: Array<{id: string, name: string, email: string, role: string}>;
+  availableUsers?: Array<{id: string, name: string, email: string, role: string, status?: string}>;
 }
 
 export const CallsReport: React.FC<CallsReportProps> = ({
@@ -24,6 +26,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
   const [filterDateFrom, setFilterDateFrom] = useState<string>('');
   const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [filterOutcome, setFilterOutcome] = useState<string>('all');
+  const [kommunoStatus, setKommunoStatus] = useState<{ configured?: boolean; missing?: string[]; webhookUrl?: string; pilotNumbers?: string[] } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -44,11 +47,20 @@ export const CallsReport: React.FC<CallsReportProps> = ({
     userEmail: row.user_email ?? row.userEmail ?? '',
     userName: row.user_name ?? row.userName ?? '',
     createdAt: row.created_at ?? row.createdAt ?? new Date().toISOString(),
+    direction: row.direction || (String(row.notes || '').includes('Kommuno INCOMING') ? 'INCOMING' : String(row.notes || '').includes('Kommuno OUTGOING') ? 'OUTGOING' : null),
+    recordingUrl: row.recording_url ?? row.recordingUrl ?? (String(row.notes || '').match(/https?:\/\/\S+/)?.[0] || null),
+    sessionId: row.session_id ?? row.sessionId ?? null,
   });
 
   const loadData = async () => {
     setIsLoading(true);
     try {
+      try {
+        const { data: status } = await apiClient.get('/kommuno/status');
+        setKommunoStatus(status);
+      } catch {
+        setKommunoStatus(null);
+      }
       const { data: callsRows } = await apiClient.get('/call-logs');
       let callsData: CallLog[] = (Array.isArray(callsRows) ? callsRows : []).map(mapCallRow);
       if (isAdmin && filterUser !== 'all') {
@@ -188,7 +200,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">📞 Calls Report</h1>
-          <p className="text-slate-600 mt-1">Track and analyze all calls made through the system</p>
+          <p className="text-slate-600 mt-1">Incoming and outgoing Kommuno calls, plus calls logged in the CRM</p>
         </div>
         <button
           onClick={loadData}
@@ -268,12 +280,14 @@ export const CallsReport: React.FC<CallsReportProps> = ({
               <select
                 value={filterUser}
                 onChange={(e) => setFilterUser(e.target.value)}
-                className="w-full px-3 py-2 border-2 border-slate-300 rounded-lg focus:border-indigo-500"
+                className={`w-full px-3 py-2 border-2 border-slate-300 rounded-lg focus:border-indigo-500 ${
+                  filterUser !== 'all' && isInactiveUser(availableUsers.find(u => u.email === filterUser))
+                    ? 'text-slate-400'
+                    : ''
+                }`}
               >
                 <option value="all">All Users</option>
-                {availableUsers.map(user => (
-                  <option key={user.id} value={user.email}>{user.name}</option>
-                ))}
+                <UserFilterOptions users={availableUsers} />
               </select>
             </div>
           )}
@@ -336,6 +350,20 @@ export const CallsReport: React.FC<CallsReportProps> = ({
         </div>
       </div>
 
+      {kommunoStatus && !kommunoStatus.configured && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-semibold">Kommuno is not connected yet.</p>
+          <p className="mt-1">Add {kommunoStatus.missing?.join(', ')} on the server. Give Kommuno this webhook for incoming calls, outgoing callbacks, and recordings:</p>
+          <p className="mt-1 font-mono text-xs break-all">{kommunoStatus.webhookUrl}</p>
+        </div>
+      )}
+      {kommunoStatus?.configured && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+          <p className="font-semibold">Kommuno is connected for {kommunoStatus.pilotNumbers?.join(', ') || 'the configured numbers'}.</p>
+          <p className="mt-1">Webhook: <span className="font-mono text-xs break-all">{kommunoStatus.webhookUrl}</span></p>
+        </div>
+      )}
+
       {/* Call Logs Table */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-300 overflow-hidden">
         <div className="overflow-x-auto">
@@ -369,6 +397,12 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                       {call.phoneNumber}
                     </td>
                     <td className="px-4 py-3 text-sm">
+                      <div className="flex flex-col gap-1">
+                      {call.direction && (
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${call.direction === 'INCOMING' ? 'bg-sky-100 text-sky-800' : 'bg-violet-100 text-violet-800'}`}>
+                          {call.direction === 'INCOMING' ? 'Incoming' : 'Outgoing'}
+                        </span>
+                      )}
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                         call.callType === 'lead' 
                           ? 'bg-green-100 text-green-800' 
@@ -376,6 +410,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                       }`}>
                         {call.callType === 'lead' ? '📋 Lead' : '📞 Non-Lead'}
                       </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-900">
                       {call.leadName && <div className="font-semibold">{call.leadName}</div>}
@@ -393,8 +428,11 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                     <td className="px-4 py-3 text-sm text-slate-900">
                       {call.userName}
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600 max-w-xs truncate">
-                      {call.notes || <span className="text-slate-400 italic">No notes</span>}
+                    <td className="px-4 py-3 text-sm text-slate-600 max-w-xs">
+                      <div className="truncate">{call.notes || <span className="text-slate-400 italic">No notes</span>}</div>
+                      {call.recordingUrl && (
+                        <a href={call.recordingUrl} target="_blank" rel="noreferrer" className="text-indigo-600 underline">Recording</a>
+                      )}
                     </td>
                   </tr>
                 ))

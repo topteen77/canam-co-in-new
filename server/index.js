@@ -29,6 +29,7 @@ import * as notificationService from './services/notificationService.js';
 import * as passwordService from './services/passwordService.js';
 import * as travelClaimsService from './services/travelClaimsService.js';
 import * as callLogsService from './services/callLogsService.js';
+import * as kommunoService from './services/kommunoService.js';
 import * as companiesService from './services/companiesService.js';
 import * as websiteSignupLeadsService from './services/websiteSignupLeadsService.js';
 import * as importHistoryService from './services/importHistoryService.js';
@@ -114,6 +115,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'canam-crm-api' });
@@ -620,6 +622,68 @@ app.post('/api/call-logs', async (req, res) => {
   }
 });
 
+// Call API integration (Kommuno).
+// One handler for live incoming, outgoing, and recording callbacks.
+// URLs to give Kommuno are the production API, for example
+// https://canam.co.in/api/kommuno/webhook
+// Admin save runs a blank-number API test. Non-admin call icons stay hidden until that test succeeds.
+async function handleKommunoWebhook(req, res) {
+  try {
+    if (!kommunoService.webhookAuthorized(req)) {
+      return res.status(401).json({ status: 401, message: 'Unauthorized' });
+    }
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch { body = { raw: body }; }
+    }
+    const result = await kommunoService.ingest(body || {});
+    res.json({ status: 200, message: 'ok', ...result });
+  } catch (error) {
+    console.error('Kommuno webhook failed:', error.message);
+    res.status(500).json({ status: 500, message: error.message });
+  }
+}
+
+app.post('/api/kommuno/webhook', handleKommunoWebhook);
+app.post('/api/kommuno/callback', handleKommunoWebhook);
+app.post('/api/kommuno/incoming', handleKommunoWebhook);
+app.post('/api/kommuno/recording', handleKommunoWebhook);
+app.get('/api/kommuno/status', (_req, res) => {
+  res.json(kommunoService.status());
+});
+app.get('/api/kommuno/live', async (req, res) => {
+  try {
+    const calls = await kommunoService.liveForUser(req.query.email || '');
+    res.json({ calls });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.post('/api/kommuno/click-to-call', async (req, res) => {
+  try {
+    const result = await kommunoService.clickToCall(req.body || {});
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.get('/api/admin/kommuno', authenticateToken, requireAdmin, async (_req, res) => {
+  try {
+    await kommunoService.loadKommunoSettings();
+    res.json(kommunoService.publicKommunoSettings());
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Could not load Kommuno settings.' });
+  }
+});
+app.put('/api/admin/kommuno', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const saved = await kommunoService.saveKommunoSettings(req.body || {}, req.user?.email || req.user?.name || 'admin');
+    res.json(saved);
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Could not save Kommuno settings.' });
+  }
+});
+
 // --- COMPANIES (SuperAdmin / multi-tenant) ---
 app.get('/api/companies', async (req, res) => {
   try {
@@ -899,7 +963,6 @@ app.put('/api/email-campaigns/:id', async (req, res) => {
   }
 });
 
-
 // --- LOCATION MASTER (City / State) ---
 app.get('/api/location-master/bundle', async (_req, res) => {
   try {
@@ -1102,12 +1165,18 @@ locationMasterService.ensureLocationMasterTables()
     console.error('⚠️ Could not prepare location master:', err.message);
   });
 
-
-
 loadMailchimpSettings().then(() => {
   console.log('✅ Mailchimp settings ready');
 }).catch((err) => {
   console.error('⚠️ Could not prepare Mailchimp settings:', err.message);
+});
+
+kommunoService.ensureKommuno().then(() => {
+  const cfg = kommunoService.status();
+  console.log(`✅ Kommuno call webhook ready at ${cfg.webhookUrl}`);
+  if (!cfg.configured) console.log(`⚠️ Kommuno click-to-call waiting for: ${cfg.missing.join(', ')}`);
+}).catch((err) => {
+  console.error('⚠️ Could not prepare Kommuno tables:', err.message);
 });
 
 app.use(expressErrorLogger);

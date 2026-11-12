@@ -246,4 +246,7 @@ export interface CallLog {
   userEmail: string;
   userName: string;
   createdAt: string; // ISO string
+  direction?: 'INCOMING' | 'OUTGOING' | string | null;
+  recordingUrl?: string | null;
+  sessionId?: string | null;
 }

@@ -32,6 +32,11 @@ export async function getColumns(tableName) {
   return cols;
 }
 
+export function invalidateColumns(tableName) {
+  const raw = String(tableName || '').replace(/`/g, '');
+  if (raw) cache.delete('cols:' + raw);
+}
+
 /** Resolve table and return backticked name, or fallback if none found. */
 export async function resolveTableNameOrFallback(possibleNames, fallback) {
   const resolved = await resolveTableName(possibleNames);

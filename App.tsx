@@ -68,6 +68,7 @@ import { useMeetingPresenceWatch } from './hooks/useMeetingPresenceWatch';
 import { useAdminMeetingAlerts } from './hooks/useAdminMeetingAlerts';
 import AdminMeetingAlertBanner from './components/AdminMeetingAlertBanner';
 import LastLoginPopup from './components/LastLoginPopup';
+import KommunoLiveCalls from './components/KommunoLiveCalls';
 import LastLoginInfo from './components/LastLoginInfo';
 import LocationMaster from './components/LocationMaster';
 import UserAvatar from './components/UserAvatar';
@@ -111,7 +112,7 @@ const App: React.FC = () => {
   // Data
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [meetingCheckIns, setMeetingCheckIns] = useState<MeetingCheckInRecord[]>([]);
-  const [availableUsers, setAvailableUsers] = useState<Array<{id: string, name: string, email: string, role: string}>>([]);
+  const [availableUsers, setAvailableUsers] = useState<Array<{id: string, name: string, email: string, role: string, status?: string}>>([]);
   const [leadTags, setLeadTags] = useState<string[]>([]);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   
@@ -1117,6 +1118,7 @@ const App: React.FC = () => {
         {lastLoginInfo && (
           <LastLoginPopup info={lastLoginInfo} onClose={() => setLastLoginInfo(null)} />
         )}
+        <KommunoLiveCalls userEmail={currentUser} onOpenLead={handleNavigateToLead} />
         {renderTimeoutModal()}
       </div>
     </SubdomainRouter>

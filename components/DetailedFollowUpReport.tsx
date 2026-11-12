@@ -3,6 +3,8 @@ import apiClient from '../services/apiClient';
 import type { CTAActivity } from '../services/ctaTrackingService';
 import { getUserDisplayName } from '../utils/dataCleaning';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
+import { placeCrmCall } from '../services/placeCall';
+import { useShowCallIcon } from '../hooks/useShowCallIcon';
 
 interface DetailedFollowUpReportProps {
   currentUser: string | null;
@@ -24,6 +26,7 @@ export const DetailedFollowUpReport: React.FC<DetailedFollowUpReportProps> = ({
   isAdmin,
   availableUsers
 }) => {
+  const showCallIcon = useShowCallIcon(Boolean(isAdmin));
   const [ctaActivities, setCtaActivities] = useState<CTAActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState({
@@ -120,18 +123,7 @@ export const DetailedFollowUpReport: React.FC<DetailedFollowUpReportProps> = ({
   // Handle mobile call initiation
   const handleCall = (phoneNumber: string) => {
     if (!phoneNumber) return;
-    
-    if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-      // Mobile device - use tel: protocol
-      window.open(`tel:${phoneNumber}`, '_self');
-    } else {
-      // Desktop - copy number or use other method
-      navigator.clipboard.writeText(phoneNumber).then(() => {
-        alert(`Phone number copied to clipboard: ${phoneNumber}`);
-      }).catch(() => {
-        alert(`Please call: ${phoneNumber}`);
-      });
-    }
+    void placeCrmCall({ phone: phoneNumber, userEmail: currentUser });
   };
 
   // Handle WhatsApp initiation
@@ -409,7 +401,7 @@ export const DetailedFollowUpReport: React.FC<DetailedFollowUpReportProps> = ({
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    {activity.action === 'call' ? (
+                    {activity.action === 'call' && showCallIcon ? (
                       <button
                         onClick={() => handleCall(activity.contactInfo)}
                         className="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-md text-xs font-medium transition-colors"

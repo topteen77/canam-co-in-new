@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { COUNTRY_FLAGS, type Lead, type FollowUpType, type FollowUpStatus } from '../types';
 import { trackCallAction, trackWhatsAppAction, trackEmailAction } from '../services/ctaTrackingService';
+import { placeCrmCall } from '../services/placeCall';
+import { useShowCallIcon } from '../hooks/useShowCallIcon';
 import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { IcpScoringModal, clampIcpScore, emptyIcpCategoryScores } from './IcpScoringModal';
@@ -331,6 +333,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
   onAssignLead,
   onUpdateLead
 }) => {
+  const showCallIcon = useShowCallIcon(Boolean(isAdmin));
   // Simple function to get user display name
   const getUserDisplayNameLocal = (email: string): string => {
     if (!email) return 'Unknown';
@@ -772,7 +775,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                               {firstContact.name || 'N/A'}
                             </button>
                             <div className="flex items-center gap-1">
-                              {firstContact.phone && (
+                              {firstContact.phone && showCallIcon && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -787,7 +790,13 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                                         lead.agencyName
                                       );
                                     }
-                                    window.open(`tel:${firstContact.phone}`, '_self');
+                                    void placeCrmCall({
+                                      phone: firstContact.phone || '',
+                                      leadId: lead.id,
+                                      leadName: lead.agencyName,
+                                      contactName: firstContact.name,
+                                      userEmail: currentUser,
+                                    });
                                 }}
                                 className="p-1 text-green-600 hover:text-green-800 hover:bg-green-100 rounded"
                                 title={`Call ${firstContact.phone}`}
@@ -1218,7 +1227,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
               <div className="p-4">
                 <div className="text-base font-semibold text-blue-800 mb-3">⚡ Quick Actions</div>
                 <div className="space-y-2">
-                  {firstContact.phone && (
+                  {firstContact.phone && showCallIcon && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1234,7 +1243,13 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                             lead.agencyName
                           );
                         }
-                        window.open(`tel:${firstContact.phone}`, '_self');
+                        void placeCrmCall({
+                                      phone: firstContact.phone || '',
+                                      leadId: lead.id,
+                                      leadName: lead.agencyName,
+                                      contactName: firstContact.name,
+                                      userEmail: currentUser,
+                                    });
                       }}
                       className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-green-600 text-white rounded-xl text-base font-semibold hover:bg-green-700 transition-colors shadow-sm"
                     >
@@ -1394,7 +1409,7 @@ Iapply.io`;
                             <span className="text-slate-900 text-sm">{contact.phone}</span>
                           </div>
                           <div className="flex gap-1">
-                            <button
+                            {showCallIcon && <button
                               onClick={() => {
                                   // Track call action
                                   if (currentUser) {
@@ -1408,12 +1423,18 @@ Iapply.io`;
                                       selectedLeadContacts?.agencyName
                                     );
                                   }
-                                  window.open(`tel:${contact.phone}`, '_self');
+                                  void placeCrmCall({
+                                    phone: contact.phone || '',
+                                    leadId: selectedLeadContacts?.id,
+                                    leadName: selectedLeadContacts?.agencyName,
+                                    contactName: contact.name,
+                                    userEmail: currentUser,
+                                  });
                               }}
                               className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
                             >
                               Call
-                            </button>
+                            </button>}
                             <button
                               onClick={() => {
                                 // Track WhatsApp action
@@ -1477,7 +1498,7 @@ Iapply.io`;
                             <span className="text-slate-900 text-sm">{contact.alternateMobile}</span>
                           </div>
                           <div className="flex gap-1">
-                            <button
+                            {showCallIcon && <button
                               onClick={() => {
                                   // Track call action
                                   if (currentUser) {
@@ -1491,12 +1512,18 @@ Iapply.io`;
                                       selectedLeadContacts?.agencyName
                                     );
                                   }
-                                  window.open(`tel:${contact.alternateMobile}`, '_self');
+                                  void placeCrmCall({
+                                    phone: contact.alternateMobile || '',
+                                    leadId: selectedLeadContacts?.id,
+                                    leadName: selectedLeadContacts?.agencyName,
+                                    contactName: contact.name,
+                                    userEmail: currentUser,
+                                  });
                               }}
                               className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
                             >
                               Call
-                            </button>
+                            </button>}
                             <button
                               onClick={() => {
                                 // Track WhatsApp action

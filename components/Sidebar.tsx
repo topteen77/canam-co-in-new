@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import BrandLogo from './BrandLogo';
+import { useShowCallIcon } from '../hooks/useShowCallIcon';
 
 interface SidebarProps {
   currentView: string;
@@ -22,6 +23,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   forceExpanded = false,
   embedded = false
 }) => {
+  const showCallIcon = useShowCallIcon(isAdmin);
   const [isPinnedOpen, setIsPinnedOpen] = useState(() => forceExpanded);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -38,8 +40,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'pipeline', label: 'Pipeline', icon: '📊', view: 'pipeline' },
     { id: 'meetings', label: 'Meetings', icon: '📅', view: 'meetings' },
     { id: 'followups', label: 'Follow-ups', icon: '📞', view: 'followups' },
+    ...(showCallIcon ? [{ id: 'calls-report', label: 'Calls', icon: '☎️', view: 'calls-report' }] : []),
     { id: 'notifications', label: 'Notifications', icon: '🔔', view: 'notifications' },
-    // { id: 'calls-report', label: 'Calls Report', icon: '📞', view: 'calls-report' },
     { id: 'travel-claims', label: 'Travel Claims', icon: '🚗', view: 'travel-claims' },
     { id: 'reports', label: 'Reports', icon: '📈', view: 'reports' },
     { id: 'bulk-email', label: 'Bulk Email', icon: '📧', view: 'bulk-email' },

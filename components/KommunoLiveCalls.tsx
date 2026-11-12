@@ -1,0 +1,115 @@
+import React, { useEffect, useState } from 'react';
+import apiClient from '../services/apiClient';
+
+interface LiveCall {
+  id: string;
+  sessionId: string;
+  direction?: string;
+  status?: string;
+  customerNumber?: string;
+  pilotNumber?: string;
+  leadId?: string;
+  leadName?: string;
+  contactName?: string;
+  recordingUrl?: string;
+  duration?: number;
+}
+
+interface KommunoLiveCallsProps {
+  userEmail: string;
+  onOpenLead?: (leadId: string) => void;
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  initiated: 'Dialing',
+  ringing: 'Ringing',
+  connected: 'Connected',
+  completed: 'Call ended',
+  missed: 'Missed',
+};
+
+export default function KommunoLiveCalls({ userEmail, onOpenLead }: KommunoLiveCallsProps) {
+  const [calls, setCalls] = useState<LiveCall[]>([]);
+  const [hidden, setHidden] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!userEmail) return undefined;
+    let stopped = false;
+    const load = async () => {
+      try {
+        const { data } = await apiClient.get('/kommuno/live', { params: { email: userEmail } });
+        if (!stopped) setCalls(Array.isArray(data?.calls) ? data.calls : []);
+      } catch {
+        if (!stopped) setCalls([]);
+      }
+    };
+    load();
+    const timer = window.setInterval(load, 4000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [userEmail]);
+
+  const visible = calls.filter((call) => hidden[call.sessionId] !== `${call.status}`);
+  if (!visible.length) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[90] flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2">
+      {visible.map((call) => {
+        const incoming = call.direction === 'INCOMING';
+        const ended = call.status === 'completed' || call.status === 'missed';
+        return (
+          <div key={call.sessionId} className="rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                  {incoming ? 'Incoming' : 'Outgoing'} · {STATUS_LABEL[call.status || ''] || call.status}
+                </div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">
+                  {call.contactName || call.leadName || call.customerNumber || 'Unknown number'}
+                </div>
+                <div className="text-xs text-slate-500">{call.customerNumber}</div>
+                {call.leadName && call.contactName && (
+                  <div className="text-xs text-slate-500">{call.leadName}</div>
+                )}
+                {call.pilotNumber && (
+                  <div className="text-xs text-slate-400">Via {call.pilotNumber}</div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="text-slate-400 hover:text-slate-700"
+                aria-label="Dismiss call"
+                onClick={() => setHidden((prev) => ({ ...prev, [call.sessionId]: call.status || '' }))}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mt-2 flex gap-2">
+              {call.leadId && onOpenLead && (
+                <button
+                  type="button"
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white"
+                  onClick={() => onOpenLead(call.leadId!)}
+                >
+                  Open lead
+                </button>
+              )}
+              {ended && call.recordingUrl && (
+                <a
+                  href={call.recordingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Recording
+                </a>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

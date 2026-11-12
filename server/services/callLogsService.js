@@ -18,6 +18,9 @@ function normalizeCallLogRow(row) {
     user_email: row.user_email ?? row.userEmail,
     user_name: row.user_name ?? row.userName,
     created_at: row.created_at ?? row.createdAt,
+    direction: row.direction ?? null,
+    recording_url: row.recording_url ?? row.recordingUrl ?? null,
+    session_id: row.session_id ?? row.sessionId ?? null,
   };
 }
 
@@ -88,6 +91,9 @@ export const addCallLog = async (data) => {
       [pick('user_id', 'userId'), data.userId ?? data.userEmail ?? null],
       [pick('user_email', 'userEmail'), data.userEmail ?? data.userId ?? null],
       [pick('user_name', 'userName'), data.userName ?? null],
+      [cols.has('direction') ? 'direction' : null, data.direction ?? null],
+      [cols.has('recording_url') ? 'recording_url' : null, data.recordingUrl ?? null],
+      [cols.has('session_id') ? 'session_id' : null, data.sessionId ?? null],
     ].filter(([c]) => c);
     const colList = pairs.map(([c]) => c);
     const values = pairs.map(([, v]) => v);
