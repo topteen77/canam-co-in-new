@@ -5,11 +5,12 @@ import { getUserDisplayName } from '../utils/dataCleaning';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { placeCrmCall } from '../services/placeCall';
 import { useShowCallIcon } from '../hooks/useShowCallIcon';
+import { UserFilterOptions } from './UserFilterOptions';
 
 interface DetailedFollowUpReportProps {
   currentUser: string | null;
   isAdmin: boolean;
-  availableUsers: Array<{id: string, name: string, email: string, role: string}>;
+  availableUsers: Array<{id: string, name: string, email: string, role: string, status?: string}>;
 }
 
 interface CallActivity extends CTAActivity {
@@ -197,11 +198,7 @@ export const DetailedFollowUpReport: React.FC<DetailedFollowUpReportProps> = ({
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Users</option>
-              {availableUsers.map(user => (
-                <option key={user.id} value={user.email}>
-                  {getUserDisplayName(user.email, availableUsers)}
-                </option>
-              ))}
+              <UserFilterOptions users={availableUsers} getLabel={(user) => getUserDisplayName(user.email, availableUsers)} />
             </select>
           </div>
           <div>

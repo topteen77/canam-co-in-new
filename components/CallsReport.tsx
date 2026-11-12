@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import type { CallLog, Lead } from '../types';
 import apiClient from '../services/apiClient';
+import { UserFilterOptions } from './UserFilterOptions';
 
 interface CallsReportProps {
   currentUser: string;
   isAdmin: boolean;
-  availableUsers?: Array<{id: string, name: string, email: string, role: string}>;
+  availableUsers?: Array<{id: string, name: string, email: string, role: string, status?: string}>;
 }
 
 export const CallsReport: React.FC<CallsReportProps> = ({
@@ -281,9 +282,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                 className="w-full px-3 py-2 border-2 border-slate-300 rounded-lg focus:border-indigo-500"
               >
                 <option value="all">All Users</option>
-                {availableUsers.map(user => (
-                  <option key={user.id} value={user.email}>{user.name}</option>
-                ))}
+                <UserFilterOptions users={availableUsers} getLabel={(user) => user.name || user.email || ''} />
               </select>
             </div>
           )}

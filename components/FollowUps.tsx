@@ -7,13 +7,15 @@ import { exportLeadsToCSV } from '../services/exportService';
 import { DetailedFollowUpReport } from './DetailedFollowUpReport';
 import { SimplePagination } from './SimplePagination';
 import { CustomDateTimePicker } from './CustomDateTimePicker';
+import { UserFilterOptions } from './UserFilterOptions';
+import { isInactiveUser } from '../utils/userSelect';
 
 
 interface FollowUpsProps {
   leads: Lead[];
   currentUser: string;
   isAdmin: boolean;
-  availableUsers: Array<{ id: string, name: string, email: string, role: string }>;
+  availableUsers: Array<{ id: string, name: string, email: string, role: string, status?: string }>;
   onUpdateLead?: (leadId: string, updates: Partial<Lead>) => void;
   onAddFollowUp?: (leadId: string, followUp: any) => Promise<void>;
 }
@@ -910,13 +912,14 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                           id="fu-user-filter"
                           value={userFilter}
                           onChange={(e) => setUserFilter(e.target.value)}
+                          className={
+                            userFilter !== 'all' && isInactiveUser(availableUsers.find(u => u.email === userFilter))
+                              ? 'is-inactive-user'
+                              : undefined
+                          }
                         >
                           <option value="all">All Users</option>
-                          {availableUsers.map(user => (
-                            <option key={user.id} value={user.email}>
-                              {user.name || user.email}
-                            </option>
-                          ))}
+                          <UserFilterOptions users={availableUsers} />
                         </select>
                       </div>
 
@@ -1364,11 +1367,10 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Select User</option>
-                  {availableUsers.map(user => (
-                    <option key={user.email} value={user.email}>
-                      {getUserDisplayName(user.email)} ({cleanCorruptedData(user.email)})
-                    </option>
-                  ))}
+                  <UserFilterOptions
+                    users={availableUsers}
+                    getLabel={(user) => `${getUserDisplayName(user.email)} (${cleanCorruptedData(user.email)})`}
+                  />
                 </select>
               </div>
 
@@ -1519,11 +1521,10 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Select User</option>
-                    {availableUsers.map(user => (
-                      <option key={user.email} value={user.email}>
-                        {getUserDisplayName(user.email)} ({cleanCorruptedData(user.email)})
-                      </option>
-                    ))}
+                    <UserFilterOptions
+                      users={availableUsers}
+                      getLabel={(user) => `${getUserDisplayName(user.email)} (${cleanCorruptedData(user.email)})`}
+                    />
                   </select>
                 </div>
               </div>
@@ -1616,11 +1617,10 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Select User</option>
-                    {availableUsers.map(user => (
-                      <option key={user.email} value={user.email}>
-                        {getUserDisplayName(user.email)} ({cleanCorruptedData(user.email)})
-                      </option>
-                    ))}
+                    <UserFilterOptions
+                      users={availableUsers}
+                      getLabel={(user) => `${getUserDisplayName(user.email)} (${cleanCorruptedData(user.email)})`}
+                    />
                   </select>
                 </div>
               </div>
