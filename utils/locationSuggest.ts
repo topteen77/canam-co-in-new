@@ -301,18 +301,21 @@ export const suggestStates = (query: string, country?: string): LocationSuggesti
   }));
 };
 
-/** States for one or more countries (lead filters). Extra stored values are kept, unique by name. */
-export function getStateOptionsForCountries(countries: string[], extraStates: string[] = []): string[] {
-  const extras = extraStates.map((s) => canonicalStateName(s)).filter(Boolean);
-  const keys = countries.map((c) => normalizeCountryName(c)).filter(Boolean);
-  const catalog = activeStatesByCountry();
-  const fromCatalog = keys.length
-    ? keys.flatMap((key) => catalog[key] || [])
-    : knownStateLists();
-  return uniqueStateNames([...fromCatalog, ...extras]);
-};
+function builtInCountryForState(state: string): string | undefined {
+  const needle = canonicalStateName(state).toLowerCase();
+  if (!needle) return undefined;
+  return Object.keys(STATES_BY_COUNTRY).find((country) =>
+    (STATES_BY_COUNTRY[country] || []).some((item) => item.toLowerCase() === needle)
+  );
+}
 
-function countryForState(state: string): string | undefined {
+/**
+ * Resolve which country a state belongs to.
+ * Built-in map wins so mis-tagged DB rows (e.g. Alberta under India) cannot leak.
+ */
+export function countryForState(state: string): string | undefined {
+  const builtIn = builtInCountryForState(state);
+  if (builtIn) return builtIn;
   const needle = canonicalStateName(state).toLowerCase();
   if (!needle) return undefined;
   const catalog = activeStatesByCountry();
@@ -320,6 +323,35 @@ function countryForState(state: string): string | undefined {
     (catalog[country] || []).some((item) => item.toLowerCase() === needle)
   );
 }
+
+function stateBelongsToSelectedCountries(state: string, countryKeys: string[]): boolean {
+  if (!countryKeys.length) return true;
+  const owner = countryForState(state);
+  if (!owner) return true; // custom / unknown CRM state
+  return countryKeys.some((key) => key.toLowerCase() === owner.toLowerCase());
+}
+
+/** States for one or more countries (lead filters). Extra stored values are kept only when they belong to the selected country (or are unknown). */
+export function getStateOptionsForCountries(countries: string[], extraStates: string[] = []): string[] {
+  const extras = extraStates.map((s) => canonicalStateName(s)).filter(Boolean);
+  const keys = countries.map((c) => normalizeCountryName(c)).filter(Boolean);
+  const catalog = activeStatesByCountry();
+  // Never list a state under the wrong country, even if DB overrides mis-tagged it (e.g. Alberta → India).
+  const fromCatalog = keys.length
+    ? keys.flatMap((key) =>
+        (catalog[key] || []).filter((state) => {
+          const builtInOwner = builtInCountryForState(state);
+          return !builtInOwner || builtInOwner.toLowerCase() === key.toLowerCase();
+        })
+      )
+    : knownStateLists();
+
+  const scopedExtras = keys.length
+    ? extras.filter((state) => stateBelongsToSelectedCountries(state, keys))
+    : extras;
+
+  return uniqueStateNames([...fromCatalog, ...scopedExtras]);
+};
 
 function citiesForState(state: string): string[] {
   const needle = canonicalStateName(state).toLowerCase();
