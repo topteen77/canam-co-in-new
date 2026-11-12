@@ -9,6 +9,7 @@ export type LeadSearchFilters = {
   salesPerson: string[];
   createdBy: string[];
   city: string[];
+  state: string[];
   country: string[];
   countryInterest: string[];
   dateCreatedFrom: string;
@@ -27,6 +28,7 @@ export const DEFAULT_LEAD_SEARCH_FILTERS: LeadSearchFilters = {
   salesPerson: [],
   createdBy: [],
   city: [],
+  state: [],
   country: [DEFAULT_CONTACT_COUNTRY],
   countryInterest: [],
   dateCreatedFrom: '',
@@ -45,6 +47,7 @@ export function hasCrossUserSearch(filters: LeadSearchFilters): boolean {
 
   return (
     filters.city.length > 0 ||
+    filters.state.length > 0 ||
     filters.searchTerm.trim() !== '' ||
     filters.accountManager.length > 0 ||
     filters.salesPerson.length > 0 ||

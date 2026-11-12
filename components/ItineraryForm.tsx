@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Lead, LeadStatus, MeetingCheckInRecord, AgentCategory } from '../types';
 import { COUNTRY_FLAGS, LEAD_STATUSES } from '../types';
 import { PlusIcon } from './icons/SparklesIcon';
@@ -14,7 +14,8 @@ import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { IcpScoringModal, clampIcpScore, emptyIcpCategoryScores, parseIcpScoreInput } from './IcpScoringModal';
 import { canMutateLead } from '../utils/leadPermissions';
-import { CONTACT_COUNTRY_OPTIONS, DEFAULT_CONTACT_COUNTRY, contactMatchesSelectedCountries, getCityOptionsForCountries } from '../utils/countriesAndCities';
+import { CONTACT_COUNTRY_OPTIONS, DEFAULT_CONTACT_COUNTRY, contactMatchesSelectedCountries } from '../utils/countriesAndCities';
+import { cityBelongsToSelectedStates, getCityOptionsForStates, getStateOptionsForCountries } from '../utils/locationSuggest';
 import { resolveLeadSource, partitionLeadsByOwnership, getLeadRelation, getLeadRelationBadge, LEAD_RELATION_HEADERS } from '../utils/leadVisibility';
 
 type ViewModeType = 'list' | 'board' | 'compact' | 'mobile-cards';
@@ -1126,6 +1127,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
     salesPerson: [] as string[],
     createdBy: [] as string[],
     city: [] as string[],
+    state: [] as string[],
     country: [DEFAULT_CONTACT_COUNTRY] as string[],
     countryInterest: [] as string[], // Country interest filter
     dateCreatedFrom: '',
@@ -1234,6 +1236,9 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
     
     if (filters.city.length > 0 && !safeContacts.some(contact => 
       contact.city && filters.city.some(city => (contact.city || '').toLowerCase().includes((city || '').toLowerCase()))
+    )) return false;
+    if (filters.state.length > 0 && !safeContacts.some(contact =>
+      cityBelongsToSelectedStates(contact.city, contact.state, filters.state)
     )) return false;
     if (filters.country.length > 0) {
       const contactCountries = safeContacts.length ? safeContacts.map(c => c.country) : [''];
@@ -1360,23 +1365,26 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
     }).filter(Boolean)
   ])];
 
-  // City options: if a country is selected, only that country's cities (Canada → Toronto, not Jalandhar)
-  const uniqueCitiesFromLeads = [...new Set(catalogLeads.flatMap(lead => {
+  const contactLocations = catalogLeads.flatMap(lead => {
     const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
-    return safeContacts.map(c => c.city);
-  }).filter(Boolean))];
+    return safeContacts.map(c => ({
+      city: String(c.city || '').trim(),
+      state: String(c.state || '').trim(),
+      country: c.country
+    }));
+  });
 
-  const uniqueCities = filters.country.length > 0
-    ? getCityOptionsForCountries(
-        filters.country,
-        catalogLeads.flatMap(lead => {
-          const safeContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
-          return safeContacts
-            .filter(c => c.city && contactMatchesSelectedCountries(c.country, filters.country))
-            .map(c => c.city);
-        }).filter(Boolean)
-      )
-    : [...uniqueCitiesFromLeads].sort((a, b) => a.localeCompare(b));
+  const uniqueStates = getStateOptionsForCountries(
+    filters.country,
+    contactLocations
+      .filter(c => c.state && (!filters.country.length || contactMatchesSelectedCountries(c.country, filters.country)))
+      .map(c => c.state)
+  );
+
+  const uniqueCities = useMemo(
+    () => getCityOptionsForStates(filters.state, contactLocations, filters.country),
+    [filters.state, filters.country, contactLocations]
+  );
 
   const uniqueAccountManagers = [...new Set(catalogLeads.map(lead => lead.accountManager).filter(Boolean))];
   const uniqueSalesPersons = [...new Set(catalogLeads.map(lead => lead.salesPerson).filter(Boolean))];
@@ -1399,6 +1407,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
       salesPerson: [],
       createdBy: [],
       city: [],
+      state: [],
       country: [DEFAULT_CONTACT_COUNTRY],
       countryInterest: [],
       dateCreatedFrom: '',
@@ -1696,6 +1705,7 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                                 filters.salesPerson.length,
                                 filters.createdBy.length,
                                 filters.city.length,
+                                filters.state.length,
                                 filters.country.length,
                                 filters.countryInterest.length,
                                 filters.tags.length,
@@ -1808,36 +1818,66 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                         />
                     </div>
 
-                    {/* Country first so City can be limited to that country */}
+                    {/* Country first so State and City can be limited to that country */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Country</label>
                         <MultiSelect
                             options={uniqueCountries.map(country => ({ value: country, label: country }))}
                             selectedValues={filters.country}
                             onChange={(values) => {
-                                const allowedCities = values.length
-                                  ? new Set(getCityOptionsForCountries(values))
-                                  : null;
-                                setFilters(prev => ({
+                                const allowedStates = new Set(getStateOptionsForCountries(values).map((state) => state.toLowerCase()));
+                                setFilters(prev => {
+                                    const nextStates = prev.state.filter(state => allowedStates.has(state.toLowerCase()));
+                                    const allowedCities = new Set(
+                                      getCityOptionsForStates(nextStates, contactLocations, values).map((city) => city.toLowerCase())
+                                    );
+                                    return {
                                     ...prev,
                                     country: values,
-                                    city: allowedCities
-                                      ? prev.city.filter(city => allowedCities.has(city))
-                                      : prev.city
-                                }));
+                                    state: nextStates,
+                                    city: prev.city.filter(city => allowedCities.has(city.toLowerCase()))
+                                    };
+                                });
                             }}
                             placeholder="All Countries"
                         />
                     </div>
 
-                    {/* City — options depend on selected Country */}
+                    {/* State — after Country */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">State</label>
+                        <MultiSelect
+                            options={uniqueStates.map(state => ({ value: state, label: state }))}
+                            selectedValues={filters.state}
+                            onChange={(values) => {
+                                const allowedCities = new Set(
+                                  getCityOptionsForStates(values, contactLocations, filters.country).map((city) => city.toLowerCase())
+                                );
+                                setFilters(prev => ({
+                                    ...prev,
+                                    state: values,
+                                    city: prev.city.filter(city => allowedCities.has(city.toLowerCase()))
+                                }));
+                            }}
+                            placeholder={filters.country.length ? `States in ${filters.country.join(', ')}` : 'All States'}
+                        />
+                    </div>
+
+                    {/* City — options depend on selected Country / State */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">City</label>
                         <MultiSelect
+                            key={`city-${filters.country.join('|')}-${filters.state.join('|')}`}
                             options={uniqueCities.map(city => ({ value: city, label: city }))}
                             selectedValues={filters.city}
                             onChange={(values) => setFilters(prev => ({ ...prev, city: values }))}
-                            placeholder={filters.country.length ? `Cities in ${filters.country.join(', ')}` : 'All Cities'}
+                            placeholder={
+                              filters.state.length
+                                ? `Cities in ${filters.state.join(', ')}`
+                                : filters.country.length
+                                  ? `Cities in ${filters.country.join(', ')}`
+                                  : 'All Cities'
+                            }
                         />
                     </div>
 

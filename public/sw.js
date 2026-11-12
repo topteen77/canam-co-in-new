@@ -1,5 +1,5 @@
 // Canam CRM service worker — app shell + offline fallback
-const CACHE_NAME = 'canam-crm-pwa-v12';
+const CACHE_NAME = 'canam-crm-pwa-v14';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -84,6 +84,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const isAppAsset = url.pathname.startsWith('/assets/') || url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
+  if (isAppAsset) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/offline.html')))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(request).then((cached) => {
       const networked = fetch(request)
@@ -95,7 +111,7 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() => cached || caches.match('/offline.html'));
-      return cached || networked;
+      return networked || cached;
     })
   );
 });
