@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import type { CallLog, Lead } from '../types';
 import apiClient from '../services/apiClient';
-import { UserFilterOptions } from './UserFilterOptions';
-import { isInactiveUser } from '../utils/userSelect';
 
 interface CallsReportProps {
   currentUser: string;
   isAdmin: boolean;
-  availableUsers?: Array<{id: string, name: string, email: string, role: string, status?: string}>;
+  availableUsers?: Array<{id: string, name: string, email: string, role: string}>;
 }
 
 export const CallsReport: React.FC<CallsReportProps> = ({
@@ -280,14 +278,12 @@ export const CallsReport: React.FC<CallsReportProps> = ({
               <select
                 value={filterUser}
                 onChange={(e) => setFilterUser(e.target.value)}
-                className={`w-full px-3 py-2 border-2 border-slate-300 rounded-lg focus:border-indigo-500 ${
-                  filterUser !== 'all' && isInactiveUser(availableUsers.find(u => u.email === filterUser))
-                    ? 'text-slate-400'
-                    : ''
-                }`}
+                className="w-full px-3 py-2 border-2 border-slate-300 rounded-lg focus:border-indigo-500"
               >
                 <option value="all">All Users</option>
-                <UserFilterOptions users={availableUsers} />
+                {availableUsers.map(user => (
+                  <option key={user.id} value={user.email}>{user.name}</option>
+                ))}
               </select>
             </div>
           )}
