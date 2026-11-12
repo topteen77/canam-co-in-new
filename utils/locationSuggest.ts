@@ -76,7 +76,8 @@ const INDIA_CITY_STATE: Record<string, string> = {
   Chennai: 'Tamil Nadu', Coimbatore: 'Tamil Nadu', Madurai: 'Tamil Nadu', Tiruchirappalli: 'Tamil Nadu',
   Kolkata: 'West Bengal', Howrah: 'West Bengal', Durgapur: 'West Bengal', Siliguri: 'West Bengal',
   Ahmedabad: 'Gujarat', Surat: 'Gujarat', Vadodara: 'Gujarat', Rajkot: 'Gujarat',
-  Chandigarh: 'Chandigarh', Panchkula: 'Chandigarh', Zirakpur: 'Chandigarh',
+  Chandigarh: 'Chandigarh',
+  Panchkula: 'Haryana', Zirakpur: 'Punjab', Lalru: 'Punjab', 'Raman Mandi': 'Punjab',
   Jaipur: 'Rajasthan', Jodhpur: 'Rajasthan', Udaipur: 'Rajasthan', Kota: 'Rajasthan',
   Lucknow: 'Uttar Pradesh', Noida: 'Uttar Pradesh', Ghaziabad: 'Uttar Pradesh', Kanpur: 'Uttar Pradesh',
   Varanasi: 'Uttar Pradesh', Agra: 'Uttar Pradesh', Prayagraj: 'Uttar Pradesh', Meerut: 'Uttar Pradesh',
@@ -103,7 +104,7 @@ const INDIA_CITY_STATE: Record<string, string> = {
   Daman: 'Dadra and Nagar Haveli and Daman and Diu'
 };
 
-const CITY_TO_STATE: Record<string, string> = {
+const BASE_CITY_TO_STATE: Record<string, string> = {
   ...INDIA_CITY_STATE,
   Toronto: 'Ontario', Mississauga: 'Ontario', Brampton: 'Ontario', Markham: 'Ontario',
   Vaughan: 'Ontario', Hamilton: 'Ontario', Kitchener: 'Ontario', London: 'Ontario',
@@ -133,6 +134,37 @@ const CITY_TO_STATE: Record<string, string> = {
   Dubai: 'Dubai', 'Abu Dhabi': 'Abu Dhabi', Sharjah: 'Sharjah', Ajman: 'Ajman',
   'Ras Al Khaimah': 'Ras Al Khaimah', Fujairah: 'Fujairah', 'Umm Al Quwain': 'Umm Al Quwain'
 };
+
+let runtimeStatesByCountry: Record<string, string[]> | null = null;
+let runtimeCityToState: Record<string, string> | null = null;
+
+/** Apply admin location-master overrides (DB). Empty payload clears overrides. */
+export function setLocationMasterOverrides(payload?: {
+  statesByCountry?: Record<string, string[]>;
+  cityToState?: Record<string, string>;
+} | null): void {
+  if (!payload) {
+    runtimeStatesByCountry = null;
+    runtimeCityToState = null;
+    return;
+  }
+  runtimeStatesByCountry = payload.statesByCountry && Object.keys(payload.statesByCountry).length
+    ? payload.statesByCountry
+    : null;
+  runtimeCityToState = payload.cityToState && Object.keys(payload.cityToState).length
+    ? payload.cityToState
+    : null;
+}
+
+function activeStatesByCountry(): Record<string, string[]> {
+  return runtimeStatesByCountry || STATES_BY_COUNTRY;
+}
+
+function CITY_TO_STATE(): Record<string, string> {
+  return runtimeCityToState
+    ? { ...BASE_CITY_TO_STATE, ...runtimeCityToState }
+    : BASE_CITY_TO_STATE;
+}
 
 const COUNTRY_ALIASES: Record<string, string> = {
   india: 'India',
@@ -183,7 +215,7 @@ export const normalizeCountryName = (value?: string): string => {
   return match || raw;
 };
 
-const knownStateLists = (): string[] => Object.values(STATES_BY_COUNTRY).flat();
+const knownStateLists = (): string[] => Object.values(activeStatesByCountry()).flat();
 
 export const canonicalStateName = (value?: string): string => {
   const raw = String(value || '').trim().replace(/\s+/g, ' ');
@@ -208,20 +240,22 @@ export const uniqueStateNames = (states: string[]): string[] => {
 const cityStateFromMap = (city: string): string | undefined => {
   const needle = (city || '').trim().toLowerCase();
   if (!needle) return undefined;
-  const key = Object.keys(CITY_TO_STATE).find((name) => name.toLowerCase() === needle);
-  return key ? CITY_TO_STATE[key] : undefined;
+  const map = CITY_TO_STATE();
+  const key = Object.keys(map).find((name) => name.toLowerCase() === needle);
+  return key ? map[key] : undefined;
 };
 
 export const inferLocationFromCity = (city: string): { country?: string; state?: string } => {
   const needle = (city || '').trim().toLowerCase();
   if (!needle) return {};
   const mappedState = cityStateFromMap(city);
+  const map = CITY_TO_STATE();
   for (const [country, cities] of Object.entries(CITIES_BY_COUNTRY)) {
     const match = cities.find((c) => c.toLowerCase() === needle);
     if (match) {
       return {
         country,
-        state: mappedState || CITY_TO_STATE[match]
+        state: mappedState || map[match]
       };
     }
   }
@@ -241,7 +275,8 @@ export const cityBelongsToSelectedStates = (
   selectedStates: string[]
 ): boolean => {
   if (!selectedStates.length) return true;
-  const inferred = storedState || inferLocationFromCity(city || '').state || '';
+  // Catalog / master mapping wins over a bad contact.state value.
+  const inferred = cityStateFromMap(city || '') || storedState || inferLocationFromCity(city || '').state || '';
   return stateMatchesSelection(inferred, selectedStates);
 };
 
@@ -254,7 +289,8 @@ export const suggestCountries = (query: string): LocationSuggestion[] =>
 
 export const suggestStates = (query: string, country?: string): LocationSuggestion[] => {
   const key = normalizeCountryName(country);
-  const list = (key && STATES_BY_COUNTRY[key]) || Object.values(STATES_BY_COUNTRY).flat();
+  const catalog = activeStatesByCountry();
+  const list = (key && catalog[key]) || Object.values(catalog).flat();
   const unique = Array.from(new Set(list));
   return filterStartsOrIncludes(unique, query).map((state) => ({
     id: `state-${state}`,
@@ -269,8 +305,9 @@ export const suggestStates = (query: string, country?: string): LocationSuggesti
 export function getStateOptionsForCountries(countries: string[], extraStates: string[] = []): string[] {
   const extras = extraStates.map((s) => canonicalStateName(s)).filter(Boolean);
   const keys = countries.map((c) => normalizeCountryName(c)).filter(Boolean);
+  const catalog = activeStatesByCountry();
   const fromCatalog = keys.length
-    ? keys.flatMap((key) => STATES_BY_COUNTRY[key] || [])
+    ? keys.flatMap((key) => catalog[key] || [])
     : knownStateLists();
   return uniqueStateNames([...fromCatalog, ...extras]);
 };
@@ -278,15 +315,16 @@ export function getStateOptionsForCountries(countries: string[], extraStates: st
 function countryForState(state: string): string | undefined {
   const needle = canonicalStateName(state).toLowerCase();
   if (!needle) return undefined;
-  return Object.keys(STATES_BY_COUNTRY).find((country) =>
-    (STATES_BY_COUNTRY[country] || []).some((item) => item.toLowerCase() === needle)
+  const catalog = activeStatesByCountry();
+  return Object.keys(catalog).find((country) =>
+    (catalog[country] || []).some((item) => item.toLowerCase() === needle)
   );
 }
 
 function citiesForState(state: string): string[] {
   const needle = canonicalStateName(state).toLowerCase();
   if (!needle) return [];
-  return Object.entries(CITY_TO_STATE)
+  return Object.entries(CITY_TO_STATE())
     .filter(([, mapped]) => canonicalStateName(mapped).toLowerCase() === needle)
     .map(([city]) => city);
 }

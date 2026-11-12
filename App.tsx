@@ -69,9 +69,11 @@ import { useAdminMeetingAlerts } from './hooks/useAdminMeetingAlerts';
 import AdminMeetingAlertBanner from './components/AdminMeetingAlertBanner';
 import LastLoginPopup from './components/LastLoginPopup';
 import LastLoginInfo from './components/LastLoginInfo';
+import LocationMaster from './components/LocationMaster';
 import UserAvatar from './components/UserAvatar';
 import PageLoader from './components/PageLoader';
 import { parseViewFromHash, syncViewHash } from './utils/appView';
+import { ensureLocationMasterLoaded } from './services/locationMasterService';
 
 const CONFIGURED_SUPER_ADMINS = ['canamrakesh@gmail.com', 'manchandapranjal01@gmail.com'];
 const CONFIGURED_ADMINS = ['qs.iapply@gmail.com', 'rtsolutiontesting@gmail.com'];
@@ -204,6 +206,9 @@ const App: React.FC = () => {
 
     // Load Tags
     getLeadTags().then(setLeadTags).catch(console.error);
+
+    // City/State master maps for Partner Leads filters
+    ensureLocationMasterLoaded().catch(console.error);
 
     return () => {
         clearTimeout(loadingTimeout);
@@ -790,9 +795,11 @@ const App: React.FC = () => {
                     {view === 'database-admin' && (<> <span className="sm:hidden">DB</span><span className="hidden sm:inline">Database</span></>)}
                     {view === 'data-export' && (<> <span className="sm:hidden">Export</span><span className="hidden sm:inline">Data Export</span></>)}
                     {view === 'last-login-info' && (<> <span className="sm:hidden">Logins</span><span className="hidden sm:inline">Last Login Info</span></>)}
+                    {view === 'state-master' && (<> <span className="sm:hidden">States</span><span className="hidden sm:inline">State Master</span></>)}
+                    {view === 'city-master' && (<> <span className="sm:hidden">Cities</span><span className="hidden sm:inline">City Master</span></>)}
                     {view === 'meeting-photos' && <><span className="sm:hidden">Photos</span><span className="hidden sm:inline">Meeting Photos Gallery</span></>}
                     {view === 'website-control' && (<> <span className="sm:hidden">Site</span><span className="hidden sm:inline">Website Control</span></>)}
-                    {!['leads', 'pipeline', 'meetings', 'followups', 'live-tracking', 'travel-claims', 'reports', 'calls-report', 'bulk-email', 'notifications', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'meeting-photos', 'website-control'].includes(view) && view.replace(/-/g, ' ')}
+                    {!['leads', 'pipeline', 'meetings', 'followups', 'live-tracking', 'travel-claims', 'reports', 'calls-report', 'bulk-email', 'notifications', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'meeting-photos', 'website-control'].includes(view) && view.replace(/-/g, ' ')}
                   </h1>
                 </div>
                 <div className="app-header-actions flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
@@ -998,13 +1005,15 @@ const App: React.FC = () => {
                     {view === 'database-admin' && isAdmin && <DatabaseAdmin />}
                     {view === 'data-export' && isAdmin && <DataExport leads={leadsForReports} isAdmin={isAdmin} />}
                     {view === 'last-login-info' && isAdmin && <LastLoginInfo availableUsers={availableUsers} />}
+                    {view === 'state-master' && isAdmin && <LocationMaster mode="states" />}
+                    {view === 'city-master' && isAdmin && <LocationMaster mode="cities" />}
                     {view === 'meeting-photos' && <MeetingPhotosAdmin isOpen={true} onClose={() => setView('leads')} />}
                     {view === 'website-control' && isAdmin && (
                         <div className="bg-white p-4 rounded-xl shadow">
                             <WebsiteControlPanel isAdmin={isAdmin} />
                         </div>
                     )}
-                    {!['leads', 'pipeline', 'reports', 'meetings', 'followups', 'notifications', 'calls-report', 'travel-claims', 'bulk-email', 'live-tracking', 'website-control', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'meeting-photos'].includes(view) && (
+                    {!['leads', 'pipeline', 'reports', 'meetings', 'followups', 'notifications', 'calls-report', 'travel-claims', 'bulk-email', 'live-tracking', 'website-control', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'meeting-photos'].includes(view) && (
                         <div className="text-slate-600 text-center py-8">Select a section from the sidebar.</div>
                     )}
                 </>

@@ -35,6 +35,8 @@ import * as importHistoryService from './services/importHistoryService.js';
 import * as emailTemplatesService from './services/emailTemplatesService.js';
 import * as emailCampaignsService from './services/emailCampaignsService.js';
 import * as fieldConfigsService from './services/fieldConfigsService.js';
+import * as locationMasterService from './services/locationMasterService.js';
+import { SEED_STATES_BY_COUNTRY, SEED_CITY_TO_STATE } from './data/locationMasterSeed.js';
 import * as travelSessionsService from './services/travelSessionsService.js';
 import * as meetingCompletionsService from './services/meetingCompletionsService.js';
 import * as meetingAlertsService from './services/meetingAlertsService.js';
@@ -897,6 +899,103 @@ app.put('/api/email-campaigns/:id', async (req, res) => {
   }
 });
 
+
+// --- LOCATION MASTER (City / State) ---
+app.get('/api/location-master/bundle', async (_req, res) => {
+  try {
+    await locationMasterService.seedDefaultsIfEmpty({
+      statesByCountry: SEED_STATES_BY_COUNTRY,
+      cityToState: SEED_CITY_TO_STATE,
+    });
+    const bundle = await locationMasterService.getLocationBundle();
+    res.json(bundle);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.get('/api/location-master/states', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await locationMasterService.listStates({
+      country: req.query.country,
+      q: req.query.q,
+    });
+    res.json(rows);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.post('/api/location-master/states', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await locationMasterService.upsertState(req.body || {});
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.put('/api/location-master/states/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await locationMasterService.upsertState({ ...(req.body || {}), id: req.params.id });
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.delete('/api/location-master/states/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await locationMasterService.deleteState(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.get('/api/location-master/cities', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await locationMasterService.listCities({
+      country: req.query.country,
+      state: req.query.state,
+      q: req.query.q,
+    });
+    res.json(rows);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.post('/api/location-master/cities', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await locationMasterService.upsertCity(req.body || {});
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.put('/api/location-master/cities/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await locationMasterService.upsertCity({ ...(req.body || {}), id: req.params.id });
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.delete('/api/location-master/cities/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await locationMasterService.deleteCity(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.post('/api/location-master/seed', authenticateToken, requireAdmin, async (_req, res) => {
+  try {
+    const result = await locationMasterService.seedDefaultsIfEmpty({
+      statesByCountry: SEED_STATES_BY_COUNTRY,
+      cityToState: SEED_CITY_TO_STATE,
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- FIELD CONFIGS ---
 app.get('/api/field-configs', async (req, res) => {
   try {
@@ -990,6 +1089,20 @@ ensureSessionTables().then(() => {
 }).catch((err) => {
   console.error('⚠️ Could not prepare session tables:', err.message);
 });
+
+locationMasterService.ensureLocationMasterTables()
+  .then(() => locationMasterService.seedDefaultsIfEmpty({
+    statesByCountry: SEED_STATES_BY_COUNTRY,
+    cityToState: SEED_CITY_TO_STATE,
+  }))
+  .then((result) => {
+    console.log(result?.seeded ? '✅ Location master seeded' : '✅ Location master tables ready');
+  })
+  .catch((err) => {
+    console.error('⚠️ Could not prepare location master:', err.message);
+  });
+
+
 
 loadMailchimpSettings().then(() => {
   console.log('✅ Mailchimp settings ready');

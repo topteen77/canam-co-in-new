@@ -14,6 +14,8 @@ export const APP_VIEWS = [
   'database-admin',
   'data-export',
   'last-login-info',
+  'state-master',
+  'city-master',
   'meeting-photos',
   'website-control',
 ] as const;
