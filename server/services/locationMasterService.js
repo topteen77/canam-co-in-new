@@ -28,19 +28,19 @@ async function addColumnIfMissing(table, column, ddl) {
 export async function ensureLocationMasterTables() {
   if (ensured) return;
   await db.query(`
-    CREATE TABLE IF NOT EXISTS location_states (
+    CREATE TABLE IF NOT EXISTS crm_location_states (
       id VARCHAR(64) PRIMARY KEY,
       country VARCHAR(128) NOT NULL,
       name VARCHAR(128) NOT NULL,
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uk_location_states_country_name (country, name),
-      INDEX idx_location_states_country (country)
+      UNIQUE KEY uk_crm_location_states_country_name (country, name),
+      INDEX idx_crm_location_states_country (country)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
   await db.query(`
-    CREATE TABLE IF NOT EXISTS location_cities (
+    CREATE TABLE IF NOT EXISTS crm_location_cities (
       id VARCHAR(64) PRIMARY KEY,
       country VARCHAR(128) NOT NULL,
       \`state\` VARCHAR(128) NOT NULL,
@@ -48,18 +48,22 @@ export async function ensureLocationMasterTables() {
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uk_location_cities_country_name (country, name),
-      INDEX idx_location_cities_state (country, \`state\`),
-      INDEX idx_location_cities_name (name)
+      UNIQUE KEY uk_crm_location_cities_country_name (country, name),
+      INDEX idx_crm_location_cities_state (country, \`state\`),
+      INDEX idx_crm_location_cities_name (name)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
-  await addColumnIfMissing('location_states', 'country', "ADD COLUMN country VARCHAR(128) NOT NULL DEFAULT 'India'");
-  await addColumnIfMissing('location_states', 'name', "ADD COLUMN name VARCHAR(128) NOT NULL DEFAULT ''");
-  await addColumnIfMissing('location_states', 'is_active', 'ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1');
-  await addColumnIfMissing('location_cities', 'country', "ADD COLUMN country VARCHAR(128) NOT NULL DEFAULT 'India'");
-  await addColumnIfMissing('location_cities', 'state', "ADD COLUMN `state` VARCHAR(128) NOT NULL DEFAULT ''");
-  await addColumnIfMissing('location_cities', 'name', "ADD COLUMN name VARCHAR(128) NOT NULL DEFAULT ''");
-  await addColumnIfMissing('location_cities', 'is_active', 'ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1');
+  await addColumnIfMissing('crm_location_states', 'country', "ADD COLUMN country VARCHAR(128) NOT NULL DEFAULT 'India'");
+  await addColumnIfMissing('crm_location_states', 'name', "ADD COLUMN name VARCHAR(128) NOT NULL DEFAULT ''");
+  await addColumnIfMissing('crm_location_states', 'is_active', 'ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1');
+  await addColumnIfMissing('crm_location_states', 'created_at', 'ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+  await addColumnIfMissing('crm_location_states', 'updated_at', 'ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+  await addColumnIfMissing('crm_location_cities', 'country', "ADD COLUMN country VARCHAR(128) NOT NULL DEFAULT 'India'");
+  await addColumnIfMissing('crm_location_cities', 'state', "ADD COLUMN `state` VARCHAR(128) NOT NULL DEFAULT ''");
+  await addColumnIfMissing('crm_location_cities', 'name', "ADD COLUMN name VARCHAR(128) NOT NULL DEFAULT ''");
+  await addColumnIfMissing('crm_location_cities', 'is_active', 'ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1');
+  await addColumnIfMissing('crm_location_cities', 'created_at', 'ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+  await addColumnIfMissing('crm_location_cities', 'updated_at', 'ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
   ensured = true;
 }
 
@@ -77,7 +81,7 @@ export async function listStates({ country, q } = {}) {
   }
   const [rows] = await db.query(
     `SELECT id, country, name, is_active AS isActive, created_at AS createdAt, updated_at AS updatedAt
-     FROM location_states
+     FROM crm_location_states
      WHERE ${where.join(' AND ')}
      ORDER BY country ASC, name ASC`,
     params
@@ -103,7 +107,7 @@ export async function listCities({ country, state, q } = {}) {
   }
   const [rows] = await db.query(
     `SELECT id, country, \`state\` AS state, name, is_active AS isActive, created_at AS createdAt, updated_at AS updatedAt
-     FROM location_cities
+     FROM crm_location_cities
      WHERE ${where.join(' AND ')}
      ORDER BY country ASC, \`state\` ASC, name ASC`,
     params
@@ -134,12 +138,12 @@ export async function upsertState({ id, country, name, isActive = true }) {
 
   const rowId = clean(id) || newId();
   const [existing] = await db.query(
-    `SELECT id FROM location_states WHERE (id = ?) OR (country = ? AND LOWER(name) = LOWER(?)) LIMIT 1`,
+    `SELECT id FROM crm_location_states WHERE (id = ?) OR (country = ? AND LOWER(name) = LOWER(?)) LIMIT 1`,
     [rowId, countryName, stateName]
   );
   if (existing.length) {
     await db.execute(
-      `UPDATE location_states
+      `UPDATE crm_location_states
        SET country = ?, name = ?, is_active = ?, updated_at = NOW()
        WHERE id = ?`,
       [countryName, stateName, isActive ? 1 : 0, existing[0].id]
@@ -147,7 +151,7 @@ export async function upsertState({ id, country, name, isActive = true }) {
     return { success: true, id: existing[0].id };
   }
   await db.execute(
-    `INSERT INTO location_states (id, country, name, is_active) VALUES (?, ?, ?, ?)`,
+    `INSERT INTO crm_location_states (id, country, name, is_active) VALUES (?, ?, ?, ?)`,
     [rowId, countryName, stateName, isActive ? 1 : 0]
   );
   return { success: true, id: rowId };
@@ -157,17 +161,17 @@ export async function deleteState(id) {
   await ensureLocationMasterTables();
   const rowId = clean(id);
   if (!rowId) throw Object.assign(new Error('State id is required'), { statusCode: 400 });
-  const [rows] = await db.query(`SELECT country, name FROM location_states WHERE id = ?`, [rowId]);
+  const [rows] = await db.query(`SELECT country, name FROM crm_location_states WHERE id = ?`, [rowId]);
   if (!rows.length) return { success: true, deleted: 0 };
   const { country, name } = rows[0];
   const [cityCount] = await db.query(
-    `SELECT COUNT(*) AS cnt FROM location_cities WHERE country = ? AND \`state\` = ? AND is_active = 1`,
+    `SELECT COUNT(*) AS cnt FROM crm_location_cities WHERE country = ? AND \`state\` = ? AND is_active = 1`,
     [country, name]
   );
   if (Number(cityCount[0]?.cnt || 0) > 0) {
     throw Object.assign(new Error('Remove or reassign cities in this state first'), { statusCode: 400 });
   }
-  await db.execute(`UPDATE location_states SET is_active = 0, updated_at = NOW() WHERE id = ?`, [rowId]);
+  await db.execute(`UPDATE crm_location_states SET is_active = 0, updated_at = NOW() WHERE id = ?`, [rowId]);
   return { success: true, deleted: 1 };
 }
 
@@ -182,7 +186,7 @@ export async function upsertCity({ id, country, state, name, isActive = true, sy
 
   const rowId = clean(id) || newId();
   const [existing] = await db.query(
-    `SELECT id, \`state\` AS state FROM location_cities WHERE (id = ?) OR (country = ? AND LOWER(name) = LOWER(?)) LIMIT 1`,
+    `SELECT id, \`state\` AS state FROM crm_location_cities WHERE (id = ?) OR (country = ? AND LOWER(name) = LOWER(?)) LIMIT 1`,
     [rowId, countryName, cityName]
   );
 
@@ -190,14 +194,14 @@ export async function upsertCity({ id, country, state, name, isActive = true, sy
   if (existing.length) {
     cityId = existing[0].id;
     await db.execute(
-      `UPDATE location_cities
+      `UPDATE crm_location_cities
        SET country = ?, \`state\` = ?, name = ?, is_active = ?, updated_at = NOW()
        WHERE id = ?`,
       [countryName, stateName, cityName, isActive ? 1 : 0, cityId]
     );
   } else {
     await db.execute(
-      `INSERT INTO location_cities (id, country, \`state\`, name, is_active) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO crm_location_cities (id, country, \`state\`, name, is_active) VALUES (?, ?, ?, ?, ?)`,
       [cityId, countryName, stateName, cityName, isActive ? 1 : 0]
     );
   }
@@ -213,7 +217,7 @@ export async function deleteCity(id) {
   await ensureLocationMasterTables();
   const rowId = clean(id);
   if (!rowId) throw Object.assign(new Error('City id is required'), { statusCode: 400 });
-  await db.execute(`UPDATE location_cities SET is_active = 0, updated_at = NOW() WHERE id = ?`, [rowId]);
+  await db.execute(`UPDATE crm_location_cities SET is_active = 0, updated_at = NOW() WHERE id = ?`, [rowId]);
   return { success: true, deleted: 1 };
 }
 
@@ -274,8 +278,8 @@ export async function repairKnownCityMappings({ syncLeads = false } = {}) {
 
 export async function seedDefaultsIfEmpty(seed) {
   await ensureLocationMasterTables();
-  const [stateCount] = await db.query(`SELECT COUNT(*) AS cnt FROM location_states`);
-  const [cityCount] = await db.query(`SELECT COUNT(*) AS cnt FROM location_cities`);
+  const [stateCount] = await db.query(`SELECT COUNT(*) AS cnt FROM crm_location_states`);
+  const [cityCount] = await db.query(`SELECT COUNT(*) AS cnt FROM crm_location_cities`);
   const hasStates = Number(stateCount[0]?.cnt || 0) > 0;
   const hasCities = Number(cityCount[0]?.cnt || 0) > 0;
 
