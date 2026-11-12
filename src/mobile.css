@@ -483,6 +483,12 @@ input, select, textarea {
   font-size: 14px;
   color: #0f172a;
 }
+.fu-filter-field select.is-inactive-user {
+  color: #94a3b8;
+}
+.fu-filter-field option[data-inactive="true"] {
+  color: #94a3b8;
+}
 .fu-filter-range {
   display: grid;
   grid-template-columns: 1fr;
