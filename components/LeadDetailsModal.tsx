@@ -12,6 +12,7 @@ import { MultiSelect } from './MultiSelect';
 import { CustomDateTimePicker } from './CustomDateTimePicker';
 import { SimplePagination } from './SimplePagination';
 import { canMutateLead } from '../utils/leadPermissions';
+import apiClient from '../services/apiClient';
 import { IcpScoringModal, TRAINING_SCORE_ROWS, clampIcpScore, emptyTrainingCategoryScores } from './IcpScoringModal';
 
 interface LeadDetailsModalProps {
@@ -26,7 +27,7 @@ interface LeadDetailsModalProps {
   onUpdateFollowUp?: (leadId: string, followUpId: string, updates: Partial<FollowUp>) => void;
   availableUsers?: Array<{ id: string, name: string, email: string, role: string }>;
   meetingCheckIns?: MeetingCheckInRecord[];
-  initialActiveTab?: 'details' | 'followups' | 'history';
+  initialActiveTab?: 'details' | 'followups' | 'history' | 'recordings';
   highlightFollowUpId?: string;
   availableTags?: string[];
   onCreateTag?: (tagName: string) => Promise<string>;
@@ -183,7 +184,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     const emailPrefix = email.split('@')[0];
     return emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
   };
-  const [activeTab, setActiveTab] = useState<'details' | 'followups' | 'history'>(initialActiveTab || 'details');
+  const [activeTab, setActiveTab] = useState<'details' | 'followups' | 'history' | 'recordings'>(initialActiveTab || 'details');
+  const [callRecordings, setCallRecordings] = useState<Array<{ id: string; phone_number?: string; timestamp?: string; duration?: number; outcome?: string; user_name?: string; direction?: string; recording_url?: string | null; notes?: string }>>([]);
+  const [recordingsLoading, setRecordingsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(true);
   const [editData, setEditData] = useState<Partial<Lead>>({});
   const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null);
@@ -194,6 +197,25 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   const [followUpsPerPage, setFollowUpsPerPage] = useState(5);
   
   const highlightedFollowUpRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isAdmin || !isOpen || !lead?.id) return undefined;
+    let cancelled = false;
+    setRecordingsLoading(true);
+    apiClient.get(`/call-logs/lead/${encodeURIComponent(lead.id)}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const rows = Array.isArray(data) ? data : [];
+        setCallRecordings(rows.filter((row) => row?.recording_url));
+      })
+      .catch(() => {
+        if (!cancelled) setCallRecordings([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRecordingsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isAdmin, isOpen, lead?.id]);
   const [showIcpScoreModal, setShowIcpScoreModal] = useState(false);
   const [showTrainingScoreModal, setShowTrainingScoreModal] = useState(false);
   const [trainingCategoryScores, setTrainingCategoryScores] = useState(emptyTrainingCategoryScores);
@@ -622,7 +644,8 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           {[
             { id: 'details', label: 'Lead Details', tone: '' },
             { id: 'followups', label: 'Follow-ups', tone: 'app-chip--yellow' },
-            { id: 'history', label: 'History', tone: 'app-chip--indigo' }
+            { id: 'history', label: 'History', tone: 'app-chip--indigo' },
+            ...(isAdmin ? [{ id: 'recordings', label: 'Recordings', tone: 'app-chip--indigo' }] : []),
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`app-chip ${tab.tone} ${activeTab === tab.id ? 'app-chip--active' : ''}`}>{tab.label}</button>
           ))}
@@ -631,7 +654,8 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           {[
             { id: 'details', label: '📋 Lead Details' },
             { id: 'followups', label: '📞 Follow-ups' },
-            { id: 'history', label: '📊 History' }
+            { id: 'history', label: '📊 History' },
+            ...(isAdmin ? [{ id: 'recordings', label: '🎧 Recordings' }] : []),
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-4 py-2 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}>{tab.label}</button>
           ))}
@@ -1593,6 +1617,39 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === 'recordings' && isAdmin && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-slate-800">Call recordings</h3>
+            <p className="text-sm text-slate-500">Admin only. Play a recording from this lead.</p>
+            {recordingsLoading ? (
+              <p className="text-sm text-slate-500">Loading recordings…</p>
+            ) : callRecordings.length === 0 ? (
+              <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-slate-500">
+                No recordings for this lead yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {callRecordings.map((call) => (
+                  <div key={call.id} className="rounded-lg border border-slate-200 bg-white p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{call.phone_number || 'Unknown number'}</p>
+                        <p className="text-xs text-slate-500">
+                          {[call.direction, call.user_name, call.timestamp ? new Date(call.timestamp).toLocaleString() : ''].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      <a href={call.recording_url || '#'} target="_blank" rel="noreferrer" className="text-xs font-semibold text-indigo-600 underline">Open</a>
+                    </div>
+                    <audio className="mt-3 w-full" controls preload="none" src={call.recording_url || undefined}>
+                      <a href={call.recording_url || '#'}>Play recording</a>
+                    </audio>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
