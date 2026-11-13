@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import apiClient from '../services/apiClient';
+import { PhoneIcon } from './icons/ActionIcons';
 
 interface LiveCall {
   id: string;
@@ -25,7 +26,7 @@ const STATUS_LABEL: Record<string, string> = {
   ringing: 'Ringing',
   connected: 'Connected',
   completed: 'Call ended',
-  missed: 'Missed',
+  missed: 'Call ended',
 };
 
 export default function KommunoLiveCalls({ userEmail, onOpenLead }: KommunoLiveCallsProps) {
@@ -59,10 +60,18 @@ export default function KommunoLiveCalls({ userEmail, onOpenLead }: KommunoLiveC
       {visible.map((call) => {
         const incoming = call.direction === 'INCOMING';
         const ended = call.status === 'completed' || call.status === 'missed';
+        const dialing = !incoming && (call.status === 'initiated' || call.status === 'ringing');
         return (
           <div key={call.sessionId} className="rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="flex items-start gap-2">
+                {dialing && (
+                  <span className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
+                    <span className="absolute inset-0 rounded-full bg-emerald-400/40 animate-ping" />
+                    <PhoneIcon className="phone-ring-icon relative h-5 w-5" />
+                  </span>
+                )}
+                <div>
                 <div className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
                   {incoming ? 'Incoming' : 'Outgoing'} · {STATUS_LABEL[call.status || ''] || call.status}
                 </div>
@@ -76,6 +85,7 @@ export default function KommunoLiveCalls({ userEmail, onOpenLead }: KommunoLiveC
                 {call.pilotNumber && (
                   <div className="text-xs text-slate-400">Via {call.pilotNumber}</div>
                 )}
+                </div>
               </div>
               <button
                 type="button"
