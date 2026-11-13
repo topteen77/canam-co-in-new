@@ -174,6 +174,30 @@ jobs:
               exit 1
             fi
 
+            # API must answer; nginx 502 means new-crm-api is down.
+            api_ok=0
+            for attempt in 1 2 3 4 5 6; do
+              sleep 2
+              api_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://127.0.0.1:5002/api/health || true)"
+              echo "==> API :5002/api/health attempt $attempt HTTP $api_code"
+              if [ "$api_code" = "200" ] || [ "$api_code" = "204" ]; then
+                api_ok=1
+                break
+              fi
+              if [ "$attempt" = "3" ] || [ "$attempt" = "5" ]; then
+                echo "==> API unhealthy — restarting new-crm-api"
+                sudo -n pm2 restart new-crm-api --update-env || sudo -n pm2 start server/index.js --name new-crm-api
+                sudo -n pm2 list
+              fi
+            done
+            if [ "$api_ok" != "1" ]; then
+              echo "ERROR: API health check failed (nginx will return 502 for /api)"
+              sudo -n pm2 describe new-crm-api || true
+              sudo -n pm2 logs new-crm-api --err --lines 120 --nostream || true
+              sudo -n pm2 logs new-crm-api --out --lines 60 --nostream || true
+              exit 1
+            fi
+
             SUCCESS=1
             trap - EXIT
             rm -rf "$BACKUP" "$STAGING"

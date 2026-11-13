@@ -1336,7 +1336,20 @@ kommunoService.ensureKommuno().then(() => {
 app.use(expressErrorLogger);
 
 function startListening() {
-  if (useHttps) {
+  // Always bind plain HTTP on PORT. Production nginx terminates TLS and
+  // proxies to http://127.0.0.1:5002 — HTTPS-only listen here causes 502.
+  const httpServer = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`   - Local: http://localhost:${PORT}`);
+    console.log(`   - Network: http://127.0.0.1:${PORT}`);
+  });
+  httpServer.on('error', (err) => {
+    console.error('❌ HTTP listen failed on port', PORT, err.message);
+    process.exit(1);
+  });
+
+  // Optional direct HTTPS on a *different* port only (never replace nginx upstream).
+  if (useHttps && httpsPort !== PORT) {
     try {
       const keyPath = path.isAbsolute(process.env.SSL_KEY_PATH)
         ? process.env.SSL_KEY_PATH
@@ -1348,32 +1361,11 @@ function startListening() {
       const cert = fs.readFileSync(certPath, 'utf8');
       const httpsServer = https.createServer({ key, cert }, app);
       httpsServer.listen(httpsPort, '0.0.0.0', () => {
-        console.log(`✅ HTTPS server running on port ${httpsPort}`);
-        console.log(`   - https://localhost:${httpsPort}`);
+        console.log(`✅ HTTPS server also on port ${httpsPort}`);
       });
     } catch (err) {
-      console.error('❌ HTTPS failed (check SSL_KEY_PATH / SSL_CERT_PATH):', err.message);
-      process.exit(1);
+      console.error('⚠️ Extra HTTPS listen skipped:', err.message);
     }
-    // Optional: also listen on HTTP to redirect to HTTPS
-    if (process.env.HTTP_REDIRECT_PORT && parseInt(process.env.HTTP_REDIRECT_PORT, 10) !== httpsPort) {
-      const httpPort = parseInt(process.env.HTTP_REDIRECT_PORT, 10);
-      const redirectApp = express();
-      redirectApp.set('trust proxy', 1);
-      redirectApp.use((req, res) => {
-        const host = req.get('host') || req.hostname || 'localhost';
-        res.redirect(301, `https://${host.replace(/:\d+$/, '')}:${httpsPort}${req.originalUrl}`);
-      });
-      redirectApp.listen(httpPort, '0.0.0.0', () => {
-        console.log(`   HTTP redirect server on port ${httpPort} -> HTTPS ${httpsPort}`);
-      });
-    }
-  } else {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✅ Server running on port ${PORT}`);
-      console.log(`   - Local: http://localhost:${PORT}`);
-      console.log(`   - Network: http://127.0.0.1:${PORT}`);
-    });
   }
 }
 
