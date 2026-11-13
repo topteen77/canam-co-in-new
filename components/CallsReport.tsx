@@ -50,7 +50,8 @@ export const CallsReport: React.FC<CallsReportProps> = ({
     userName: row.user_name ?? row.userName ?? '',
     createdAt: row.created_at ?? row.createdAt ?? new Date().toISOString(),
     direction: row.direction || (String(row.notes || '').includes('Kommuno INCOMING') ? 'INCOMING' : String(row.notes || '').includes('Kommuno OUTGOING') ? 'OUTGOING' : null),
-    recordingUrl: row.recording_url ?? row.recordingUrl ?? (String(row.notes || '').match(/https?:\/\/\S+/)?.[0] || null),
+    recordingUrl: row.recording_url ?? row.recordingUrl ?? null,
+    recordingSaved: Boolean(row.recording_saved ?? row.recordingSaved),
     sessionId: row.session_id ?? row.sessionId ?? null,
   });
 
@@ -447,9 +448,9 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                       {call.outcome === 'no-ring' ? null : (
                         <div className="truncate">{call.notes || <span className="text-slate-400 italic">No notes</span>}</div>
                       )}
-                      {call.recordingUrl && (
+                      {(call.recordingUrl || call.recordingSaved) && (
                         <div className="mt-2">
-                          <CallRecordingPlay id={call.id} />
+                          <CallRecordingPlay id={call.id} available={Boolean(call.recordingSaved)} />
                         </div>
                       )}
                     </td>

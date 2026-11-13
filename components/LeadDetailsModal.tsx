@@ -187,7 +187,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     return emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
   };
   const [activeTab, setActiveTab] = useState<'details' | 'followups' | 'history' | 'recordings'>(initialActiveTab || 'details');
-  const [callRecordings, setCallRecordings] = useState<Array<{ id: string; phone_number?: string; timestamp?: string; duration?: number; outcome?: string; user_name?: string; direction?: string; recording_url?: string | null; notes?: string }>>([]);
+  const [callRecordings, setCallRecordings] = useState<Array<{ id: string; phone_number?: string; timestamp?: string; duration?: number; outcome?: string; user_name?: string; direction?: string; recording_url?: string | null; recording_saved?: boolean; notes?: string }>>([]);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(true);
   const [editData, setEditData] = useState<Partial<Lead>>({});
@@ -1644,7 +1644,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                           {[call.direction, call.user_name, call.timestamp ? new Date(call.timestamp).toLocaleString() : ''].filter(Boolean).join(' · ')}
                         </p>
                       </div>
-                      {call.recording_url && <CallRecordingPlay id={call.id} />}
+                      {(call.recording_url || call.recording_saved) && (
+                        <CallRecordingPlay id={call.id} available={Boolean(call.recording_saved)} />
+                      )}
                     </div>
                   </div>
                 ))}

@@ -1165,11 +1165,23 @@ export async function liveForUser(email) {
     contactName: row.contact_name,
     duration: row.connected_duration || row.duration || 0,
     recordingUrl: row.recording_url,
+    recordingSaved: recordingIsStored(row.recording_url),
     reason: row.call_reason || '',
     disconnectedBy: row.disconnected_by || '',
     startedAt: row.started_at,
   }));
   return calls;
+}
+
+export function recordingIsStored(url) {
+  const name = String(url || '').split('?')[0].split('/').pop();
+  const file = recordingFilePath(name);
+  if (!file || !fs.existsSync(file)) return false;
+  try {
+    return fs.statSync(file).size > 100;
+  } catch {
+    return false;
+  }
 }
 
 function recordingBytes(url) {

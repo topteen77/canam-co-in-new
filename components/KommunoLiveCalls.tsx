@@ -15,6 +15,7 @@ interface LiveCall {
   leadName?: string;
   contactName?: string;
   recordingUrl?: string;
+  recordingSaved?: boolean;
   duration?: number;
   reason?: string;
   disconnectedBy?: string;
@@ -114,7 +115,9 @@ export default function KommunoLiveCalls({ userEmail, onOpenLead }: KommunoLiveC
                   Open lead
                 </button>
               )}
-              {ended && call.recordingUrl && <CallRecordingPlay id={call.id} />}
+              {ended && (call.recordingUrl || call.recordingSaved) && (
+                <CallRecordingPlay id={call.id} available={Boolean(call.recordingSaved)} />
+              )}
             </div>
           </div>
         );

@@ -248,5 +248,6 @@ export interface CallLog {
   createdAt: string; // ISO string
   direction?: 'INCOMING' | 'OUTGOING' | string | null;
   recordingUrl?: string | null;
+  recordingSaved?: boolean;
   sessionId?: string | null;
 }

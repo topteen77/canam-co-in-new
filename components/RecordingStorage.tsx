@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import apiClient from '../services/apiClient';
+import { Modal } from './Modal';
 
 type RecordingFile = {
   id: string;
@@ -50,6 +51,7 @@ export function RecordingStorage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const load = async (nextRange = range, nextFrom = from, nextTo = to) => {
     setLoading(true);
@@ -90,8 +92,8 @@ export function RecordingStorage() {
 
   const removeSelected = async () => {
     if (!selected.length) return;
-    if (!window.confirm(`Remove ${selected.length} recording${selected.length === 1 ? '' : 's'} from the CRM?`)) return;
     const { data } = await apiClient.post('/admin/call-recordings/delete', { ids: selected });
+    setConfirmOpen(false);
     setMessage(`Removed ${data?.removed || 0} recording${data?.removed === 1 ? '' : 's'} (${formatBytes(data?.freedBytes || 0)}).`);
     await load();
   };
@@ -131,7 +133,7 @@ export function RecordingStorage() {
           </>
         )}
         <button type="button" onClick={() => load()} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white">Show recordings</button>
-        <button type="button" onClick={removeSelected} disabled={!selected.length} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">
+        <button type="button" onClick={() => selected.length && setConfirmOpen(true)} disabled={!selected.length} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">
           Remove selected ({formatBytes(selectedBytes)})
         </button>
       </div>
@@ -178,6 +180,22 @@ export function RecordingStorage() {
           </table>
         </div>
       )}
+      <Modal
+        isOpen={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Remove recordings"
+        maxWidth="max-w-md"
+        footer={(
+          <div className="flex justify-end gap-2 px-4 py-3">
+            <button type="button" onClick={() => setConfirmOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+            <button type="button" onClick={removeSelected} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white">Remove recordings</button>
+          </div>
+        )}
+      >
+        <p className="text-sm text-slate-700">
+          Remove {selected.length} recording{selected.length === 1 ? '' : 's'} ({formatBytes(selectedBytes)}) from the CRM? Kept recordings stay.
+        </p>
+      </Modal>
     </div>
   );
 }

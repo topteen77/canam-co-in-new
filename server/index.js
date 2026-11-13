@@ -601,7 +601,7 @@ app.put('/api/travel-claims/:id', async (req, res) => {
 app.get('/api/call-logs', async (req, res) => {
   try {
     const list = await callLogsService.getAllCallLogs({ limit: req.query.limit ? parseInt(req.query.limit, 10) : null });
-    res.json(list);
+    res.json(list.map((row) => ({ ...row, recording_saved: kommunoService.recordingIsStored(row.recording_url) })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -609,7 +609,7 @@ app.get('/api/call-logs', async (req, res) => {
 app.get('/api/call-logs/lead/:leadId', async (req, res) => {
   try {
     const list = await callLogsService.getCallLogsByLead(req.params.leadId);
-    res.json(list);
+    res.json(list.map((row) => ({ ...row, recording_saved: kommunoService.recordingIsStored(row.recording_url) })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
