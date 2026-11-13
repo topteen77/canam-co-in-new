@@ -648,7 +648,12 @@ app.post('/api/kommuno/webhook', handleKommunoWebhook);
 app.post('/api/kommuno/callback', handleKommunoWebhook);
 app.post('/api/kommuno/incoming', handleKommunoWebhook);
 app.post('/api/kommuno/recording', handleKommunoWebhook);
-app.get('/api/kommuno/status', (_req, res) => {
+app.get('/api/kommuno/status', async (_req, res) => {
+  try {
+    if (!kommunoService.status().configured) await kommunoService.loadKommunoSettings();
+  } catch (error) {
+    console.error('Kommuno settings reload failed:', error.message);
+  }
   res.json(kommunoService.status());
 });
 app.get('/api/kommuno/live', async (req, res) => {

@@ -441,7 +441,12 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                     <td className="px-4 py-3 text-sm text-slate-600 max-w-xs">
                       <div className="truncate">{call.notes || <span className="text-slate-400 italic">No notes</span>}</div>
                       {call.recordingUrl && (
-                        <a href={call.recordingUrl} target="_blank" rel="noreferrer" className="text-indigo-600 underline">Recording</a>
+                        <div className="mt-2">
+                          <audio className="h-8 w-full max-w-xs" controls preload="none" src={call.recordingUrl}>
+                            <a href={call.recordingUrl}>Play recording</a>
+                          </audio>
+                          <a href={call.recordingUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-semibold text-indigo-600 underline">Play recording</a>
+                        </div>
                       )}
                     </td>
                   </tr>

@@ -550,8 +550,8 @@ async function repairZeroDurations() {
       `SELECT k.call_log_id, k.duration, k.connected_duration, k.ringing_duration, k.overall_call_status, k.recording_url
        FROM ${TABLE} k
        INNER JOIN call_logs c ON c.id = k.call_log_id
-       WHERE COALESCE(c.duration, 0) = 0
-         AND (COALESCE(k.duration, 0) > 0 OR COALESCE(k.connected_duration, 0) > 0 OR COALESCE(k.ringing_duration, 0) > 0)
+       WHERE (COALESCE(c.duration, 0) = 0 AND (COALESCE(k.duration, 0) > 0 OR COALESCE(k.connected_duration, 0) > 0 OR COALESCE(k.ringing_duration, 0) > 0))
+          OR (COALESCE(c.recording_url, '') = '' AND COALESCE(k.recording_url, '') <> '')
        LIMIT 200`
     );
     for (const row of rows || []) {
@@ -560,7 +560,7 @@ async function repairZeroDurations() {
         connectedDuration: row.connected_duration,
         ringingDuration: row.ringing_duration,
       });
-      if (!seconds) continue;
+      if (!seconds && !row.recording_url) continue;
       const reason = callReason({
         overallCallStatus: row.overall_call_status,
         duration: row.duration,
@@ -570,7 +570,7 @@ async function repairZeroDurations() {
         status: 'completed',
       }, {});
       await callLogsService.updateCallLog(row.call_log_id, {
-        duration: seconds,
+        duration: seconds > 0 ? seconds : undefined,
         outcome: reason && reason !== 'no-ring' ? reason : undefined,
         recordingUrl: row.recording_url || undefined,
       });
@@ -581,9 +581,17 @@ async function repairZeroDurations() {
 }
 
 export async function ensureKommuno() {
-  await ensureTable();
+  try {
+    await ensureTable();
+  } catch (error) {
+    console.error('Kommuno table update skipped:', error.message);
+  }
   await ensureCallLogColumns();
-  await loadKommunoSettings();
+  try {
+    await loadKommunoSettings();
+  } catch (error) {
+    console.error('Kommuno settings load failed:', error.message);
+  }
   await repairZeroDurations();
 }
 
@@ -786,7 +794,7 @@ async function upsertEvent(event, raw) {
       `SELECT * FROM ${TABLE}
        WHERE direction = 'OUTGOING'
          AND status IN ('initiated', 'ringing', 'connected', 'missed')
-         AND created_at >= DATE_SUB(NOW(), INTERVAL 20 MINUTE)
+         AND created_at >= DATE_SUB(NOW(), INTERVAL 6 HOUR)
        ORDER BY (status = 'missed'), created_at DESC LIMIT 20`
     );
     existing = (openRows || []).find((row) => {
