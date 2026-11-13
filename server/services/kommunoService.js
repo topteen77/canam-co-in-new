@@ -1269,3 +1269,113 @@ export async function deleteStoredRecordings(ids) {
   }
   return { removed, freedBytes, skipped };
 }
+
+function monthsAgo(months) {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setMonth(date.getMonth() - months);
+  return date;
+}
+
+function sqlDateTime(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function dayKey(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export function callLogRetentionCutoff() {
+  return monthsAgo(3);
+}
+
+function logTimes(row) {
+  return [row?.timestamp, row?.created_at]
+    .map((value) => {
+      if (!value) return null;
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    })
+    .filter(Boolean);
+}
+
+function logIsOlderThan(row, cutoff) {
+  const times = logTimes(row);
+  if (!times.length) return false;
+  return times.every((time) => time < cutoff);
+}
+
+function requestedCutoff(before) {
+  const floor = callLogRetentionCutoff();
+  const requested = before ? new Date(`${String(before).slice(0, 10)}T00:00:00`) : null;
+  if (!requested || Number.isNaN(requested.getTime()) || requested > floor) return floor;
+  return requested;
+}
+
+export async function listOldCallLogs(query = {}) {
+  await ensureCallLogColumns();
+  const cutoff = requestedCutoff(query.before);
+  const table = await resolveTableNameOrFallback(['call_logs', 'CallLogs'], 'call_logs');
+  const [rows] = await db.query(
+    `SELECT id, phone_number, lead_name, contact_name, user_name, timestamp, created_at, duration, outcome, direction, recording_url
+     FROM ${table}
+     WHERE created_at < ?
+     ORDER BY created_at ASC
+     LIMIT 500`,
+    [sqlDateTime(cutoff)]
+  );
+  const logs = [];
+  for (const row of rows || []) {
+    if (!logIsOlderThan(row, cutoff)) continue;
+    logs.push({
+      id: row.id,
+      phoneNumber: row.phone_number || '',
+      leadName: row.lead_name || '',
+      contactName: row.contact_name || '',
+      userName: row.user_name || '',
+      direction: row.direction || '',
+      outcome: row.outcome || '',
+      timestamp: row.timestamp || row.created_at || '',
+      duration: Number(row.duration || 0) || 0,
+      hasRecording: recordingIsStored(row.recording_url),
+    });
+  }
+  return { logs, count: logs.length, keepUntil: dayKey(callLogRetentionCutoff()) };
+}
+
+export async function deleteOldCallLogs(ids) {
+  await ensureCallLogColumns();
+  const cutoff = callLogRetentionCutoff();
+  const table = await resolveTableNameOrFallback(['call_logs', 'CallLogs'], 'call_logs');
+  const unique = [...new Set((Array.isArray(ids) ? ids : []).map((id) => String(id || '').trim()).filter(Boolean))].slice(0, 200);
+  let removed = 0;
+  let recordingsRemoved = 0;
+  const skipped = [];
+  for (const id of unique) {
+    const [rows] = await db.query(
+      `SELECT id, timestamp, created_at, recording_url, session_id FROM ${table} WHERE id = ? LIMIT 1`,
+      [id]
+    );
+    const row = rows?.[0];
+    if (!row || !logIsOlderThan(row, cutoff)) {
+      skipped.push(id);
+      continue;
+    }
+    const file = recordingFilePath(String(row.recording_url || '').split('?')[0].split('/').pop());
+    if (file && fs.existsSync(file)) {
+      await fs.promises.unlink(file);
+      recordingsRemoved += 1;
+    }
+    try {
+      await db.execute(`DELETE FROM ${TABLE} WHERE call_log_id = ?`, [id]);
+      if (row.session_id) await db.execute(`DELETE FROM ${TABLE} WHERE session_id = ?`, [row.session_id]);
+    } catch (error) {
+      console.warn('Kommuno call cleanup skipped:', error.message);
+    }
+    await db.execute(`DELETE FROM ${table} WHERE id = ?`, [id]);
+    removed += 1;
+  }
+  return { removed, skipped, recordingsRemoved };
+}

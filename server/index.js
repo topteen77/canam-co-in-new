@@ -705,6 +705,20 @@ app.post('/api/admin/call-recordings/delete', authenticateToken, requireAdmin, a
     res.status(500).json({ error: error.message || 'Could not remove recordings.' });
   }
 });
+app.get('/api/admin/call-logs', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    res.json(await kommunoService.listOldCallLogs(req.query || {}));
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Could not list old call logs.' });
+  }
+});
+app.post('/api/admin/call-logs/delete', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    res.json(await kommunoService.deleteOldCallLogs(req.body?.ids || []));
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Could not remove call logs.' });
+  }
+});
 app.get('/api/admin/kommuno', authenticateToken, requireAdmin, async (_req, res) => {
   try {
     await kommunoService.loadKommunoSettings();
