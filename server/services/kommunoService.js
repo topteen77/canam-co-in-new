@@ -875,7 +875,9 @@ export async function liveForUser(email) {
       || (phoneKey.length >= 10 && last10(row.agent_number) === phoneKey);
     if (!mine) return false;
     const age = rowAgeMs(row);
-    if (row.status === 'ringing' || row.status === 'connected' || row.status === 'initiated') return age < 30 * 60 * 1000;
+    // Dialing with no ring is only a request. Drop it after 60s so the card does not stay up.
+    if (row.status === 'initiated') return age < 60 * 1000;
+    if (row.status === 'ringing' || row.status === 'connected') return age < 30 * 60 * 1000;
     if (row.status === 'completed' || row.status === 'missed') return age < 2 * 60 * 1000;
     return false;
   }).map((row) => ({
