@@ -851,6 +851,12 @@ const App: React.FC = () => {
                     title={hasActiveMeeting ? 'Active meeting' : 'Meeting check-in'}
                     aria-label={hasActiveMeeting ? 'Active meeting' : 'Meeting check-in'}
                   >
+                    {hasActiveMeeting && (
+                      <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden>
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-75" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-orange-600" />
+                      </span>
+                    )}
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     <span className="hidden md:inline">{hasActiveMeeting ? 'In Meeting' : 'Meeting'}</span>
                   </button>
