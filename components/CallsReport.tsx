@@ -26,7 +26,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
   const [filterDateFrom, setFilterDateFrom] = useState<string>('');
   const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [filterOutcome, setFilterOutcome] = useState<string>('all');
-  const [kommunoStatus, setKommunoStatus] = useState<{ configured?: boolean; missing?: string[]; webhookUrl?: string; pilotNumbers?: string[] } | null>(null);
+  const [kommunoStatus, setKommunoStatus] = useState<{ configured?: boolean; missing?: string[]; webhookUrl?: string; pilotNumbers?: string[]; lastWebhookAt?: string | null; lastWebhookEvent?: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -370,7 +370,8 @@ export const CallsReport: React.FC<CallsReportProps> = ({
       {kommunoStatus?.configured && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
           <p className="font-semibold">Kommuno is connected for {kommunoStatus.pilotNumbers?.join(', ') || 'the configured numbers'}.</p>
-          <p className="mt-1">Webhook: <span className="font-mono text-xs break-all">{kommunoStatus.webhookUrl}</span></p>
+          <p className="mt-1">The click response only says the call started. Kommuno sends the real status, duration, and recording afterwards to <span className="font-mono text-xs break-all">{kommunoStatus.webhookUrl}</span>.</p>
+          <p className="mt-1">{kommunoStatus.lastWebhookAt ? `Last status received: ${new Date(kommunoStatus.lastWebhookAt).toLocaleString()} (${kommunoStatus.lastWebhookEvent || 'callback'}).` : 'No call status has been received from Kommuno yet.'}</p>
         </div>
       )}
 

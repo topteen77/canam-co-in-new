@@ -301,6 +301,8 @@ export async function loadKommunoSettings() {
       last_test_ok TINYINT NULL,
       last_test_message VARCHAR(500) NULL,
       last_test_log MEDIUMTEXT NULL,
+      last_webhook_at DATETIME NULL,
+      last_webhook_event VARCHAR(64) NULL,
       updated_at DATETIME NULL,
       updated_by VARCHAR(255) NULL
     )
@@ -311,10 +313,12 @@ export async function loadKommunoSettings() {
   if (!have.has('last_test_ok')) alters.push('ADD COLUMN last_test_ok TINYINT NULL');
   if (!have.has('last_test_message')) alters.push('ADD COLUMN last_test_message VARCHAR(500) NULL');
   if (!have.has('last_test_log')) alters.push('ADD COLUMN last_test_log MEDIUMTEXT NULL');
+  if (!have.has('last_webhook_at')) alters.push('ADD COLUMN last_webhook_at DATETIME NULL');
+  if (!have.has('last_webhook_event')) alters.push('ADD COLUMN last_webhook_event VARCHAR(64) NULL');
   if (alters.length) await db.query(`ALTER TABLE kommuno_settings ${alters.join(', ')}`);
   const [rows] = await db.query(
     `SELECT base_url, api_key, sme_id, pilot_numbers, webhook_token, public_base_url, recording_flag,
-            last_test_ok, last_test_message, last_test_log
+            last_test_ok, last_test_message, last_test_log, last_webhook_at, last_webhook_event
      FROM kommuno_settings WHERE id = 1`
   );
   savedSettings = rows[0] || null;
@@ -396,6 +400,8 @@ export function status() {
     callbackUrl: `${cfg.webhookUrl.replace(/\/webhook$/, '')}/callback`,
     incomingUrl: `${cfg.webhookUrl.replace(/\/webhook$/, '')}/incoming`,
     recordingUrl: `${cfg.webhookUrl.replace(/\/webhook$/, '')}/recording`,
+    lastWebhookAt: savedSettings?.last_webhook_at || null,
+    lastWebhookEvent: savedSettings?.last_webhook_event || '',
   };
 }
 
@@ -883,9 +889,26 @@ async function upsertEvent(event, raw) {
   return { id, sessionId: record.session_id, status, matchedLead: Boolean(record.lead_id) };
 }
 
+async function rememberWebhook(event) {
+  const label = String(event.liveEvent || event.status || 'callback').slice(0, 64);
+  try {
+    await db.execute(
+      `UPDATE kommuno_settings SET last_webhook_at = NOW(), last_webhook_event = ? WHERE id = 1`,
+      [label]
+    );
+    if (savedSettings) {
+      savedSettings.last_webhook_at = new Date().toISOString();
+      savedSettings.last_webhook_event = label;
+    }
+  } catch (error) {
+    console.warn('Kommuno webhook stamp skipped:', error.message);
+  }
+}
+
 export async function ingest(body) {
   const payloads = Array.isArray(body) ? body : [body];
   const results = [];
+  let lastEvent = null;
   for (const payload of payloads) {
     const event = normalizeKommunoPayload(payload);
     if (!event.sessionId && !event.customerNumber && !event.liveEvent) {
@@ -894,7 +917,9 @@ export async function ingest(body) {
     }
     if (!event.sessionId) event.sessionId = newSessionId();
     results.push(await upsertEvent(event, payload));
+    lastEvent = event;
   }
+  if (lastEvent) await rememberWebhook(lastEvent);
   return { received: results.length, results };
 }
 
@@ -954,6 +979,13 @@ export async function clickToCall(input) {
   const lead = input.leadId
     ? { id: String(input.leadId), leadName: input.leadName || '', contactName: input.contactName || '' }
     : await findLeadByPhone(customerNumber);
+  const nested = data?.data;
+  if (nested && typeof nested === 'object') {
+    const events = (Array.isArray(nested) ? nested : [nested]).filter((item) => item && typeof item === 'object' && (item.live_event || item.call_details || item.overall_call_status || item.session_id));
+    if (events.length) {
+      try { await ingest(events); } catch (error) { console.warn('Kommuno response had no call status:', error.message); }
+    }
+  }
   await upsertEvent({
     smeId: cfg.smeId,
     sessionId,
@@ -1007,7 +1039,9 @@ function rowAgeMs(row) {
 async function expireCallsWithNoRing(rows) {
   for (const row of rows || []) {
     if (row.status !== 'initiated' || row.call_log_id) continue;
-    if (rowAgeMs(row) < 60 * 1000) continue;
+    // Click-to-call returns only "call initiated done". The real status arrives later by webhook.
+    // Keep the row open for 3 minutes so that callback can replace this 0-second guess.
+    if (rowAgeMs(row) < 3 * 60 * 1000) continue;
     const event = {
       status: 'missed',
       overallCallStatus: 'no ring',
