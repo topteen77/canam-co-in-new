@@ -38,6 +38,7 @@ import * as emailCampaignsService from './services/emailCampaignsService.js';
 import * as fieldConfigsService from './services/fieldConfigsService.js';
 import * as locationMasterService from './services/locationMasterService.js';
 import { SEED_STATES_BY_COUNTRY, SEED_CITY_TO_STATE } from './data/locationMasterSeed.js';
+import * as trainingTargetsService from './services/trainingTargetsService.js';
 import * as travelSessionsService from './services/travelSessionsService.js';
 import * as meetingCompletionsService from './services/meetingCompletionsService.js';
 import * as meetingAlertsService from './services/meetingAlertsService.js';
@@ -114,7 +115,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use('/api/kommuno', express.text({ type: ['text/plain', 'text/html', 'application/javascript'], limit: '2mb' }));
 
@@ -1108,6 +1109,100 @@ app.post('/api/location-master/seed', authenticateToken, requireAdmin, async (_r
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// --- TRAINING / ONBOARDING / TEAM TARGETS ---
+app.get('/api/training/meta', authenticateToken, async (_req, res) => {
+  try {
+    res.json({
+      modules: trainingTargetsService.TRAINING_MODULES,
+      limits: trainingTargetsService.TRAINING_LIMITS,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.get('/api/training/documents', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await trainingTargetsService.listTrainingDocuments();
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.get('/api/training/documents/:id/download', authenticateToken, async (req, res) => {
+  try {
+    const doc = await trainingTargetsService.getTrainingDocument(req.params.id, { includeData: true });
+    if (!doc || !doc.fileData) return res.status(404).json({ error: 'Document not found' });
+    const buffer = Buffer.isBuffer(doc.fileData) ? doc.fileData : Buffer.from(doc.fileData);
+    res.setHeader('Content-Type', doc.fileType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${String(doc.fileName || 'training').replace(/"/g, '')}"`);
+    res.setHeader('Content-Length', String(buffer.length));
+    res.send(buffer);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.post('/api/training/documents', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const row = await trainingTargetsService.createTrainingDocument(req.body || {}, req.user?.email || '');
+    res.status(201).json(row);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.put('/api/training/documents/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const row = await trainingTargetsService.updateTrainingDocument(req.params.id, req.body || {});
+    res.json(row);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.delete('/api/training/documents/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await trainingTargetsService.deleteTrainingDocument(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.get('/api/training/targets', authenticateToken, async (req, res) => {
+  try {
+    const { isAdminAccount } = await import('./services/sessionService.js');
+    const admin = isAdminAccount(req.user || {});
+    const email = admin ? (req.query.userEmail || undefined) : req.user?.email;
+    const rows = await trainingTargetsService.listTeamTargets(
+      admin && !req.query.userEmail ? {} : { userEmail: email }
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.post('/api/training/targets', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const row = await trainingTargetsService.upsertTeamTarget(req.body || {}, req.user?.email || '');
+    res.json(row);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.put('/api/training/targets/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const row = await trainingTargetsService.upsertTeamTarget({ ...(req.body || {}), id: req.params.id }, req.user?.email || '');
+    res.json(row);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.delete('/api/training/targets/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await trainingTargetsService.deleteTeamTarget(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
 

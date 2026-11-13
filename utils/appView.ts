@@ -10,6 +10,7 @@ export const APP_VIEWS = [
   'bulk-email',
   'live-tracking',
   'admin-users',
+  'training-targets',
   'usage-report',
   'database-admin',
   'data-export',

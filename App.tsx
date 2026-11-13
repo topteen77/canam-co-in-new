@@ -71,6 +71,7 @@ import LastLoginPopup from './components/LastLoginPopup';
 import KommunoLiveCalls from './components/KommunoLiveCalls';
 import LastLoginInfo from './components/LastLoginInfo';
 import LocationMaster from './components/LocationMaster';
+import TrainingTargets from './components/TrainingTargets';
 import UserAvatar from './components/UserAvatar';
 import PageLoader from './components/PageLoader';
 import { parseViewFromHash, syncViewHash } from './utils/appView';
@@ -792,6 +793,7 @@ const App: React.FC = () => {
                     {view === 'bulk-email' && (<> <span className="sm:hidden">Email</span><span className="hidden sm:inline">Bulk Email</span></>)}
                     {view === 'notifications' && (<> <span className="sm:hidden">Alerts</span><span className="hidden sm:inline">Notifications</span></>)}
                     {view === 'admin-users' && (<> <span className="sm:hidden">Users</span><span className="hidden sm:inline">User Management</span></>)}
+                    {view === 'training-targets' && (<> <span className="sm:hidden">Training</span><span className="hidden sm:inline">{isAdmin ? 'Training & Targets' : 'Training & Onboarding'}</span></>)}
                     {view === 'usage-report' && (<> <span className="sm:hidden">Usage</span><span className="hidden sm:inline">Usage Report</span></>)}
                     {view === 'database-admin' && (<> <span className="sm:hidden">DB</span><span className="hidden sm:inline">Database</span></>)}
                     {view === 'data-export' && (<> <span className="sm:hidden">Export</span><span className="hidden sm:inline">Data Export</span></>)}
@@ -800,7 +802,7 @@ const App: React.FC = () => {
                     {view === 'city-master' && (<> <span className="sm:hidden">Cities</span><span className="hidden sm:inline">City Master</span></>)}
                     {view === 'meeting-photos' && <><span className="sm:hidden">Photos</span><span className="hidden sm:inline">Meeting Photos Gallery</span></>}
                     {view === 'website-control' && (<> <span className="sm:hidden">Site</span><span className="hidden sm:inline">Website Control</span></>)}
-                    {!['leads', 'pipeline', 'meetings', 'followups', 'live-tracking', 'travel-claims', 'reports', 'calls-report', 'bulk-email', 'notifications', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'meeting-photos', 'website-control'].includes(view) && view.replace(/-/g, ' ')}
+                    {!['leads', 'pipeline', 'meetings', 'followups', 'live-tracking', 'travel-claims', 'reports', 'calls-report', 'bulk-email', 'notifications', 'admin-users', 'training-targets', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'meeting-photos', 'website-control'].includes(view) && view.replace(/-/g, ' ')}
                   </h1>
                 </div>
                 <div className="app-header-actions flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
@@ -1002,6 +1004,9 @@ const App: React.FC = () => {
                     {view === 'bulk-email' && <BulkEmailMarketing currentUser={currentUser!} isAdmin={isAdmin} />}
                     {view === 'live-tracking' && <SimpleGoogleMaps isAdmin={isAdmin || isSubAdmin} />}
                     {view === 'admin-users' && isAdmin && <AdminUsers isAdmin={isAdmin} isSubAdmin={isSubAdmin} userRole={userRole} currentUser={currentUser} />}
+                    {view === 'training-targets' && (
+                      <TrainingTargets isAdmin={isAdmin} currentUser={currentUser} availableUsers={availableUsers} />
+                    )}
                     {view === 'usage-report' && isAdmin && <UsageReport currentUser={currentUser} isAdmin={isAdmin} />}
                     {view === 'database-admin' && isAdmin && <DatabaseAdmin />}
                     {view === 'data-export' && isAdmin && <DataExport leads={leadsForReports} isAdmin={isAdmin} />}
@@ -1014,7 +1019,7 @@ const App: React.FC = () => {
                             <WebsiteControlPanel isAdmin={isAdmin} />
                         </div>
                     )}
-                    {!['leads', 'pipeline', 'reports', 'meetings', 'followups', 'notifications', 'calls-report', 'travel-claims', 'bulk-email', 'live-tracking', 'website-control', 'admin-users', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'meeting-photos'].includes(view) && (
+                    {!['leads', 'pipeline', 'reports', 'meetings', 'followups', 'notifications', 'calls-report', 'travel-claims', 'bulk-email', 'live-tracking', 'website-control', 'admin-users', 'training-targets', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'meeting-photos'].includes(view) && (
                         <div className="text-slate-600 text-center py-8">Select a section from the sidebar.</div>
                     )}
                 </>

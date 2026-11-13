@@ -46,9 +46,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'reports', label: 'Reports', icon: '📈', view: 'reports' },
     { id: 'bulk-email', label: 'Bulk Email', icon: '📧', view: 'bulk-email' },
     { id: 'live-tracking', label: isAdmin || isSubAdmin ? 'Live GPS Tracking' : 'My Location', icon: '📱', view: 'live-tracking' },
+    ...(!isAdmin ? [{ id: 'training-targets', label: 'Training', icon: '🎓', view: 'training-targets' }] : []),
     ...(isAdmin || isSubAdmin ? [
       // { id: 'website-control', label: 'Website Control Panel', icon: '🌐', view: 'website-control' },
       { id: 'users', label: 'Users', icon: '👥', view: 'admin-users' },
+      ...(isAdmin ? [
+        { id: 'training-targets', label: 'Training & Targets', icon: '📘', view: 'training-targets' },
+      ] : []),
       { id: 'usage-report', label: 'Usage Report', icon: '📊', view: 'usage-report' },
       // { id: 'database', label: 'Database', icon: '🗄️', view: 'database-admin' },
       { id: 'export', label: 'Export', icon: '📥', view: 'data-export' },
