@@ -608,6 +608,7 @@ async function findLeadByPhone(phone) {
 
 function outcomeFrom(event) {
   const value = String(event.overallCallStatus || event.status || '').toLowerCase();
+  if (value.includes('no ring') || value === 'no-ring') return 'no-ring';
   if (value === 'patched' || value === 'answered' || value === 'connected' || value === 'completed') return 'answered';
   if (value.includes('busy')) return 'busy';
   if (value.includes('voice')) return 'voicemail';
@@ -862,12 +863,54 @@ function rowAgeMs(row) {
   return Date.now() - parsed.getTime();
 }
 
+async function expireCallsWithNoRing(rows) {
+  for (const row of rows || []) {
+    if (row.status !== 'initiated' || row.call_log_id) continue;
+    if (rowAgeMs(row) < 60 * 1000) continue;
+    const event = {
+      status: 'missed',
+      overallCallStatus: 'no ring',
+      direction: row.direction,
+      sessionId: row.session_id,
+      customerNumber: row.customer_number,
+      leadId: row.lead_id,
+      leadName: row.lead_name,
+      contactName: row.contact_name,
+      startedAt: row.started_at,
+      userEmail: row.user_email,
+      agentEmail: row.agent_email,
+      userName: row.user_name,
+      agentName: row.agent_name,
+      duration: 0,
+      connectedDuration: 0,
+    };
+    let callLogId = null;
+    try {
+      callLogId = await writeCompletedCallLog(row, event);
+    } catch (error) {
+      console.error('Kommuno no-ring log failed:', error.message);
+      continue;
+    }
+    await db.query(
+      `UPDATE ${TABLE}
+       SET status = 'missed', overall_call_status = 'no ring', live_event = 'no_ring', call_log_id = ?, updated_at = NOW()
+       WHERE id = ? AND status = 'initiated'`,
+      [callLogId, row.id]
+    );
+    row.status = 'missed';
+    row.overall_call_status = 'no ring';
+    row.call_log_id = callLogId;
+    row.updated_at = new Date().toISOString();
+  }
+}
+
 export async function liveForUser(email) {
   await ensureTable();
   const user = await findUser({ email, number: '', name: '' });
   const [rows] = await db.query(
     `SELECT * FROM ${TABLE} WHERE updated_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE) ORDER BY updated_at DESC LIMIT 40`
   );
+  await expireCallsWithNoRing(rows);
   const emailKey = String(email || user?.email || '').trim().toLowerCase();
   const phoneKey = last10(user?.phone || user?.Phone);
   const calls = (rows || []).filter((row) => {

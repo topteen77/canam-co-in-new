@@ -241,7 +241,7 @@ export interface CallLog {
   timestamp: string; // ISO string when call was initiated
   duration: number; // Duration in seconds
   notes?: string;
-  outcome?: 'answered' | 'no-answer' | 'busy' | 'voicemail' | 'other';
+  outcome?: 'answered' | 'no-answer' | 'no-ring' | 'busy' | 'voicemail' | 'other';
   userId: string;
   userEmail: string;
   userName: string;

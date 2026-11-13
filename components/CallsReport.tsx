@@ -162,10 +162,22 @@ export const CallsReport: React.FC<CallsReportProps> = ({
     }
   };
 
+  const statusLabel = (outcome: string) => {
+    switch (outcome) {
+      case 'answered': return 'Answered';
+      case 'no-answer': return 'No answer';
+      case 'no-ring': return 'No ring';
+      case 'busy': return 'Busy';
+      case 'voicemail': return 'Voicemail';
+      default: return 'Other';
+    }
+  };
+
   const getOutcomeIcon = (outcome: string) => {
     switch (outcome) {
       case 'answered': return '✅';
       case 'no-answer': return '📵';
+      case 'no-ring': return '🚫';
       case 'busy': return '🔴';
       case 'voicemail': return '📧';
       default: return '❓';
@@ -176,6 +188,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
     switch (outcome) {
       case 'answered': return 'bg-green-100 text-green-800 border-green-300';
       case 'no-answer': return 'bg-orange-100 text-orange-800 border-orange-300';
+      case 'no-ring': return 'bg-rose-100 text-rose-800 border-rose-300';
       case 'busy': return 'bg-red-100 text-red-800 border-red-300';
       case 'voicemail': return 'bg-blue-100 text-blue-800 border-blue-300';
       default: return 'bg-gray-100 text-gray-800 border-gray-300';
@@ -311,15 +324,16 @@ export const CallsReport: React.FC<CallsReportProps> = ({
 
           {/* Outcome Filter */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Outcome</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">Status</label>
             <select
               value={filterOutcome}
               onChange={(e) => setFilterOutcome(e.target.value)}
               className="w-full px-3 py-2 border-2 border-slate-300 rounded-lg focus:border-indigo-500"
             >
-              <option value="all">All Outcomes</option>
+              <option value="all">All statuses</option>
               <option value="answered">Answered</option>
-              <option value="no-answer">No Answer</option>
+              <option value="no-answer">No answer</option>
+              <option value="no-ring">No ring</option>
               <option value="busy">Busy</option>
               <option value="voicemail">Voicemail</option>
               <option value="other">Other</option>
@@ -370,7 +384,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                 <th className="px-4 py-3 text-left text-sm font-bold">Type</th>
                 <th className="px-4 py-3 text-left text-sm font-bold">Lead/Contact</th>
                 <th className="px-4 py-3 text-left text-sm font-bold">Duration</th>
-                <th className="px-4 py-3 text-left text-sm font-bold">Outcome</th>
+                <th className="px-4 py-3 text-left text-sm font-bold">Status</th>
                 <th className="px-4 py-3 text-left text-sm font-bold">User</th>
                 <th className="px-4 py-3 text-left text-sm font-bold">Notes</th>
               </tr>
@@ -417,7 +431,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getOutcomeColor(call.outcome || 'other')}`}>
-                        {getOutcomeIcon(call.outcome || 'other')} {call.outcome || 'other'}
+                        {getOutcomeIcon(call.outcome || 'other')} {statusLabel(call.outcome || 'other')}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-900">
