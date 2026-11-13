@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import apiClient from '../services/apiClient';
+import { callStatusLabel } from '../utils/callStatusLabel';
 import { PhoneIcon } from './icons/ActionIcons';
 
 interface LiveCall {
@@ -14,6 +15,8 @@ interface LiveCall {
   contactName?: string;
   recordingUrl?: string;
   duration?: number;
+  reason?: string;
+  disconnectedBy?: string;
 }
 
 interface KommunoLiveCallsProps {
@@ -61,6 +64,7 @@ export default function KommunoLiveCalls({ userEmail, onOpenLead }: KommunoLiveC
         const incoming = call.direction === 'INCOMING';
         const ended = call.status === 'completed' || call.status === 'missed';
         const dialing = !incoming && (call.status === 'initiated' || call.status === 'ringing');
+        const headline = ended && call.reason ? callStatusLabel(call.reason) : (STATUS_LABEL[call.status || ''] || call.status);
         return (
           <div key={call.sessionId} className="rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
             <div className="flex items-start justify-between gap-3">
@@ -73,7 +77,7 @@ export default function KommunoLiveCalls({ userEmail, onOpenLead }: KommunoLiveC
                 )}
                 <div>
                 <div className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
-                  {incoming ? 'Incoming' : 'Outgoing'} · {STATUS_LABEL[call.status || ''] || call.status}
+                  {incoming ? 'Incoming' : 'Outgoing'} · {headline}
                 </div>
                 <div className="mt-1 text-sm font-semibold text-slate-900">
                   {call.contactName || call.leadName || call.customerNumber || 'Unknown number'}
@@ -84,6 +88,9 @@ export default function KommunoLiveCalls({ userEmail, onOpenLead }: KommunoLiveC
                 )}
                 {call.pilotNumber && (
                   <div className="text-xs text-slate-400">Via {call.pilotNumber}</div>
+                )}
+                {ended && call.reason === 'answered' && call.disconnectedBy && (
+                  <div className="text-xs text-slate-500">Ended by {call.disconnectedBy}</div>
                 )}
                 </div>
               </div>

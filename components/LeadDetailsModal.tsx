@@ -13,6 +13,7 @@ import { CustomDateTimePicker } from './CustomDateTimePicker';
 import { SimplePagination } from './SimplePagination';
 import { canMutateLead } from '../utils/leadPermissions';
 import apiClient from '../services/apiClient';
+import { callStatusLabel } from '../utils/callStatusLabel';
 import { IcpScoringModal, TRAINING_SCORE_ROWS, clampIcpScore, emptyTrainingCategoryScores } from './IcpScoringModal';
 
 interface LeadDetailsModalProps {
@@ -206,7 +207,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       .then(({ data }) => {
         if (cancelled) return;
         const rows = Array.isArray(data) ? data : [];
-        setCallRecordings(rows.filter((row) => row?.recording_url));
+        setCallRecordings(rows);
       })
       .catch(() => {
         if (!cancelled) setCallRecordings([]);
@@ -645,7 +646,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             { id: 'details', label: 'Lead Details', tone: '' },
             { id: 'followups', label: 'Follow-ups', tone: 'app-chip--yellow' },
             { id: 'history', label: 'History', tone: 'app-chip--indigo' },
-            ...(isAdmin ? [{ id: 'recordings', label: 'Recordings', tone: 'app-chip--indigo' }] : []),
+            ...(isAdmin ? [{ id: 'recordings', label: 'Calls', tone: 'app-chip--indigo' }] : []),
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`app-chip ${tab.tone} ${activeTab === tab.id ? 'app-chip--active' : ''}`}>{tab.label}</button>
           ))}
@@ -655,7 +656,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             { id: 'details', label: '📋 Lead Details' },
             { id: 'followups', label: '📞 Follow-ups' },
             { id: 'history', label: '📊 History' },
-            ...(isAdmin ? [{ id: 'recordings', label: '🎧 Recordings' }] : []),
+            ...(isAdmin ? [{ id: 'recordings', label: '🎧 Calls' }] : []),
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-4 py-2 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}>{tab.label}</button>
           ))}
@@ -1622,13 +1623,13 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
 
         {activeTab === 'recordings' && isAdmin && (
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-slate-800">Call recordings</h3>
-            <p className="text-sm text-slate-500">Admin only. Play a recording from this lead.</p>
+            <h3 className="text-lg font-bold text-slate-800">Calls and recordings</h3>
+            <p className="text-sm text-slate-500">Admin only. Each call shows whether the agent or the customer did not pick up. A recording plays when Kommuno saved one.</p>
             {recordingsLoading ? (
-              <p className="text-sm text-slate-500">Loading recordings…</p>
+              <p className="text-sm text-slate-500">Loading calls…</p>
             ) : callRecordings.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-slate-500">
-                No recordings for this lead yet.
+                No calls for this lead yet.
               </div>
             ) : (
               <div className="space-y-3">
@@ -1636,16 +1637,21 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                   <div key={call.id} className="rounded-lg border border-slate-200 bg-white p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">{call.phone_number || 'Unknown number'}</p>
+                        <p className="text-sm font-semibold text-slate-900">{callStatusLabel(call.outcome)}</p>
+                        <p className="text-sm text-slate-700">{call.phone_number || 'Unknown number'}</p>
                         <p className="text-xs text-slate-500">
                           {[call.direction, call.user_name, call.timestamp ? new Date(call.timestamp).toLocaleString() : ''].filter(Boolean).join(' · ')}
                         </p>
                       </div>
-                      <a href={call.recording_url || '#'} target="_blank" rel="noreferrer" className="text-xs font-semibold text-indigo-600 underline">Open</a>
+                      {call.recording_url && (
+                        <a href={call.recording_url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-indigo-600 underline">Open</a>
+                      )}
                     </div>
-                    <audio className="mt-3 w-full" controls preload="none" src={call.recording_url || undefined}>
-                      <a href={call.recording_url || '#'}>Play recording</a>
-                    </audio>
+                    {call.recording_url && (
+                      <audio className="mt-3 w-full" controls preload="none" src={call.recording_url}>
+                        <a href={call.recording_url}>Play recording</a>
+                      </audio>
+                    )}
                   </div>
                 ))}
               </div>

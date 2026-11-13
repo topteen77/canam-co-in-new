@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { CallLog, Lead } from '../types';
 import apiClient from '../services/apiClient';
+import { callStatusLabel } from '../utils/callStatusLabel';
 import { UserFilterOptions } from './UserFilterOptions';
 
 interface CallsReportProps {
@@ -162,24 +163,18 @@ export const CallsReport: React.FC<CallsReportProps> = ({
     }
   };
 
-  const statusLabel = (outcome: string) => {
-    switch (outcome) {
-      case 'answered': return 'Answered';
-      case 'no-answer': return 'No answer';
-      case 'no-ring': return 'No ring';
-      case 'busy': return 'Busy';
-      case 'voicemail': return 'Voicemail';
-      default: return 'Other';
-    }
-  };
+  const statusLabel = (outcome: string) => callStatusLabel(outcome);
 
   const getOutcomeIcon = (outcome: string) => {
     switch (outcome) {
       case 'answered': return '✅';
       case 'no-answer': return '📵';
       case 'no-ring': return '🚫';
+      case 'agent-no-answer': return '👤';
+      case 'customer-no-answer': return '📵';
       case 'busy': return '🔴';
       case 'voicemail': return '📧';
+      case 'failed': return '⚠️';
       default: return '❓';
     }
   };
@@ -189,8 +184,11 @@ export const CallsReport: React.FC<CallsReportProps> = ({
       case 'answered': return 'bg-green-100 text-green-800 border-green-300';
       case 'no-answer': return 'bg-orange-100 text-orange-800 border-orange-300';
       case 'no-ring': return 'bg-rose-100 text-rose-800 border-rose-300';
+      case 'agent-no-answer': return 'bg-amber-100 text-amber-900 border-amber-300';
+      case 'customer-no-answer': return 'bg-orange-100 text-orange-800 border-orange-300';
       case 'busy': return 'bg-red-100 text-red-800 border-red-300';
       case 'voicemail': return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'failed': return 'bg-red-100 text-red-800 border-red-300';
       default: return 'bg-gray-100 text-gray-800 border-gray-300';
     }
   };
@@ -332,10 +330,13 @@ export const CallsReport: React.FC<CallsReportProps> = ({
             >
               <option value="all">All statuses</option>
               <option value="answered">Answered</option>
-              <option value="no-answer">No answer</option>
-              <option value="no-ring">No ring</option>
+              <option value="agent-no-answer">Agent did not pick up</option>
+              <option value="customer-no-answer">Customer did not pick up</option>
+              <option value="no-ring">No ringing</option>
+              <option value="no-answer">Not answered</option>
               <option value="busy">Busy</option>
               <option value="voicemail">Voicemail</option>
+              <option value="failed">Call failed</option>
               <option value="other">Other</option>
             </select>
           </div>

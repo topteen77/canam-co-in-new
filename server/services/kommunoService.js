@@ -415,7 +415,7 @@ export function normalizeKommunoPayload(body) {
   ).trim();
   const longcode = String(details.longcode || root.longcode || '').trim();
   const pilotNumber = longcode ? toE164(longcode) : toE164(toNumber);
-  const overall = String(details.overall_call_status || customer.call_status || root.overall_call_status || '').trim();
+  const overall = String(details.overall_call_status || root.overall_call_status || '').trim();
   const recordingUrl = String(recording.recording_path || details.recording_path || root.recording_path || '').trim();
   let status = 'updated';
   const eventKey = liveEvent.toLowerCase();
@@ -444,7 +444,10 @@ export function normalizeKommunoPayload(body) {
     duration: Number(details.duration || customer.duration || recording.duration || 0) || 0,
     connectedDuration: Number(details.connected_duration || customer.connected_duration || 0) || 0,
     ringingDuration: Number(details.ringing_duration || customer.ringing_duration || 0) || 0,
-    overallCallStatus: overall,
+    overallCallStatus: overall || String(customer.call_status || '').trim(),
+    customerCallStatus: String(customer.call_status || '').trim(),
+    agentCallStatus: String(agent.call_status || agent.agent_call_status || agent.status || '').trim(),
+    remarks: String(details.remarks || root.remarks || '').trim(),
     disconnectedBy: String(details.disconnected_by || '').trim(),
     recordingUrl,
     contactName: String(customer.customer_name || details.customer_name || '').trim(),
@@ -487,9 +490,15 @@ async function ensureTable() {
       raw_payload LONGTEXT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      call_reason VARCHAR(32) NULL,
       UNIQUE KEY uniq_kommuno_session (session_id)
     )
   `);
+  const [columns] = await db.query(`SHOW COLUMNS FROM ${TABLE}`);
+  const have = new Set((columns || []).map((column) => column.Field));
+  if (!have.has('call_reason')) {
+    await db.query(`ALTER TABLE ${TABLE} ADD COLUMN call_reason VARCHAR(32) NULL`);
+  }
 }
 
 async function ensureCallLogColumns() {
@@ -606,23 +615,79 @@ async function findLeadByPhone(phone) {
   return null;
 }
 
-function outcomeFrom(event) {
-  const value = String(event.overallCallStatus || event.status || '').toLowerCase();
-  if (value.includes('no ring') || value === 'no-ring') return 'no-ring';
-  if (value === 'patched' || value === 'answered' || value === 'connected' || value === 'completed') return 'answered';
-  if (value.includes('busy')) return 'busy';
-  if (value.includes('voice')) return 'voicemail';
-  if (event.status === 'missed' || value.includes('miss') || value.includes('cancel') || value.includes('no')) return 'no-answer';
-  return 'other';
+function callText(event) {
+  return [
+    event.overallCallStatus,
+    event.customerCallStatus,
+    event.agentCallStatus,
+    event.remarks,
+  ].filter(Boolean).join(' ').toLowerCase().replace(/[_-]+/g, ' ');
+}
+
+function plain(value) {
+  return String(value || '').toLowerCase().replace(/[_-]+/g, ' ');
+}
+
+function isMiss(value) {
+  return /not\s?answer|unanswer|no\s?answer|did not (pick|answer)|not pick|no pick|missed|not reachable|unreachable/.test(value);
+}
+
+function isYes(value) {
+  return /\b(patched|answered|connected|completed)\b/.test(value) && !isMiss(value) && !/not\s?patch|unpatch/.test(value);
+}
+
+function namesSide(text, side) {
+  const who = side === 'agent' ? 'agent' : '(customer|client|callee)';
+  const missed = '(not\\s?answer|unanswer|no\\s?answer|did not (pick|answer)|not pick|no pick|missed|not reachable|unreachable|busy)';
+  return new RegExp(`${who}.{0,40}${missed}|${missed}.{0,40}${who}`).test(text);
+}
+
+// Kommuno rings the agent first. evt_popup means both sides are connected.
+// customer.call_status often copies overall_call_status, so it is a customer miss only when the agent leg already succeeded.
+// disconnected_by is who hung up after a connected call, so it is not used as the miss reason.
+function callReason(event, previous = {}) {
+  const agent = plain(event.agentCallStatus);
+  const customer = plain(event.customerCallStatus);
+  const named = `${plain(event.overallCallStatus)} ${plain(event.remarks)}`.trim();
+  const text = callText(event);
+  if (text.includes('no ring') || text.includes('not ringing') || text.includes('no ringing')) return 'no-ring';
+  if (isMiss(agent) || (namesSide(named, 'agent') && !namesSide(named, 'customer'))) return 'agent-no-answer';
+  if ((isMiss(customer) && isYes(agent)) || namesSide(named, 'customer')) return 'customer-no-answer';
+  if (text.includes('busy')) return 'busy';
+  if (text.includes('voice mail') || text.includes('voicemail')) return 'voicemail';
+  if (/\bfail|\berror\b/.test(text)) return 'failed';
+
+  const connectedSeconds = Number(event.connectedDuration || previous.connected_duration || 0);
+  const ringingSeconds = Number(event.ringingDuration || previous.ringing_duration || 0);
+  const previousStatus = previous.status || '';
+  const patched = /\b(patched|answered|connected|completed)\b/.test(text) && !/not\s?patch|unpatch|not\s?answer/.test(text);
+  if (patched || connectedSeconds > 0 || previousStatus === 'connected') return 'answered';
+
+  const agentRang = previousStatus === 'ringing' || ringingSeconds > 0;
+  if (!agentRang) return 'no-ring';
+  return 'agent-no-answer';
 }
 
 async function writeCompletedCallLog(row, event) {
   if (row.call_log_id) return row.call_log_id;
   const talkSeconds = event.connectedDuration || event.duration || row.connected_duration || row.duration || 0;
   const direction = event.direction || row.direction || 'CALL';
+  const reason = event.callReason || callReason(event, row);
+  const reasonLabel = {
+    answered: 'Answered',
+    'no-ring': 'No ringing',
+    'agent-no-answer': 'Agent did not pick up',
+    'customer-no-answer': 'Customer did not pick up',
+    busy: 'Busy',
+    voicemail: 'Voicemail',
+    failed: 'Call failed',
+    'no-answer': 'Not answered',
+  }[reason] || 'Other';
   const notes = [
     `Kommuno ${direction}`,
-    event.overallCallStatus || row.overall_call_status || event.status,
+    `Reason: ${reasonLabel}`,
+    event.overallCallStatus || row.overall_call_status || '',
+    event.disconnectedBy && reason === 'answered' ? `Ended by ${event.disconnectedBy}` : '',
     `session ${event.sessionId || row.session_id}`,
     event.recordingUrl ? `Recording: ${event.recordingUrl}` : '',
   ].filter(Boolean).join(' | ');
@@ -635,7 +700,7 @@ async function writeCompletedCallLog(row, event) {
     timestamp: event.startedAt || row.started_at || new Date().toISOString(),
     duration: talkSeconds,
     notes,
-    outcome: outcomeFrom(event),
+    outcome: reason,
     userId: event.userEmail || row.user_email || event.agentEmail || '',
     userEmail: event.userEmail || row.user_email || event.agentEmail || '',
     userName: event.userName || row.user_name || event.agentName || 'Kommuno',
@@ -685,10 +750,13 @@ async function upsertEvent(event, raw) {
   const keepStatus = existing && previousRank > nextRank;
   const status = keepStatus ? existing.status : event.status;
   const liveEvent = keepStatus ? existing.live_event : (event.liveEvent || existing?.live_event || '');
+  const reason = (status === 'completed' || status === 'missed')
+    ? callReason({ ...event, status }, existing || {})
+    : (existing?.call_reason || '');
   let callLogId = existing?.call_log_id || null;
   if ((status === 'completed' || status === 'missed') && !callLogId) {
     try {
-      callLogId = await writeCompletedCallLog(existing || {}, { ...event, status });
+      callLogId = await writeCompletedCallLog(existing || {}, { ...event, status, callReason: reason });
     } catch (error) {
       console.error('Kommuno call log write failed:', error.message);
     }
@@ -718,6 +786,7 @@ async function upsertEvent(event, raw) {
     ringing_duration: event.ringingDuration || existing?.ringing_duration || 0,
     overall_call_status: fill(existing?.overall_call_status, event.overallCallStatus),
     disconnected_by: fill(existing?.disconnected_by, event.disconnectedBy),
+    call_reason: reason || existing?.call_reason || null,
     recording_url: fill(existing?.recording_url, event.recordingUrl),
     call_log_id: callLogId,
     started_at: existing?.started_at || event.startedAt,
@@ -893,12 +962,13 @@ async function expireCallsWithNoRing(rows) {
     }
     await db.query(
       `UPDATE ${TABLE}
-       SET status = 'missed', overall_call_status = 'no ring', live_event = 'no_ring', call_log_id = ?, updated_at = NOW()
+       SET status = 'missed', overall_call_status = 'no ring', call_reason = 'no-ring', live_event = 'no_ring', call_log_id = ?, updated_at = NOW()
        WHERE id = ? AND status = 'initiated'`,
       [callLogId, row.id]
     );
     row.status = 'missed';
     row.overall_call_status = 'no ring';
+    row.call_reason = 'no-ring';
     row.call_log_id = callLogId;
     row.updated_at = new Date().toISOString();
   }
@@ -937,6 +1007,8 @@ export async function liveForUser(email) {
     contactName: row.contact_name,
     duration: row.connected_duration || row.duration || 0,
     recordingUrl: row.recording_url,
+    reason: row.call_reason || '',
+    disconnectedBy: row.disconnected_by || '',
     startedAt: row.started_at,
   }));
   return calls;
