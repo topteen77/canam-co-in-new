@@ -1,5 +1,6 @@
 // Call API integration (Kommuno).
-// Outgoing calls: POST {KOMMUNO_BASE_URL}/kcrm/clickToCallWithLiveStatus with header apikey.
+// Outgoing calls: POST {KOMMUNO_BASE_URL}/v1/kcrm/clickToCallWithLiveStatus with header apikey.
+// Kommuno's host returns nginx 404 for /kcrm/... without the /v1 prefix.
 // Incoming, outgoing, and recording events: POST /api/kommuno/webhook (also /callback, /incoming, /recording).
 // Kommuno calls those URLs from the internet, so they always use the production origin
 // https://canam.co.in. A localhost PUBLIC_BACKEND_URL is only the local API bind address.
@@ -120,6 +121,15 @@ function isLoopbackOrigin(value) {
   }
 }
 
+// Kommuno tech team: POST {domain}/v1/kcrm/clickToCallWithLiveStatus
+function clickToCallUrl(baseUrl) {
+  let base = String(baseUrl || '').trim().replace(/\/$/, '');
+  base = base.replace(/\/v1\/kcrm\/clickToCallWithLiveStatus$/i, '');
+  base = base.replace(/\/kcrm\/clickToCallWithLiveStatus$/i, '');
+  base = base.replace(/\/v1$/i, '');
+  return `${base}/v1/kcrm/clickToCallWithLiveStatus`;
+}
+
 // Keep a real public origin. Drop localhost and a trailing /api so the webhook path is not doubled.
 function webhookOrigin(value) {
   let cleaned = String(value || '').trim().replace(/\/$/, '');
@@ -222,10 +232,9 @@ export async function testKommunoApi() {
       log: { at, note: 'No customer was dialed.', missing: cfg.missing },
     };
   }
-  const url = `${cfg.baseUrl}/kcrm/clickToCallWithLiveStatus`;
-  const smeValue = /^\d+$/.test(cfg.smeId) ? Number(cfg.smeId) : cfg.smeId;
+  const url = clickToCallUrl(cfg.baseUrl);
   const body = {
-    smeId: smeValue,
+    smeId: String(cfg.smeId),
     sessionId: '0000000000000001',
     customerNumber: '',
     agentNumber: '',
@@ -257,13 +266,19 @@ export async function testKommunoApi() {
     let safeBody = parsed;
     try { safeBody = JSON.parse(redactSecret(parsed, cfg.apiKey)); } catch { safeBody = redactSecret(parsed, cfg.apiKey); }
     log.response = { status: response.status, body: safeBody };
+    const bodyMessage = typeof parsed === 'object' && parsed ? String(parsed.message || parsed.error || '') : '';
     const authFailed = response.status === 401 || response.status === 403;
     const missingRoute = response.status === 404;
     const serverError = response.status >= 500;
-    const ok = response.status > 0 && !authFailed && !missingRoute && !serverError;
+    const blankNumberCheck = response.status === 400 && /number|\+91/i.test(bodyMessage);
+    const ok = !authFailed && !missingRoute && !serverError && ((response.status >= 200 && response.status < 300) || blankNumberCheck);
     return {
       ok,
-      message: ok ? 'Kommuno API test succeeded.' : `Kommuno API test failed (${response.status}).`,
+      message: ok
+        ? (blankNumberCheck
+          ? 'Kommuno accepted the account. No call was placed because the test numbers were left blank.'
+          : 'Kommuno API test succeeded.')
+        : `Kommuno API test failed (${response.status}).`,
       log,
     };
   } catch (error) {
@@ -768,16 +783,15 @@ export async function clickToCall(input) {
   }
   const pilotNumber = toE164(input.pilotNumber) || cfg.pilots[0];
   const sessionId = newSessionId();
-  const smeValue = /^\d+$/.test(cfg.smeId) ? Number(cfg.smeId) : cfg.smeId;
   const payload = {
-    smeId: smeValue,
+    smeId: String(cfg.smeId),
     sessionId,
     customerNumber,
     agentNumber,
     recordingFlag: cfg.recordingFlag,
     pilotNumber,
   };
-  const response = await fetch(`${cfg.baseUrl}/kcrm/clickToCallWithLiveStatus`, {
+  const response = await fetch(clickToCallUrl(cfg.baseUrl), {
     method: 'POST',
     headers: {
       apikey: cfg.apiKey,
