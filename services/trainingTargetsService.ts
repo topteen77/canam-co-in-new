@@ -85,20 +85,24 @@ export function trainingDownloadUrl(id: string): string {
   return `${base}/training/documents/${id}/download`;
 }
 
-export async function downloadTrainingDocument(id: string, fileName: string): Promise<void> {
-  const token =
-    (typeof window !== 'undefined' &&
-      (sessionStorage.getItem('crmToken') || localStorage.getItem('crmToken'))) ||
-    '';
-  const url = trainingDownloadUrl(id);
-  const res = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+function authToken(): string {
+  if (typeof window === 'undefined') return '';
+  return sessionStorage.getItem('crmToken') || localStorage.getItem('crmToken') || '';
+}
+
+export async function fetchTrainingDocumentBlob(id: string): Promise<Blob> {
+  const res = await fetch(trainingDownloadUrl(id), {
+    headers: authToken() ? { Authorization: `Bearer ${authToken()}` } : {},
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Download failed' }));
     throw new Error(err.error || 'Download failed');
   }
-  const blob = await res.blob();
+  return res.blob();
+}
+
+export async function downloadTrainingDocument(id: string, fileName: string): Promise<void> {
+  const blob = await fetchTrainingDocumentBlob(id);
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = objectUrl;
@@ -107,6 +111,16 @@ export async function downloadTrainingDocument(id: string, fileName: string): Pr
   a.click();
   a.remove();
   URL.revokeObjectURL(objectUrl);
+}
+
+export function isPdfFile(nameOrType: string): boolean {
+  const value = String(nameOrType || '').toLowerCase();
+  return value.includes('pdf') || value.endsWith('.pdf');
+}
+
+export function isWordFile(nameOrType: string): boolean {
+  const value = String(nameOrType || '').toLowerCase();
+  return value.includes('word') || value.includes('msword') || value.endsWith('.doc') || value.endsWith('.docx') || value.includes('officedocument');
 }
 
 export async function listTeamTargets(userEmail?: string): Promise<TeamTarget[]> {
