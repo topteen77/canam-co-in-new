@@ -644,6 +644,18 @@ async function handleKommunoWebhook(req, res) {
   }
 }
 
+app.get('/api/call-recordings/:id', async (req, res) => {
+  try {
+    const filePath = await kommunoService.recordingFileFor(req.params.id);
+    if (!filePath) return res.status(404).json({ error: 'Recording not found' });
+    res.setHeader('Content-Type', kommunoService.recordingContentType(filePath));
+    res.setHeader('Content-Disposition', 'inline');
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('Call recording play failed:', error.message);
+    res.status(500).json({ error: 'Could not play the recording' });
+  }
+});
 app.post('/api/kommuno/webhook', handleKommunoWebhook);
 app.post('/api/kommuno/callback', handleKommunoWebhook);
 app.post('/api/kommuno/incoming', handleKommunoWebhook);

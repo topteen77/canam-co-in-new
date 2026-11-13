@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { CallLog, Lead } from '../types';
 import apiClient from '../services/apiClient';
 import { callStatusLabel } from '../utils/callStatusLabel';
+import { CallRecordingPlay } from './CallRecordingPlay';
 import { UserFilterOptions } from './UserFilterOptions';
 
 interface CallsReportProps {
@@ -445,10 +446,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                       )}
                       {call.recordingUrl && (
                         <div className="mt-2">
-                          <audio className="h-8 w-full max-w-xs" controls preload="none" src={call.recordingUrl}>
-                            <a href={call.recordingUrl}>Play recording</a>
-                          </audio>
-                          <a href={call.recordingUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-semibold text-indigo-600 underline">Play recording</a>
+                          <CallRecordingPlay id={call.id} />
                         </div>
                       )}
                     </td>

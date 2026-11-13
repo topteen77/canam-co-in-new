@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import apiClient from '../services/apiClient';
 import { callStatusLabel } from '../utils/callStatusLabel';
+import { CallRecordingPlay } from './CallRecordingPlay';
 import { PhoneIcon } from './icons/ActionIcons';
 
 interface LiveCall {
@@ -113,16 +114,7 @@ export default function KommunoLiveCalls({ userEmail, onOpenLead }: KommunoLiveC
                   Open lead
                 </button>
               )}
-              {ended && call.recordingUrl && (
-                <a
-                  href={call.recordingUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                >
-                  Recording
-                </a>
-              )}
+              {ended && call.recordingUrl && <CallRecordingPlay id={call.id} />}
             </div>
           </div>
         );

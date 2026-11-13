@@ -29,6 +29,9 @@ server/.env.*
 !server/.env*.example
 server/.env.bak.*
 
+# Saved call recordings
+server/data/call-recordings
+
 # Local / deploy leftovers
 *.local
 .deploy/

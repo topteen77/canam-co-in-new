@@ -14,6 +14,7 @@ import { SimplePagination } from './SimplePagination';
 import { canMutateLead } from '../utils/leadPermissions';
 import apiClient from '../services/apiClient';
 import { callStatusLabel } from '../utils/callStatusLabel';
+import { CallRecordingPlay } from './CallRecordingPlay';
 import { IcpScoringModal, TRAINING_SCORE_ROWS, clampIcpScore, emptyTrainingCategoryScores } from './IcpScoringModal';
 
 interface LeadDetailsModalProps {
@@ -1643,15 +1644,8 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                           {[call.direction, call.user_name, call.timestamp ? new Date(call.timestamp).toLocaleString() : ''].filter(Boolean).join(' · ')}
                         </p>
                       </div>
-                      {call.recording_url && (
-                        <a href={call.recording_url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-indigo-600 underline">Open</a>
-                      )}
+                      {call.recording_url && <CallRecordingPlay id={call.id} />}
                     </div>
-                    {call.recording_url && (
-                      <audio className="mt-3 w-full" controls preload="none" src={call.recording_url}>
-                        <a href={call.recording_url}>Play recording</a>
-                      </audio>
-                    )}
                   </div>
                 ))}
               </div>

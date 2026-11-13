@@ -4,12 +4,16 @@
 // Incoming, outgoing, and recording events: POST /api/kommuno/webhook (also /callback, /incoming, /recording).
 // Kommuno calls those URLs from the internet, so they always use the production origin
 // https://canam.co.in. A localhost PUBLIC_BACKEND_URL is only the local API bind address.
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import db from '../db.js';
 import { resolveTableNameOrFallback, getColumns, invalidateColumns } from '../utils/tableResolver.js';
 import * as userService from './userService.js';
 import * as callLogsService from './callLogsService.js';
 
 const PRODUCTION_API_ORIGIN = 'https://canam.co.in';
+const RECORDING_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../data/call-recordings');
 
 const TABLE = 'kommuno_calls';
 const EVENT_RANK = { initiated: 0, ringing: 1, connected: 2, missed: 3, completed: 3, failed: 3 };
@@ -805,6 +809,77 @@ function fill(current, incoming) {
   return incoming;
 }
 
+export function recordingContentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.mp3') return 'audio/mpeg';
+  if (ext === '.ogg') return 'audio/ogg';
+  if (ext === '.m4a') return 'audio/mp4';
+  return 'audio/wav';
+}
+
+function recordingFilePath(name) {
+  const base = path.basename(String(name || ''));
+  if (!base || !/^[\w.-]+$/.test(base)) return null;
+  const full = path.resolve(RECORDING_DIR, base);
+  if (!full.startsWith(`${RECORDING_DIR}${path.sep}`)) return null;
+  return full;
+}
+
+async function saveRecordingLocally(remoteUrl, sessionId) {
+  const source = String(remoteUrl || '').trim();
+  if (!/^https?:\/\//i.test(source)) return source;
+  const existingName = source.split('?')[0].split('/').pop();
+  const already = recordingFilePath(existingName);
+  if (already && fs.existsSync(already) && source.includes('/api/kommuno/recordings/')) {
+    return `/api/kommuno/recordings/${path.basename(already)}`;
+  }
+  await fs.promises.mkdir(RECORDING_DIR, { recursive: true });
+  const extMatch = source.split('?')[0].match(/\.(wav|mp3|ogg|m4a)$/i);
+  const ext = extMatch ? extMatch[1].toLowerCase() : 'wav';
+  const safeSession = String(sessionId || Date.now()).replace(/[^\w.-]/g, '').slice(0, 80) || String(Date.now());
+  const filename = `${safeSession}.${ext}`;
+  const dest = recordingFilePath(filename);
+  if (!dest) throw new Error('Recording name was rejected');
+  const response = await fetch(source, { signal: AbortSignal.timeout(30000) });
+  if (!response.ok) throw new Error(`Recording download failed (${response.status})`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length < 100 || bytes.length > 25 * 1024 * 1024) throw new Error('Recording file was empty or too large');
+  await fs.promises.writeFile(dest, bytes);
+  return `/api/kommuno/recordings/${filename}`;
+}
+
+export async function recordingFileFor(id) {
+  const key = String(id || '').trim();
+  if (!key) return null;
+  let url = '';
+  let session = key;
+  let update = null;
+  if (key.startsWith('km_')) {
+    const [rows] = await db.query(`SELECT recording_url, session_id FROM ${TABLE} WHERE id = ? LIMIT 1`, [key]);
+    url = rows?.[0]?.recording_url || '';
+    session = rows?.[0]?.session_id || key;
+    update = async (localPath) => {
+      await db.execute(`UPDATE ${TABLE} SET recording_url = ? WHERE id = ?`, [localPath, key]);
+    };
+  } else {
+    const table = await resolveTableNameOrFallback(['call_logs', 'CallLogs'], 'call_logs');
+    const [rows] = await db.query(`SELECT recording_url, session_id FROM ${table} WHERE id = ? LIMIT 1`, [key]);
+    url = rows?.[0]?.recording_url || '';
+    session = rows?.[0]?.session_id || key;
+    update = async (localPath) => {
+      await callLogsService.updateCallLog(key, { recordingUrl: localPath });
+    };
+  }
+  if (!url) return null;
+  const storedName = url.split('?')[0].split('/').pop();
+  const storedFile = recordingFilePath(storedName);
+  if (storedFile && fs.existsSync(storedFile)) return storedFile;
+  if (!/^https?:\/\//i.test(url)) return null;
+  const localPath = await saveRecordingLocally(url, session);
+  if (update) await update(localPath);
+  return recordingFilePath(localPath.split('/').pop());
+}
+
 async function upsertEvent(event, raw) {
   await ensureTable();
   const [existingRows] = await db.query(`SELECT * FROM ${TABLE} WHERE session_id = ? LIMIT 1`, [event.sessionId]);
@@ -831,6 +906,13 @@ async function upsertEvent(event, raw) {
   event.contactName = event.contactName || lead?.contactName || existing?.contact_name || '';
   event.userEmail = user?.email || event.userEmail || existing?.user_email || event.agentEmail || '';
   event.userName = user?.name || event.userName || existing?.user_name || event.agentName || '';
+  if (event.recordingUrl && /^https?:\/\//i.test(event.recordingUrl) && !event.recordingUrl.includes('/api/kommuno/recordings/')) {
+    try {
+      event.recordingUrl = await saveRecordingLocally(event.recordingUrl, event.sessionId || existing?.session_id);
+    } catch (error) {
+      console.error('Kommuno recording save failed:', error.message);
+    }
+  }
 
   const previousRank = EVENT_RANK[existing?.status] ?? -1;
   const nextRank = EVENT_RANK[event.status] ?? 1;
