@@ -2533,7 +2533,20 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
         
         {viewMode === 'compact' && (
           <>
-            <CompactLeadList {...props} leads={paginatedLeads} onUpdateLead={props.onUpdateLead} />
+            <CompactLeadList
+              {...props}
+              leads={paginatedLeads}
+              onUpdateLead={props.onUpdateLead}
+              onFilterByCity={(city) => {
+                const value = String(city || '').trim();
+                if (!value) return;
+                setFilters((prev) => ({
+                  ...prev,
+                  city: prev.city.includes(value) ? prev.city : [...prev.city, value],
+                }));
+                setCurrentPage(1);
+              }}
+            />
             
             {/* Pagination Controls for Compact View - Always show for all users */}
             {filteredLeads.length > 0 && totalPages > 1 && (

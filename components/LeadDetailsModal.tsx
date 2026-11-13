@@ -16,6 +16,7 @@ import apiClient from '../services/apiClient';
 import { callStatusLabel } from '../utils/callStatusLabel';
 import { CallRecordingPlay } from './CallRecordingPlay';
 import { IcpScoringModal, TRAINING_SCORE_ROWS, clampIcpScore, emptyTrainingCategoryScores } from './IcpScoringModal';
+import { getLeadOwnerHistory, type LeadOwnerHistoryRow } from '../services/leadsService';
 
 interface LeadDetailsModalProps {
   lead: Lead | null;
@@ -187,6 +188,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     return emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
   };
   const [activeTab, setActiveTab] = useState<'details' | 'followups' | 'history' | 'recordings'>(initialActiveTab || 'details');
+  const [ownerHistory, setOwnerHistory] = useState<LeadOwnerHistoryRow[]>([]);
   const [callRecordings, setCallRecordings] = useState<Array<{ id: string; phone_number?: string; timestamp?: string; duration?: number; outcome?: string; user_name?: string; direction?: string; recording_url?: string | null; recording_saved?: boolean; notes?: string }>>([]);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(true);
@@ -264,12 +266,28 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     }
   }, [highlightFollowUpId, activeTab]);
 
-  // Set active tab to followups when highlightFollowUpId is provided
+  // Honor initial tab / highlighted follow-up when opening from Partner Leads links
   useEffect(() => {
-    if (highlightFollowUpId && initialActiveTab !== 'followups') {
-      setActiveTab('followups');
+    if (initialActiveTab) setActiveTab(initialActiveTab);
+  }, [initialActiveTab, lead?.id]);
+
+  useEffect(() => {
+    if (highlightFollowUpId) setActiveTab('followups');
+  }, [highlightFollowUpId]);
+
+  useEffect(() => {
+    if (!isOpen || !lead?.id) {
+      setOwnerHistory([]);
+      return undefined;
     }
-  }, [highlightFollowUpId, initialActiveTab]);
+    let cancelled = false;
+    getLeadOwnerHistory(lead.id).then((rows) => {
+      if (!cancelled) setOwnerHistory(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, lead?.id, lead?.accountManager, lead?.salesPerson]);
 
   // Contact editing state
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
@@ -1670,6 +1688,34 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              {ownerHistory.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-slate-700">Owner change history</h4>
+                  {ownerHistory.map((row) => {
+                    const label = row.fieldName === 'salesPerson' ? 'Sales Person' : 'Account Manager';
+                    const fromLabel = row.fromValue ? getUserDisplayName(row.fromValue) : 'Unassigned';
+                    const toLabel = row.toValue ? getUserDisplayName(row.toValue) : 'Unassigned';
+                    return (
+                      <div key={row.id} className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                          <div>
+                            <p className="font-medium text-slate-800">{label} changed</p>
+                            <p className="text-sm text-slate-700">
+                              {fromLabel} → {toLabel}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              By {getUserDisplayName(row.changedBy)} · {formatDate(row.createdAt)}
+                              {row.createdAt ? ` · ${new Date(row.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {leadFollowUps.map((followUp, index) => (
                 <div key={index} className="bg-white border border-slate-200 rounded-lg p-4">

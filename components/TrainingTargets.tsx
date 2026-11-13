@@ -143,11 +143,6 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
     [availableUsers]
   );
 
-  const moduleSuggestions = useMemo(() => {
-    const fromDocs = docs.map((d) => d.module).filter(Boolean);
-    return [...new Set([...modules, ...fromDocs])];
-  }, [modules, docs]);
-
   const localPreviewUrl = useMemo(() => {
     if (!docForm.file) return null;
     return URL.createObjectURL(docForm.file);
@@ -477,19 +472,15 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Module</label>
                 <input
-                  list="training-module-suggestions"
+                  type="text"
                   value={docForm.module}
                   onChange={(e) => setDocForm((p) => ({ ...p, module: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
                   placeholder="Type module name (B2B, VAS, Marketing…)"
                   required
                   disabled={atMaxDocs}
+                  autoComplete="off"
                 />
-                <datalist id="training-module-suggestions">
-                  {moduleSuggestions.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
               </div>
 
               <div>

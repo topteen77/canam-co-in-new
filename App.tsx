@@ -88,6 +88,8 @@ const App: React.FC = () => {
   const [view, setView] = useState<string>(() => parseViewFromHash());
   const [leadSearchRequest, setLeadSearchRequest] = useState(0);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [leadModalTab, setLeadModalTab] = useState<'details' | 'followups' | 'history' | 'recordings'>('details');
+  const [highlightFollowUpId, setHighlightFollowUpId] = useState<string | undefined>(undefined);
   
   // Modals
   const [isAddLeadModalOpen, setAddLeadModalOpen] = useState(false);
@@ -381,7 +383,19 @@ const App: React.FC = () => {
 
   const handleViewLead = (lead: Lead, followUpId?: string) => {
     setSelectedLead(lead);
-    // Simple logic for tabs, usually handled inside modal but state kept here for simplicity
+    if (followUpId === 'FOLLOWUPS_TAB') {
+      setLeadModalTab('followups');
+      setHighlightFollowUpId(undefined);
+    } else if (followUpId === 'HISTORY_TAB') {
+      setLeadModalTab('history');
+      setHighlightFollowUpId(undefined);
+    } else if (followUpId) {
+      setLeadModalTab('followups');
+      setHighlightFollowUpId(followUpId);
+    } else {
+      setLeadModalTab('details');
+      setHighlightFollowUpId(undefined);
+    }
     setIsLeadDetailsModalOpen(true);
   };
 
@@ -412,7 +426,7 @@ const App: React.FC = () => {
       if (existing && !canMutateLead(existing, { currentUser, isAdmin })) {
           return;
       }
-      await updateLead(id, data);
+      await updateLead(id, { ...data, changedBy: currentUser || undefined } as Partial<Lead> & { changedBy?: string });
       applyLeadUpdate(id, (lead) => mergeLeadFields(lead, data));
       refreshLeadInBackground(id);
   }, [findLeadById, currentUser, isAdmin, applyLeadUpdate, refreshLeadInBackground]);
@@ -1096,7 +1110,11 @@ const App: React.FC = () => {
             <LeadDetailsModal
                 lead={selectedLead}
                 isOpen={isLeadDetailsModalOpen}
-                onClose={() => setIsLeadDetailsModalOpen(false)}
+                onClose={() => {
+                  setIsLeadDetailsModalOpen(false);
+                  setLeadModalTab('details');
+                  setHighlightFollowUpId(undefined);
+                }}
                 currentUser={currentUser}
                 isAdmin={isAdmin}
                 userRole={userRole || ''}
@@ -1106,6 +1124,8 @@ const App: React.FC = () => {
                 meetingCheckIns={meetingCheckIns}
                 availableTags={leadTags}
                 onCreateTag={handleCreateLeadTag}
+                initialActiveTab={leadModalTab}
+                highlightFollowUpId={highlightFollowUpId}
             />
         )}
 

@@ -540,6 +540,7 @@ app.post('/api/preferences/save', async (req, res) => {
 
 // --- LEADS ROUTES ---
 app.get('/api/leads/all', leadController.getAllLeads);
+app.get('/api/leads/:id/owner-history', leadController.getLeadOwnerHistory);
 app.get('/api/leads/:id', leadController.getLeadById);
 app.post('/api/leads/add', leadController.addLead);
 app.put('/api/leads/update/:id', leadController.updateLead);

@@ -26,6 +26,7 @@ interface CompactLeadListProps {
   onBulkAssignLeads?: (leadIds: string[], accountManager: string, salesPerson: string) => void;
   onClearSelection?: () => void;
   onUpdateLead?: (leadId: string, updates: Partial<Lead>) => void;
+  onFilterByCity?: (city: string) => void;
 }
 
 interface ColumnConfig {
@@ -331,7 +332,8 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
   onSelectAllLeads,
   availableUsers,
   onAssignLead,
-  onUpdateLead
+  onUpdateLead,
+  onFilterByCity,
 }) => {
   const showCallIcon = useShowCallIcon(Boolean(isAdmin));
   // Simple function to get user display name
@@ -370,23 +372,23 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
   const [selectedLeadForIcp, setSelectedLeadForIcp] = useState<Lead | null>(null);
   const [categoryScores, setCategoryScores] = useState(emptyIcpCategoryScores);
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([
-    { id: 'select', label: '', width: 'w-12', visible: isAdmin },
-    { id: 'agencyName', label: 'Agency', width: 'w-48', visible: true, sortable: true },
-    { id: 'status', label: 'Status', width: 'w-20', visible: true, sortable: true },
-    { id: 'icpScore', label: 'ICP Score', width: 'w-16', visible: true, sortable: true },
-    { id: 'leadSource', label: 'Source', width: 'w-20', visible: false, sortable: true },
-    { id: 'contact', label: 'Contact', width: 'w-24', visible: true },
-    { id: 'phone', label: 'Phone', width: 'w-20', visible: true },
-    { id: 'onboardedDate', label: 'Account Created', width: 'w-24', visible: false, sortable: true },
-    { id: 'onboardingDate', label: 'Onboarding Date', width: 'w-24', visible: true, sortable: true },
-    { id: 'remarks', label: 'Remarks', width: 'w-32', visible: true },
-    { id: 'city', label: 'City', width: 'w-16', visible: true },
-    { id: 'salesPerson', label: 'Sales', width: 'w-16', visible: false },
-    { id: 'createdBy', label: 'By', width: 'w-16', visible: true, sortable: true },
-    { id: 'createdAt', label: 'Date', width: 'w-16', visible: true, sortable: true },
-    { id: 'followUps', label: 'Follow-ups', width: 'w-40', visible: true },
-    { id: 'nextAction', label: 'Next Action', width: 'w-40', visible: true },
-    { id: 'actions', label: 'Act', width: 'w-16', visible: true }
+    { id: 'select', label: '', width: 'w-[3%]', visible: isAdmin },
+    { id: 'agencyName', label: 'Agency', width: 'w-[14%]', visible: true, sortable: true },
+    { id: 'status', label: 'Status', width: 'w-[8%]', visible: true, sortable: true },
+    { id: 'icpScore', label: 'ICP', width: 'w-[5%]', visible: true, sortable: true },
+    { id: 'leadSource', label: 'Source', width: 'w-[7%]', visible: false, sortable: true },
+    { id: 'contact', label: 'Contact', width: 'w-[9%]', visible: true },
+    { id: 'phone', label: 'Phone', width: 'w-[8%]', visible: true },
+    { id: 'onboardedDate', label: 'Created', width: 'w-[7%]', visible: false, sortable: true },
+    { id: 'onboardingDate', label: 'Onboard', width: 'w-[7%]', visible: true, sortable: true },
+    { id: 'remarks', label: 'Remarks', width: 'w-[8%]', visible: true },
+    { id: 'city', label: 'City', width: 'w-[7%]', visible: true },
+    { id: 'salesPerson', label: 'Sales', width: 'w-[6%]', visible: false },
+    { id: 'createdBy', label: 'By', width: 'w-[6%]', visible: true, sortable: true },
+    { id: 'createdAt', label: 'Date', width: 'w-[6%]', visible: true, sortable: true },
+    { id: 'followUps', label: 'Follow-ups', width: 'w-[10%]', visible: true },
+    { id: 'nextAction', label: 'Next', width: 'w-[9%]', visible: true },
+    { id: 'actions', label: 'Act', width: 'w-[4%]', visible: true }
   ]);
 
   const [showColumnSelector, setShowColumnSelector] = useState(false);
@@ -571,17 +573,17 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
         </div>
       )}
 
-      {/* Compact Table */}
+      {/* Compact Table — fixed layout to avoid horizontal scroll */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto max-w-full -mx-1 sm:mx-0">
-          <table className="w-full min-w-[720px]">
+        <div className="max-w-full -mx-1 sm:mx-0 overflow-x-hidden">
+          <table className="w-full table-fixed">
             {/* Frozen Header */}
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr>
                 {visibleColumns.map(column => (
                   <th
                     key={column.id}
-                    className={`${column.width} px-0.5 sm:px-1 py-1.5 sm:py-2 text-left text-[10px] sm:text-xs font-medium text-slate-500 uppercase tracking-wider border-r border-slate-200 last:border-r-0 overflow-hidden min-w-0`}
+                    className={`${column.width} px-0.5 sm:px-1 py-1.5 sm:py-2 text-left text-[10px] sm:text-xs font-medium text-slate-500 uppercase tracking-wider border-r border-slate-200 last:border-r-0 overflow-hidden min-w-0 whitespace-nowrap`}
                   >
                     {column.id === 'select' ? (
                       <input
@@ -656,7 +658,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                   >
                     {visibleColumns.map(column => {
                       // Check if this column should prevent row click
-                      const isClickableColumn = column.id === 'followUps' || column.id === 'nextAction';
+                      const isClickableColumn = column.id === 'followUps' || column.id === 'nextAction' || column.id === 'city';
                         return (
                         <td
                           key={column.id}
@@ -891,7 +893,19 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                         )}
                         
                         {column.id === 'city' && (
-                          <div className="text-slate-600 truncate" title={firstContact.city}>
+                          <button
+                            type="button"
+                            className={`text-slate-600 truncate text-left w-full ${firstContact.city ? 'hover:text-indigo-600 hover:underline cursor-pointer' : ''}`}
+                            title={firstContact.city ? `Filter by ${firstContact.city}` : 'N/A'}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const city = String(firstContact.city || '').trim();
+                              if (city && city !== 'N/A' && onFilterByCity) onFilterByCity(city);
+                              else onSelectLead(lead);
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                          >
                             {(() => {
                               const cityData = firstContact.city || 'N/A';
                               if (cityData.includes(',') && cityData.length > 20) {
@@ -903,7 +917,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                               }
                               return cityData;
                             })()}
-                          </div>
+                          </button>
                         )}
                         
                         

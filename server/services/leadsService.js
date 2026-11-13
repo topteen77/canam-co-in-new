@@ -4,9 +4,64 @@
  * dump.sql columns are camelCase (agencyName, leadSource, contacts, followUps, etc.).
  * resolveColumnName maps camelCase → actual DB column names for writes.
  */
+import crypto from 'node:crypto';
 import db from '../db.js';
 
 const toJson = (data) => JSON.stringify(data || []);
+
+function newOwnerHistoryId() {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `loh-${Date.now()}-${crypto.randomBytes(5).toString('hex')}`;
+}
+
+let ownerHistoryReady = false;
+async function ensureOwnerHistoryTable() {
+  if (ownerHistoryReady) return;
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS crm_lead_owner_history (
+      id VARCHAR(64) PRIMARY KEY,
+      lead_id VARCHAR(128) NOT NULL,
+      field_name VARCHAR(64) NOT NULL,
+      from_value VARCHAR(255) DEFAULT '',
+      to_value VARCHAR(255) DEFAULT '',
+      changed_by VARCHAR(255) DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_crm_lead_owner_history_lead (lead_id),
+      INDEX idx_crm_lead_owner_history_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  ownerHistoryReady = true;
+}
+
+async function recordOwnerChange({ leadId, fieldName, fromValue, toValue, changedBy }) {
+  const from = String(fromValue || '').trim();
+  const to = String(toValue || '').trim();
+  if (from.toLowerCase() === to.toLowerCase()) return;
+  await ensureOwnerHistoryTable();
+  await db.execute(
+    `INSERT INTO crm_lead_owner_history
+      (id, lead_id, field_name, from_value, to_value, changed_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+    [newOwnerHistoryId(), String(leadId || ''), fieldName, from, to, String(changedBy || '').trim()]
+  );
+}
+
+export async function getLeadOwnerHistory(leadId) {
+  await ensureOwnerHistoryTable();
+  const id = String(leadId || '').trim();
+  if (!id) return [];
+  const [rows] = await db.query(
+    `SELECT id, lead_id AS leadId, field_name AS fieldName, from_value AS fromValue,
+            to_value AS toValue, changed_by AS changedBy, created_at AS createdAt
+     FROM crm_lead_owner_history
+     WHERE lead_id = ?
+     ORDER BY created_at DESC
+     LIMIT 200`,
+    [id]
+  );
+  return rows || [];
+}
 
 // Convert snake_case key to camelCase (e.g. agency_name → agencyName)
 function snakeToCamel(s) {
@@ -245,9 +300,19 @@ export const updateLead = async (id, updates) => {
         throw new Error('Lead id is missing or invalid. Cannot update.');
     }
 
+    const payload = { ...(updates || {}) };
+    const changedBy = String(payload.changedBy || payload._changedBy || '').trim();
+    delete payload.changedBy;
+    delete payload._changedBy;
+
+    const tracksOwner =
+      Object.prototype.hasOwnProperty.call(payload, 'accountManager') ||
+      Object.prototype.hasOwnProperty.call(payload, 'salesPerson');
+    const previous = tracksOwner ? await getLeadById(rawId) : null;
+
     const fields = [];
     const values = [];
-    for (const [key, value] of Object.entries(updates)) {
+    for (const [key, value] of Object.entries(payload)) {
         if (key === 'id' || key === 'firebase_id') continue;
         const col = await resolveColumnName(key);
         if (!col) continue;
@@ -287,6 +352,31 @@ export const updateLead = async (id, updates) => {
     }
     if (!result || result.affectedRows === 0) {
         throw new Error('No lead found with this id or row was not changed. Check that the lead exists and the id is correct.');
+    }
+
+    if (previous) {
+      try {
+        if (Object.prototype.hasOwnProperty.call(payload, 'accountManager')) {
+          await recordOwnerChange({
+            leadId: previous.id || previous.firebase_id || rawId,
+            fieldName: 'accountManager',
+            fromValue: previous.accountManager,
+            toValue: payload.accountManager,
+            changedBy,
+          });
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'salesPerson')) {
+          await recordOwnerChange({
+            leadId: previous.id || previous.firebase_id || rawId,
+            fieldName: 'salesPerson',
+            fromValue: previous.salesPerson,
+            toValue: payload.salesPerson,
+            changedBy,
+          });
+        }
+      } catch (err) {
+        console.warn('Owner history log skipped:', err.message);
+      }
     }
     return { success: true };
 };

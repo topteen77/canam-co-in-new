@@ -100,6 +100,15 @@ export const updateLead = async (req, res) => {
   }
 };
 
+export const getLeadOwnerHistory = async (req, res) => {
+  try {
+    const rows = await leadsService.getLeadOwnerHistory(req.params.id);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to load owner history' });
+  }
+};
+
 export const deleteLead = async (req, res) => {
   try {
     await leadsService.deleteLead(req.params.id);

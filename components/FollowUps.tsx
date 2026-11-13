@@ -41,6 +41,7 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
 
   // New filters
   const [agencyNameFilter, setAgencyNameFilter] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [dateRangeFilter, setDateRangeFilter] = useState<{
     from: string;
     to: string;
@@ -153,7 +154,7 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
   // Reset pagination when filters or tab change
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, userFilter, agencyCategoryFilter, typeFilter, agencyNameFilter, dateRangeFilter, lastUpdatedRangeFilter, dateFilter]);
+  }, [activeTab, userFilter, agencyCategoryFilter, typeFilter, agencyNameFilter, searchTerm, dateRangeFilter, lastUpdatedRangeFilter, dateFilter]);
 
 
   // Function to ensure follow-up has proper timestamps
@@ -301,6 +302,28 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
       const agencyNameMatches = !agencyNameFilter ||
         (followUp.agencyName || '').toLowerCase().includes(agencyNameFilter.toLowerCase());
 
+      // Free-text search across follow-up record fields
+      const needle = searchTerm.trim().toLowerCase();
+      const searchMatches = !needle || (() => {
+        const lead = followUp.leadId ? leads.find((l) => l.id === followUp.leadId) : undefined;
+        const haystack = [
+          followUp.agencyName,
+          followUp.type,
+          followUp.notes,
+          followUp.status,
+          followUp.assignedTo,
+          followUp.createdBy,
+          lead?.accountManager,
+          lead?.salesPerson,
+          lead?.agentCategory,
+          ...(Array.isArray(lead?.contacts) ? lead!.contacts!.flatMap((c) => [c.name, c.phone, c.email, c.city]) : []),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(needle);
+      })();
+
       // Date Range filter
       const dateRangeMatches = !dateRangeFilter.from || !dateRangeFilter.to ||
         (() => {
@@ -344,9 +367,9 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
           return lastUpdateDate >= fromDate && lastUpdateDate <= toDate;
         })();
 
-      return userMatches && agencyCategoryMatches && typeMatches && agencyNameMatches && dateRangeMatches && lastUpdatedMatches;
+      return userMatches && agencyCategoryMatches && typeMatches && agencyNameMatches && searchMatches && dateRangeMatches && lastUpdatedMatches;
     });
-  }, [filteredFollowUps, userFilter, agencyCategoryFilter, typeFilter, agencyNameFilter, dateRangeFilter, lastUpdatedRangeFilter, leads]);
+  }, [filteredFollowUps, userFilter, agencyCategoryFilter, typeFilter, agencyNameFilter, searchTerm, dateRangeFilter, lastUpdatedRangeFilter, leads]);
 
   // Planned follow-ups (simplified)
   const plannedFollowUps = useMemo(() => {
@@ -907,6 +930,17 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                   <div className="fu-filter-panel">
                     <div className="fu-filter-grid">
                       <div className="fu-filter-field">
+                        <label htmlFor="fu-search-filter">Search follow-ups</label>
+                        <input
+                          id="fu-search-filter"
+                          type="text"
+                          placeholder="Search notes, agency, type, assignee…"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="fu-filter-field">
                         <label htmlFor="fu-user-filter">User</label>
                         <select
                           id="fu-user-filter"
@@ -1082,6 +1116,7 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                           setAgencyCategoryFilter('all');
                           setTypeFilter('all');
                           setAgencyNameFilter('');
+                          setSearchTerm('');
                           setDateRangeFilter({ from: '', to: '' });
                           setLastUpdatedRangeFilter({ from: '', to: '' });
                         }}

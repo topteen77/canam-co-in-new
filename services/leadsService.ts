@@ -60,12 +60,32 @@ export const addLead = async (lead: Partial<Lead>) => {
   const res = await apiClient.post('/leads/add', lead);
   return res.data;
 };
-export const updateLead = async (id: string, updates: Partial<Lead>) => {
+export const updateLead = async (id: string, updates: Partial<Lead> & { changedBy?: string }) => {
   try {
     await apiClient.put(`/leads/update/${id}`, updates);
   } catch (err: any) {
     const msg = err?.response?.data?.error || err?.message || 'Failed to update lead';
     throw new Error(msg);
+  }
+};
+
+export type LeadOwnerHistoryRow = {
+  id: string;
+  leadId: string;
+  fieldName: string;
+  fromValue: string;
+  toValue: string;
+  changedBy: string;
+  createdAt: string;
+};
+
+export const getLeadOwnerHistory = async (id: string): Promise<LeadOwnerHistoryRow[]> => {
+  try {
+    const { data } = await apiClient.get<LeadOwnerHistoryRow[]>(`/leads/${encodeURIComponent(id)}/owner-history`);
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error fetching owner history:', error);
+    return [];
   }
 };
 export const appendFollowUp = async (id: string, followUp: any) => {
