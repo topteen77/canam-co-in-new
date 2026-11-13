@@ -107,3 +107,31 @@ export const addCallLog = async (data) => {
     throw error;
   }
 };
+
+export const updateCallLog = async (id, data) => {
+  if (!id) return { success: false };
+  try {
+    const table = await resolveTableNameOrFallback(['call_logs', 'CallLogs'], 'call_logs');
+    const cols = await getColumns(table);
+    const idCol = cols.has('id') ? 'id' : 'firebase_id';
+    const sets = [];
+    const values = [];
+    const add = (col, value) => {
+      if (!col || !cols.has(col) || value === undefined) return;
+      sets.push(`\`${col}\` = ?`);
+      values.push(value);
+    };
+    add('duration', data.duration);
+    add('outcome', data.outcome);
+    add('notes', data.notes);
+    add('recording_url', data.recordingUrl);
+    add('direction', data.direction);
+    if (!sets.length) return { success: false };
+    values.push(id);
+    await db.execute(`UPDATE ${table} SET ${sets.join(', ')} WHERE \`${idCol}\` = ?`, values);
+    return { success: true, id };
+  } catch (error) {
+    console.error('❌ Error updating call log:', error.message);
+    throw error;
+  }
+};

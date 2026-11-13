@@ -544,10 +544,47 @@ async function ensureCallLogColumns() {
   }
 }
 
+async function repairZeroDurations() {
+  try {
+    const [rows] = await db.query(
+      `SELECT k.call_log_id, k.duration, k.connected_duration, k.ringing_duration, k.overall_call_status, k.recording_url
+       FROM ${TABLE} k
+       INNER JOIN call_logs c ON c.id = k.call_log_id
+       WHERE COALESCE(c.duration, 0) = 0
+         AND (COALESCE(k.duration, 0) > 0 OR COALESCE(k.connected_duration, 0) > 0 OR COALESCE(k.ringing_duration, 0) > 0)
+       LIMIT 200`
+    );
+    for (const row of rows || []) {
+      const seconds = reportedDuration({
+        duration: row.duration,
+        connectedDuration: row.connected_duration,
+        ringingDuration: row.ringing_duration,
+      });
+      if (!seconds) continue;
+      const reason = callReason({
+        overallCallStatus: row.overall_call_status,
+        duration: row.duration,
+        connectedDuration: row.connected_duration,
+        ringingDuration: row.ringing_duration,
+        recordingUrl: row.recording_url,
+        status: 'completed',
+      }, {});
+      await callLogsService.updateCallLog(row.call_log_id, {
+        duration: seconds,
+        outcome: reason && reason !== 'no-ring' ? reason : undefined,
+        recordingUrl: row.recording_url || undefined,
+      });
+    }
+  } catch (error) {
+    console.warn('Call duration repair skipped:', error.message);
+  }
+}
+
 export async function ensureKommuno() {
   await ensureTable();
   await ensureCallLogColumns();
   await loadKommunoSettings();
+  await repairZeroDurations();
 }
 
 async function getUsers() {
@@ -662,15 +699,25 @@ function callReason(event, previous = {}) {
   const previousStatus = previous.status || '';
   const patched = /\b(patched|answered|connected|completed)\b/.test(text) && !/not\s?patch|unpatch|not\s?answer/.test(text);
   if (patched || connectedSeconds > 0 || previousStatus === 'connected') return 'answered';
+  const totalSeconds = Number(event.duration || previous.duration || 0) || 0;
+  if (event.status === 'completed' && totalSeconds > 0 && !isMiss(text) && !/not\s?patch|unpatch/.test(text)) return 'answered';
 
   const agentRang = previousStatus === 'ringing' || ringingSeconds > 0;
   if (!agentRang) return 'no-ring';
   return 'agent-no-answer';
 }
 
+// Kommuno's Calls screen "Total Duration" is the duration field, not the talk time alone.
+function reportedDuration(event, row = {}) {
+  const total = Number(event.duration || 0) || Number(row.duration || 0) || 0;
+  if (total > 0) return total;
+  const connected = Number(event.connectedDuration || row.connected_duration || 0) || 0;
+  const ringing = Number(event.ringingDuration || row.ringing_duration || 0) || 0;
+  return connected + ringing;
+}
+
 async function writeCompletedCallLog(row, event) {
-  if (row.call_log_id) return row.call_log_id;
-  const talkSeconds = event.connectedDuration || event.duration || row.connected_duration || row.duration || 0;
+  const talkSeconds = reportedDuration(event, row);
   const direction = event.direction || row.direction || 'CALL';
   const reason = event.callReason || callReason(event, row);
   const reasonLabel = {
@@ -686,11 +733,23 @@ async function writeCompletedCallLog(row, event) {
   const notes = [
     `Kommuno ${direction}`,
     `Reason: ${reasonLabel}`,
-    event.overallCallStatus || row.overall_call_status || '',
+    event.overallCallStatus || (reason === 'no-ring' ? row.overall_call_status : '') || '',
     event.disconnectedBy && reason === 'answered' ? `Ended by ${event.disconnectedBy}` : '',
     `session ${event.sessionId || row.session_id}`,
     event.recordingUrl ? `Recording: ${event.recordingUrl}` : '',
   ].filter(Boolean).join(' | ');
+  if (row.call_log_id) {
+    const provisional = reason === 'no-ring' && talkSeconds === 0 && !event.recordingUrl;
+    if (provisional) return row.call_log_id;
+    await callLogsService.updateCallLog(row.call_log_id, {
+      duration: talkSeconds > 0 ? talkSeconds : undefined,
+      outcome: reason && reason !== 'no-ring' ? reason : undefined,
+      notes,
+      recordingUrl: event.recordingUrl || undefined,
+      direction,
+    });
+    return row.call_log_id;
+  }
   const saved = await callLogsService.addCallLog({
     phoneNumber: event.customerNumber || row.customer_number || '',
     leadId: event.leadId || row.lead_id || null,
@@ -726,9 +785,9 @@ async function upsertEvent(event, raw) {
     const [openRows] = await db.query(
       `SELECT * FROM ${TABLE}
        WHERE direction = 'OUTGOING'
-         AND status IN ('initiated', 'ringing', 'connected')
+         AND status IN ('initiated', 'ringing', 'connected', 'missed')
          AND created_at >= DATE_SUB(NOW(), INTERVAL 20 MINUTE)
-       ORDER BY created_at DESC LIMIT 20`
+       ORDER BY (status = 'missed'), created_at DESC LIMIT 20`
     );
     existing = (openRows || []).find((row) => {
       if (last10(row.customer_number) !== last10(event.customerNumber)) return false;
@@ -754,7 +813,12 @@ async function upsertEvent(event, raw) {
     ? callReason({ ...event, status }, existing || {})
     : (existing?.call_reason || '');
   let callLogId = existing?.call_log_id || null;
-  if ((status === 'completed' || status === 'missed') && !callLogId) {
+  const hasRealResult = Boolean(
+    reportedDuration(event, existing || {})
+    || event.recordingUrl
+    || (reason && reason !== 'no-ring' && reason !== existing?.call_reason)
+  );
+  if ((status === 'completed' || status === 'missed') && (!callLogId || hasRealResult)) {
     try {
       callLogId = await writeCompletedCallLog(existing || {}, { ...event, status, callReason: reason });
     } catch (error) {
@@ -781,7 +845,7 @@ async function upsertEvent(event, raw) {
     contact_name: fill(existing?.contact_name, event.contactName),
     user_email: fill(existing?.user_email, event.userEmail),
     user_name: fill(existing?.user_name, event.userName),
-    duration: event.duration || existing?.duration || 0,
+    duration: Math.max(Number(event.duration || 0) || 0, Number(existing?.duration || 0) || 0),
     connected_duration: event.connectedDuration || existing?.connected_duration || 0,
     ringing_duration: event.ringingDuration || existing?.ringing_duration || 0,
     overall_call_status: fill(existing?.overall_call_status, event.overallCallStatus),
