@@ -14,7 +14,7 @@ import {
   addAttendanceRecord 
 } from './services/attendanceService';
 import apiClient from './services/apiClient';
-import { restoreAuth, logout as authLogout, getStoredUser, consumePendingLastLogin, type ActiveSessionInfo } from './services/authService';
+import { restoreAuth, logout as authLogout, getStoredUser, consumePendingLastLogin, syncLoginGps, type ActiveSessionInfo } from './services/authService';
 import { getUserDisplayName as utilGetUserDisplayName } from './utils/dataCleaning';
 import { canMutateLead } from './utils/leadPermissions';
 import { appendLeadFollowUp, mergeLeadFields, sameLeadId } from './utils/leadState';
@@ -366,6 +366,12 @@ const App: React.FC = () => {
     handleLogout();
     setLogoutNotice(reason);
   }, [handleLogout]));
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const timer = window.setTimeout(() => syncLoginGps(), 0);
+    return () => window.clearTimeout(timer);
+  }, [currentUser]);
 
   const handleLogin = (email: string) => {
       const u = getStoredUser();

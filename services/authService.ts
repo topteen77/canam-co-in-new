@@ -3,6 +3,7 @@
  */
 import apiClient from './apiClient';
 import { getDeviceFingerprint, getSessionEnvironment } from './deviceFingerprint';
+import { requestLoginGps } from './loginGps';
 
 const CRM_USER = 'crmUser';
 const CRM_TOKEN = 'crmToken';
@@ -110,34 +111,38 @@ function clearAuthStorage(): void {
   sessionStorage.removeItem(CRM_TOKEN);
 }
 
-async function collectLoginLocation(): Promise<{ latitude?: number; longitude?: number; location?: string }> {
-  if (typeof navigator === 'undefined' || !navigator.geolocation) return {};
-  try {
-    const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 60000,
-      });
+let gpsRequest = 0;
+let gpsPendingToken: string | null = null;
+let gpsSyncedToken: string | null = null;
+
+/** Capture GPS after sign-in and store it on the current session. Does not block login. */
+export function syncLoginGps(): void {
+  const token = getStoredToken();
+  if (!token || gpsSyncedToken === token || gpsPendingToken === token) return;
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+  gpsPendingToken = token;
+  const requestId = ++gpsRequest;
+  void requestLoginGps(navigator.geolocation)
+    .then(async (coords) => {
+      if (requestId !== gpsRequest || getStoredToken() !== token) return;
+      if (!coords) {
+        gpsPendingToken = null;
+        return;
+      }
+      await apiClient.post('/auth/session/location', coords);
+      if (getStoredToken() === token) gpsSyncedToken = token;
+    })
+    .catch(() => {
+      if (gpsPendingToken === token) gpsPendingToken = null;
     });
-    const latitude = pos.coords.latitude;
-    const longitude = pos.coords.longitude;
-    const { reverseGeocode } = await import('./ipLocation');
-    const location = await reverseGeocode(latitude, longitude);
-    return { latitude, longitude, location, locationSource: 'gps' };
-  } catch {
-    return {};
-  }
 }
 
-async function loginBody(email: string, password: string, extra: Record<string, unknown> = {}) {
-  const location = await collectLoginLocation();
+function loginBody(email: string, password: string, extra: Record<string, unknown> = {}) {
   return {
     email: email.trim().toLowerCase(),
     password: password.trim(),
     ...getDeviceFingerprint(),
     environment: getSessionEnvironment(),
-    ...location,
     ...extra,
   };
 }
@@ -166,6 +171,7 @@ export async function login(email: string, password: string, rememberMe = true):
     persistAuth(token, user, rememberMe);
     setAuthHeader(token);
     storePendingLastLogin(null);
+    syncLoginGps();
     return { user, token };
   } catch (err) {
     throwIfSessionActive(err);
@@ -211,6 +217,7 @@ export async function forceLogin(
   setAuthHeader(token);
   const previous = lastLogin || fallbackLastLogin || { userEmail: email.trim().toLowerCase() };
   storePendingLastLogin(previous);
+  syncLoginGps();
   return { user, token, lastLogin: previous };
 }
 
@@ -235,6 +242,9 @@ export function logout(): void {
   }
   clearAuthStorage();
   clearMasterUnlockToken();
+  gpsRequest += 1;
+  gpsPendingToken = null;
+  gpsSyncedToken = null;
   delete apiClient.defaults.headers.common['Authorization'];
 }
 

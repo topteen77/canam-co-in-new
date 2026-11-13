@@ -30,8 +30,11 @@ import {
   getMostRecentSession,
   listLastLogins,
   recordForceLoginInfo,
-  lookupIpGeo,
+  scheduleIpLocation,
+  updateSessionLocation,
+  reverseGeocode,
 } from '../services/sessionService.js';
+import { parseGpsBody } from '../../shared/loginLocation.js';
 import { logActivity } from '../services/activityService.js';
 
 function newId() {
@@ -116,13 +119,6 @@ async function issueLogin(user, passwordCol, device, force = false) {
       || await getMostRecentSession(safeUser.email)
     )
     : null;
-  if (device.locationSource !== 'gps') {
-    const geo = await lookupIpGeo(device.ip);
-    device.location = device.location || geo.location;
-    if (device.latitude == null) device.latitude = geo.latitude;
-    if (device.longitude == null) device.longitude = geo.longitude;
-    if (geo.location || geo.latitude != null) device.locationSource = 'ip';
-  }
   let lastLogin = null;
   if (force && previous) {
     lastLogin = await recordForceLoginInfo(previous);
@@ -135,6 +131,9 @@ async function issueLogin(user, passwordCol, device, force = false) {
     email: safeUser.email,
     ...device,
   });
+  if (session?.id && device.locationSource !== 'gps') {
+    scheduleIpLocation(session.id, device.ip);
+  }
   try {
     await logActivity({
       userId: safeUser.id,
@@ -313,6 +312,29 @@ export const getCurrentSession = async (req, res) => {
       return res.status(401).json({ error: 'SESSION_REVOKED', valid: false });
     }
     res.json({ valid: true, session: publicSession(session) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const updateLoginLocation = async (req, res) => {
+  try {
+    if (!req.user?.jti) {
+      return res.status(400).json({ error: 'No active session' });
+    }
+    const parsed = parseGpsBody(req.body || {});
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    const location = await reverseGeocode(parsed.latitude, parsed.longitude);
+    const session = await updateSessionLocation(req.user.jti, {
+      latitude: parsed.latitude,
+      longitude: parsed.longitude,
+      location,
+      locationSource: 'gps',
+    });
+    if (!session || session.status !== 'active') {
+      return res.status(401).json({ error: 'SESSION_REVOKED', valid: false });
+    }
+    res.json({ success: true, session: publicSession(session) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

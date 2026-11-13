@@ -38,6 +38,7 @@ import * as emailCampaignsService from './services/emailCampaignsService.js';
 import * as fieldConfigsService from './services/fieldConfigsService.js';
 import * as locationMasterService from './services/locationMasterService.js';
 import { SEED_STATES_BY_COUNTRY, SEED_CITY_TO_STATE } from './data/locationMasterSeed.js';
+import { inlinePreviewDisposition, isPreviewOnlyRole, wantsAttachmentDownload } from '../shared/documentAccess.js';
 import * as trainingTargetsService from './services/trainingTargetsService.js';
 import * as travelSessionsService from './services/travelSessionsService.js';
 import * as meetingCompletionsService from './services/meetingCompletionsService.js';
@@ -405,6 +406,7 @@ app.post('/api/auth/force-login/request-otp', otpLimiter, authController.request
 app.post('/api/auth/force-login', otpLimiter, authController.adminForceLogin);
 app.get('/api/auth/session', authenticateToken, authController.getCurrentSession);
 app.post('/api/auth/session/heartbeat', authenticateToken, authController.heartbeat);
+app.post('/api/auth/session/location', authenticateToken, authController.updateLoginLocation);
 app.post('/api/auth/logout', authenticateToken, authController.logoutCurrent);
 app.post('/api/admin/master/unlock', otpLimiter, authenticateToken, requireAdmin, authController.unlockMaster);
 app.get('/api/admin/login-intel', authenticateToken, requireAdmin, requireMasterUnlock, authController.adminLoginIntel);
@@ -1134,11 +1136,15 @@ app.get('/api/training/documents', authenticateToken, async (_req, res) => {
 });
 app.get('/api/training/documents/:id/download', authenticateToken, async (req, res) => {
   try {
+    if (isPreviewOnlyRole(req.user?.role) && wantsAttachmentDownload(req.query)) {
+      return res.status(403).json({ error: 'Documents can be previewed only. Download is not available.' });
+    }
     const doc = await trainingTargetsService.getTrainingDocument(req.params.id, { includeData: true });
     if (!doc || !doc.fileData) return res.status(404).json({ error: 'Document not found' });
     const buffer = Buffer.isBuffer(doc.fileData) ? doc.fileData : Buffer.from(doc.fileData);
     res.setHeader('Content-Type', doc.fileType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${String(doc.fileName || 'training').replace(/"/g, '')}"`);
+    res.setHeader('Content-Disposition', inlinePreviewDisposition(doc.fileName || 'training'));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Length', String(buffer.length));
     res.send(buffer);
   } catch (error) {

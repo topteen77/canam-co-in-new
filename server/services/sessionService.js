@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
+import { placeLabelFromGeocode, coordLabel, shouldApplyLocationUpdate } from '../../shared/loginLocation.js';
 
 function newId() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -77,6 +78,61 @@ export async function lookupIpGeo(ip) {
     // leave empty
   }
   return { location: '', latitude: null, longitude: null };
+}
+
+export async function reverseGeocode(lat, lng) {
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
+  try {
+    const data = await fetchJson(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
+      2500
+    );
+    const label = placeLabelFromGeocode(data);
+    if (label) return label;
+  } catch {
+    // Keep the coordinates when the place lookup is slow or unavailable.
+  }
+  return coordLabel(latitude, longitude);
+}
+
+export async function updateSessionLocation(sessionId, patch = {}, options = {}) {
+  await ensureTables();
+  const existing = await getSessionById(sessionId);
+  if (!shouldApplyLocationUpdate(existing, options)) {
+    return existing && existing.status === 'active' ? existing : null;
+  }
+  const latitude = patch.latitude != null && Number.isFinite(Number(patch.latitude))
+    ? Number(patch.latitude)
+    : existing.latitude;
+  const longitude = patch.longitude != null && Number.isFinite(Number(patch.longitude))
+    ? Number(patch.longitude)
+    : existing.longitude;
+  const location = patch.location != null ? String(patch.location) : (existing.location || '');
+  const locationSource = patch.locationSource || existing.location_source || '';
+  await db.query(
+    `UPDATE user_sessions
+     SET location = ?, latitude = ?, longitude = ?, location_source = ?
+     WHERE id = ? AND status = 'active' AND (? = 0 OR IFNULL(location_source, '') <> 'gps')`,
+    [location, latitude ?? null, longitude ?? null, locationSource, sessionId, options.onlyIfNotGps ? 1 : 0]
+  );
+  return getSessionById(sessionId);
+}
+
+export function scheduleIpLocation(sessionId, ip) {
+  if (!sessionId) return;
+  void lookupIpGeo(ip).then(async (geo) => {
+    if (!geo?.location && geo?.latitude == null && geo?.longitude == null) return;
+    await updateSessionLocation(sessionId, {
+      location: geo.location || '',
+      latitude: geo.latitude,
+      longitude: geo.longitude,
+      locationSource: 'ip',
+    }, { onlyIfNotGps: true });
+  }).catch((error) => {
+    console.warn('Background IP location skipped:', error?.message || error);
+  });
 }
 
 export async function fillMissingLocation(row = {}) {
