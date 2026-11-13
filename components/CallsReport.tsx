@@ -26,7 +26,7 @@ export const CallsReport: React.FC<CallsReportProps> = ({
   const [filterDateFrom, setFilterDateFrom] = useState<string>('');
   const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [filterOutcome, setFilterOutcome] = useState<string>('all');
-  const [kommunoStatus, setKommunoStatus] = useState<{ configured?: boolean; missing?: string[]; webhookUrl?: string; pilotNumbers?: string[]; lastWebhookAt?: string | null; lastWebhookEvent?: string } | null>(null);
+  const [kommunoStatus, setKommunoStatus] = useState<{ configured?: boolean; apiOk?: boolean; testMessage?: string; testLog?: string; missing?: string[]; webhookUrl?: string; pilotNumbers?: string[]; lastWebhookAt?: string | null; lastWebhookEvent?: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -360,18 +360,14 @@ export const CallsReport: React.FC<CallsReportProps> = ({
         </div>
       </div>
 
-      {kommunoStatus && !kommunoStatus.configured && (
+      {kommunoStatus && !kommunoStatus.apiOk && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-          <p className="font-semibold">Kommuno is not connected yet.</p>
-          <p className="mt-1">Add {kommunoStatus.missing?.join(', ')} on the server. Give Kommuno this webhook for incoming calls, outgoing callbacks, and recordings:</p>
-          <p className="mt-1 font-mono text-xs break-all">{kommunoStatus.webhookUrl}</p>
+          <p className="font-semibold" title={kommunoStatus.testLog || 'API error'}>API error</p>
         </div>
       )}
-      {kommunoStatus?.configured && (
+      {kommunoStatus?.apiOk && kommunoStatus.testMessage && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
-          <p className="font-semibold">Kommuno is connected for {kommunoStatus.pilotNumbers?.join(', ') || 'the configured numbers'}.</p>
-          <p className="mt-1">The click response only says the call started. Kommuno sends the real status, duration, and recording afterwards to <span className="font-mono text-xs break-all">{kommunoStatus.webhookUrl}</span>.</p>
-          <p className="mt-1">{kommunoStatus.lastWebhookAt ? `Last status received: ${new Date(kommunoStatus.lastWebhookAt).toLocaleString()} (${kommunoStatus.lastWebhookEvent || 'callback'}).` : 'No call status has been received from Kommuno yet.'}</p>
+          <p className="font-semibold" title={kommunoStatus.testLog || kommunoStatus.testMessage}>{kommunoStatus.testMessage}</p>
         </div>
       )}
 
@@ -432,15 +428,21 @@ export const CallsReport: React.FC<CallsReportProps> = ({
                       {formatDuration(call.duration)}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getOutcomeColor(call.outcome || 'other')}`}>
-                        {getOutcomeIcon(call.outcome || 'other')} {statusLabel(call.outcome || 'other')}
-                      </span>
+                      {call.outcome === 'no-ring' && kommunoStatus && !kommunoStatus.apiOk ? (
+                        <span className="px-2 py-1 rounded-full text-xs font-semibold border bg-amber-100 text-amber-950 border-amber-300" title={kommunoStatus.testLog || 'API error'}>API error</span>
+                      ) : statusLabel(call.outcome || '') ? (
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getOutcomeColor(call.outcome || 'other')}`}>
+                          {getOutcomeIcon(call.outcome || 'other')} {statusLabel(call.outcome || '')}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-900">
                       {call.userName}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600 max-w-xs">
-                      <div className="truncate">{call.notes || <span className="text-slate-400 italic">No notes</span>}</div>
+                      {call.outcome === 'no-ring' ? null : (
+                        <div className="truncate">{call.notes || <span className="text-slate-400 italic">No notes</span>}</div>
+                      )}
                       {call.recordingUrl && (
                         <div className="mt-2">
                           <audio className="h-8 w-full max-w-xs" controls preload="none" src={call.recordingUrl}>

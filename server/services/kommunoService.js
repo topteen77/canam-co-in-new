@@ -388,11 +388,34 @@ export function webhookAuthorized(req) {
   return provided === token;
 }
 
+function savedTestLogText() {
+  const raw = savedSettings?.last_test_log;
+  if (!raw) return savedSettings?.last_test_message || '';
+  const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+  return text.slice(0, 4000);
+}
+
+function savedTestResponseMessage() {
+  let parsed = savedSettings?.last_test_log;
+  if (!parsed) return savedSettings?.last_test_message || '';
+  if (typeof parsed === 'string') {
+    try { parsed = JSON.parse(parsed); } catch { return savedSettings?.last_test_message || ''; }
+  }
+  const body = parsed?.response?.body;
+  if (body && typeof body === 'object') return String(body.message || body.error || savedSettings?.last_test_message || '');
+  if (typeof body === 'string' && body.trim()) return body.slice(0, 500);
+  return savedSettings?.last_test_message || '';
+}
+
 export function status() {
   const cfg = getConfig();
+  const apiOk = cfg.ready && Number(savedSettings?.last_test_ok) === 1;
   return {
     configured: cfg.ready,
-    callReady: cfg.ready && Number(savedSettings?.last_test_ok) === 1,
+    apiOk,
+    callReady: apiOk,
+    testMessage: savedTestResponseMessage(),
+    testLog: savedTestLogText(),
     missing: cfg.missing,
     pilotNumbers: cfg.pilots.map((number) => maskSecret(number)),
     recording: cfg.recordingFlag === 1,
@@ -707,18 +730,9 @@ function callReason(event, previous = {}) {
   if (text.includes('busy')) return 'busy';
   if (text.includes('voice mail') || text.includes('voicemail')) return 'voicemail';
   if (/\bfail|\berror\b/.test(text)) return 'failed';
-
-  const connectedSeconds = Number(event.connectedDuration || previous.connected_duration || 0);
-  const ringingSeconds = Number(event.ringingDuration || previous.ringing_duration || 0);
-  const previousStatus = previous.status || '';
   const patched = /\b(patched|answered|connected|completed)\b/.test(text) && !/not\s?patch|unpatch|not\s?answer/.test(text);
-  if (patched || connectedSeconds > 0 || previousStatus === 'connected') return 'answered';
-  const totalSeconds = Number(event.duration || previous.duration || 0) || 0;
-  if (event.status === 'completed' && totalSeconds > 0 && !isMiss(text) && !/not\s?patch|unpatch/.test(text)) return 'answered';
-
-  const agentRang = previousStatus === 'ringing' || ringingSeconds > 0;
-  if (!agentRang) return 'no-ring';
-  return 'agent-no-answer';
+  if (patched) return 'answered';
+  return '';
 }
 
 // Kommuno's Calls screen "Total Duration" is the duration field, not the talk time alone.
@@ -743,11 +757,11 @@ async function writeCompletedCallLog(row, event) {
     voicemail: 'Voicemail',
     failed: 'Call failed',
     'no-answer': 'Not answered',
-  }[reason] || 'Other';
+  }[reason] || '';
   const notes = [
     `Kommuno ${direction}`,
-    `Reason: ${reasonLabel}`,
-    event.overallCallStatus || (reason === 'no-ring' ? row.overall_call_status : '') || '',
+    reasonLabel ? `Reason: ${reasonLabel}` : '',
+    event.overallCallStatus || '',
     event.disconnectedBy && reason === 'answered' ? `Ended by ${event.disconnectedBy}` : '',
     `session ${event.sessionId || row.session_id}`,
     event.recordingUrl ? `Recording: ${event.recordingUrl}` : '',
@@ -1036,57 +1050,12 @@ function rowAgeMs(row) {
   return Date.now() - parsed.getTime();
 }
 
-async function expireCallsWithNoRing(rows) {
-  for (const row of rows || []) {
-    if (row.status !== 'initiated' || row.call_log_id) continue;
-    // Click-to-call returns only "call initiated done". The real status arrives later by webhook.
-    // Keep the row open for 3 minutes so that callback can replace this 0-second guess.
-    if (rowAgeMs(row) < 3 * 60 * 1000) continue;
-    const event = {
-      status: 'missed',
-      overallCallStatus: 'no ring',
-      direction: row.direction,
-      sessionId: row.session_id,
-      customerNumber: row.customer_number,
-      leadId: row.lead_id,
-      leadName: row.lead_name,
-      contactName: row.contact_name,
-      startedAt: row.started_at,
-      userEmail: row.user_email,
-      agentEmail: row.agent_email,
-      userName: row.user_name,
-      agentName: row.agent_name,
-      duration: 0,
-      connectedDuration: 0,
-    };
-    let callLogId = null;
-    try {
-      callLogId = await writeCompletedCallLog(row, event);
-    } catch (error) {
-      console.error('Kommuno no-ring log failed:', error.message);
-      continue;
-    }
-    await db.query(
-      `UPDATE ${TABLE}
-       SET status = 'missed', overall_call_status = 'no ring', call_reason = 'no-ring', live_event = 'no_ring', call_log_id = ?, updated_at = NOW()
-       WHERE id = ? AND status = 'initiated'`,
-      [callLogId, row.id]
-    );
-    row.status = 'missed';
-    row.overall_call_status = 'no ring';
-    row.call_reason = 'no-ring';
-    row.call_log_id = callLogId;
-    row.updated_at = new Date().toISOString();
-  }
-}
-
 export async function liveForUser(email) {
   await ensureTable();
   const user = await findUser({ email, number: '', name: '' });
   const [rows] = await db.query(
     `SELECT * FROM ${TABLE} WHERE updated_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE) ORDER BY updated_at DESC LIMIT 40`
   );
-  await expireCallsWithNoRing(rows);
   const emailKey = String(email || user?.email || '').trim().toLowerCase();
   const phoneKey = last10(user?.phone || user?.Phone);
   const calls = (rows || []).filter((row) => {
