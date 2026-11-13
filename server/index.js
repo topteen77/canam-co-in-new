@@ -624,9 +624,8 @@ app.post('/api/call-logs', async (req, res) => {
 });
 
 // Call API integration (Kommuno).
-// One handler for live incoming, outgoing, and recording callbacks.
-// URLs to give Kommuno are the production API, for example
-// https://canam.co.in/api/kommuno/webhook
+// Kommuno posts the call status to one URL: https://canam.co.in/api/kommuno/callback
+// The same handler also accepts /webhook, /incoming, and /recording.
 // Admin save runs a blank-number API test. Non-admin call icons stay hidden until that test succeeds.
 async function handleKommunoWebhook(req, res) {
   try {

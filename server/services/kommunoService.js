@@ -448,7 +448,7 @@ export function normalizeKommunoPayload(body) {
   const recordingUrl = String(recording.recording_path || details.recording_path || root.recording_path || '').trim();
   let status = 'updated';
   const eventKey = liveEvent.toLowerCase();
-  if (eventKey.includes('completed') || recordingUrl || details.end_date_time) {
+  if (eventKey.includes('completed') || recordingUrl || details.end_date_time || overall) {
     const outcome = overall.toLowerCase();
     status = !outcome || outcome === 'patched' || outcome === 'answered' || outcome === 'connected' ? 'completed' : 'missed';
   } else if (eventKey.includes('ring')) {

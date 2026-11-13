@@ -134,12 +134,11 @@ export default function KommunoSettings() {
         Save call recordings
       </label>
 
-      {form.webhookUrl && (
+      {form.callbackUrl && (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-          <p className="font-semibold">Give Kommuno these full URLs</p>
-          <p className="mt-1 font-mono text-xs break-all">{form.webhookUrl}</p>
-          <p className="mt-1 font-mono text-xs break-all">{form.incomingUrl}</p>
-          <p className="mt-1 font-mono text-xs break-all">{form.recordingUrl}</p>
+          <p className="font-semibold">Kommuno callback URL</p>
+          <p className="mt-1 font-mono text-xs break-all">{form.callbackUrl}</p>
+          <p className="mt-1 text-xs text-slate-500">Kommuno sends the call status to this one URL.</p>
         </div>
       )}
 
