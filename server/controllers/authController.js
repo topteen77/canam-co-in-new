@@ -324,17 +324,31 @@ export const updateLoginLocation = async (req, res) => {
     }
     const parsed = parseGpsBody(req.body || {});
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
-    const location = await reverseGeocode(parsed.latitude, parsed.longitude);
-    const session = await updateSessionLocation(req.user.jti, {
+    const sessionId = req.user.jti;
+    // Save coordinates immediately; reverse-geocode label in the background.
+    const session = await updateSessionLocation(sessionId, {
       latitude: parsed.latitude,
       longitude: parsed.longitude,
-      location,
+      location: '',
       locationSource: 'gps',
     });
     if (!session || session.status !== 'active') {
       return res.status(401).json({ error: 'SESSION_REVOKED', valid: false });
     }
     res.json({ success: true, session: publicSession(session) });
+    void reverseGeocode(parsed.latitude, parsed.longitude)
+      .then((location) => {
+        if (!location) return null;
+        return updateSessionLocation(sessionId, {
+          latitude: parsed.latitude,
+          longitude: parsed.longitude,
+          location,
+          locationSource: 'gps',
+        });
+      })
+      .catch((error) => {
+        console.warn('Background reverse geocode skipped:', error?.message || error);
+      });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

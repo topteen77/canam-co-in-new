@@ -31,6 +31,8 @@ assert(!auth.includes('enableHighAccuracy: true'), 'login still requests a slow 
 assert(!loginBody.includes('latitude') && !loginBody.includes('geolocation'), 'login body still waits for coordinates');
 assert(loginFn.includes('syncLoginGps()'), 'successful login does not schedule a background GPS update');
 assert(!loginFn.includes('await requestLoginGps') && !loginFn.includes('await syncLoginGps'), 'login awaits GPS');
+assert(auth.includes('crmGpsAttemptedToken'), 'GPS attempt is not marked once per session');
+assert(auth.includes('requestIdleCallback') || auth.includes('setTimeout(run'), 'GPS is not deferred to idle/background');
 
 const controller = fs.readFileSync(path.join(root, 'server/controllers/authController.js'), 'utf8');
 const issueLogin = sliceBetween(controller, 'async function issueLogin', 'export const register');

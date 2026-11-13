@@ -111,30 +111,74 @@ function clearAuthStorage(): void {
   sessionStorage.removeItem(CRM_TOKEN);
 }
 
-let gpsRequest = 0;
-let gpsPendingToken: string | null = null;
-let gpsSyncedToken: string | null = null;
+const GPS_ATTEMPTED_KEY = 'crmGpsAttemptedToken';
+let gpsInFlight = false;
 
-/** Capture GPS after sign-in and store it on the current session. Does not block login. */
+function readGpsAttemptedToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return sessionStorage.getItem(GPS_ATTEMPTED_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function markGpsAttempted(token: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(GPS_ATTEMPTED_KEY, token);
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function clearGpsAttempted(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(GPS_ATTEMPTED_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Capture GPS once per session, fully in the background.
+ * Never blocks login/UI; skips if already attempted for this token.
+ */
 export function syncLoginGps(): void {
+  if (typeof window === 'undefined') return;
   const token = getStoredToken();
-  if (!token || gpsSyncedToken === token || gpsPendingToken === token) return;
-  if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-  gpsPendingToken = token;
-  const requestId = ++gpsRequest;
-  void requestLoginGps(navigator.geolocation)
-    .then(async (coords) => {
-      if (requestId !== gpsRequest || getStoredToken() !== token) return;
-      if (!coords) {
-        gpsPendingToken = null;
-        return;
-      }
-      await apiClient.post('/auth/session/location', coords);
-      if (getStoredToken() === token) gpsSyncedToken = token;
-    })
-    .catch(() => {
-      if (gpsPendingToken === token) gpsPendingToken = null;
-    });
+  if (!token || gpsInFlight) return;
+  if (readGpsAttemptedToken() === token) return;
+  if (!navigator.geolocation) {
+    markGpsAttempted(token);
+    return;
+  }
+
+  // Claim this session immediately so login + App mount cannot fire twice.
+  gpsInFlight = true;
+  markGpsAttempted(token);
+
+  const run = () => {
+    void requestLoginGps(navigator.geolocation)
+      .then(async (coords) => {
+        if (!coords || getStoredToken() !== token) return;
+        // Fire-and-forget API write; failures must not affect the UI.
+        await apiClient.post('/auth/session/location', coords).catch(() => undefined);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        gpsInFlight = false;
+      });
+  };
+
+  // Defer until the browser is idle so leads/dashboard work is not delayed.
+  const idle = (window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof idle === 'function') {
+    idle(run, { timeout: 4000 });
+  } else {
+    window.setTimeout(run, 1500);
+  }
 }
 
 function loginBody(email: string, password: string, extra: Record<string, unknown> = {}) {
@@ -171,6 +215,7 @@ export async function login(email: string, password: string, rememberMe = true):
     persistAuth(token, user, rememberMe);
     setAuthHeader(token);
     storePendingLastLogin(null);
+    // Schedule once in background; App also calls this after mount with the same once-guard.
     syncLoginGps();
     return { user, token };
   } catch (err) {
@@ -242,9 +287,8 @@ export function logout(): void {
   }
   clearAuthStorage();
   clearMasterUnlockToken();
-  gpsRequest += 1;
-  gpsPendingToken = null;
-  gpsSyncedToken = null;
+  clearGpsAttempted();
+  gpsInFlight = false;
   delete apiClient.defaults.headers.common['Authorization'];
 }
 

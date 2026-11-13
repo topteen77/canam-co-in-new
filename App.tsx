@@ -369,7 +369,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!currentUser) return;
-    const timer = window.setTimeout(() => syncLoginGps(), 0);
+    // One background GPS attempt after the UI is up; syncLoginGps itself is once-per-session.
+    const timer = window.setTimeout(() => syncLoginGps(), 2000);
     return () => window.clearTimeout(timer);
   }, [currentUser]);
 
