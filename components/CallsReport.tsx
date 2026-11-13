@@ -3,6 +3,7 @@ import type { CallLog, Lead } from '../types';
 import apiClient from '../services/apiClient';
 import { callStatusLabel } from '../utils/callStatusLabel';
 import { CallRecordingPlay } from './CallRecordingPlay';
+import { RecordingStorage } from './RecordingStorage';
 import { UserFilterOptions } from './UserFilterOptions';
 
 interface CallsReportProps {
@@ -220,6 +221,8 @@ export const CallsReport: React.FC<CallsReportProps> = ({
           🔄 Refresh
         </button>
       </div>
+
+      {isAdmin && <RecordingStorage />}
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">

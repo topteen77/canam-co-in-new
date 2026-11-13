@@ -568,6 +568,7 @@ async function ensureCallLogColumns() {
     if (!cols.has('direction')) alters.push('ADD COLUMN direction VARCHAR(16) NULL');
     if (!cols.has('recording_url')) alters.push('ADD COLUMN recording_url TEXT NULL');
     if (!cols.has('session_id')) alters.push('ADD COLUMN session_id VARCHAR(160) NULL');
+    if (!cols.has('keep_recording')) alters.push('ADD COLUMN keep_recording TINYINT NOT NULL DEFAULT 0');
     if (alters.length) {
       await db.query(`ALTER TABLE \`${raw}\` ${alters.join(', ')}`);
       invalidateColumns(raw);
@@ -1169,4 +1170,90 @@ export async function liveForUser(email) {
     startedAt: row.started_at,
   }));
   return calls;
+}
+
+function recordingBytes(url) {
+  const name = String(url || '').split('?')[0].split('/').pop();
+  const file = recordingFilePath(name);
+  if (!file || !fs.existsSync(file)) return 0;
+  return fs.statSync(file).size || 0;
+}
+
+function recordingWhen(row) {
+  const raw = row.timestamp || row.created_at;
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export async function listStoredRecordings(query = {}) {
+  await ensureCallLogColumns();
+  const table = await resolveTableNameOrFallback(['call_logs', 'CallLogs'], 'call_logs');
+  const [rows] = await db.query(
+    `SELECT id, phone_number, lead_name, contact_name, user_name, timestamp, created_at, duration, recording_url, keep_recording, direction
+     FROM ${table}
+     WHERE recording_url IS NOT NULL AND recording_url <> ''
+     ORDER BY created_at DESC
+     LIMIT 500`
+  );
+  const before = query.before ? new Date(`${query.before}T00:00:00`) : null;
+  const from = query.from ? new Date(`${query.from}T00:00:00`) : null;
+  const to = query.to ? new Date(`${query.to}T23:59:59`) : null;
+  let totalBytes = 0;
+  const files = [];
+  for (const row of rows || []) {
+    const when = recordingWhen(row);
+    if (before && when && when >= before) continue;
+    if (from && when && when < from) continue;
+    if (to && when && when > to) continue;
+    const bytes = recordingBytes(row.recording_url);
+    const keep = Number(row.keep_recording) === 1;
+    if (!keep) totalBytes += bytes;
+    files.push({
+      id: row.id,
+      phoneNumber: row.phone_number || '',
+      leadName: row.lead_name || '',
+      contactName: row.contact_name || '',
+      userName: row.user_name || '',
+      direction: row.direction || '',
+      timestamp: row.timestamp || row.created_at || '',
+      duration: Number(row.duration || 0) || 0,
+      bytes,
+      keep,
+      saved: bytes > 0,
+    });
+  }
+  return { files, totalBytes, removableCount: files.filter((file) => !file.keep).length };
+}
+
+export async function setRecordingKeep(id, keep) {
+  await ensureCallLogColumns();
+  const table = await resolveTableNameOrFallback(['call_logs', 'CallLogs'], 'call_logs');
+  await db.execute(`UPDATE ${table} SET keep_recording = ? WHERE id = ?`, [keep ? 1 : 0, id]);
+  return { id, keep: Boolean(keep) };
+}
+
+export async function deleteStoredRecordings(ids) {
+  await ensureCallLogColumns();
+  const table = await resolveTableNameOrFallback(['call_logs', 'CallLogs'], 'call_logs');
+  const unique = [...new Set((Array.isArray(ids) ? ids : []).map((id) => String(id || '').trim()).filter(Boolean))].slice(0, 200);
+  let removed = 0;
+  let freedBytes = 0;
+  const skipped = [];
+  for (const id of unique) {
+    const [rows] = await db.query(`SELECT recording_url, keep_recording FROM ${table} WHERE id = ? LIMIT 1`, [id]);
+    const row = rows?.[0];
+    if (!row) continue;
+    if (Number(row.keep_recording) === 1) {
+      skipped.push(id);
+      continue;
+    }
+    const bytes = recordingBytes(row.recording_url);
+    const file = recordingFilePath(String(row.recording_url || '').split('?')[0].split('/').pop());
+    if (file && fs.existsSync(file)) await fs.promises.unlink(file);
+    await db.execute(`UPDATE ${table} SET recording_url = NULL WHERE id = ? AND COALESCE(keep_recording, 0) = 0`, [id]);
+    removed += 1;
+    freedBytes += bytes;
+  }
+  return { removed, freedBytes, skipped };
 }

@@ -684,6 +684,27 @@ app.post('/api/kommuno/click-to-call', async (req, res) => {
     res.status(error.statusCode || 500).json({ error: error.message });
   }
 });
+app.get('/api/admin/call-recordings', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    res.json(await kommunoService.listStoredRecordings(req.query || {}));
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Could not list recordings.' });
+  }
+});
+app.put('/api/admin/call-recordings/:id/keep', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    res.json(await kommunoService.setRecordingKeep(req.params.id, req.body?.keep));
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Could not update the keep flag.' });
+  }
+});
+app.post('/api/admin/call-recordings/delete', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    res.json(await kommunoService.deleteStoredRecordings(req.body?.ids || []));
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Could not remove recordings.' });
+  }
+});
 app.get('/api/admin/kommuno', authenticateToken, requireAdmin, async (_req, res) => {
   try {
     await kommunoService.loadKommunoSettings();
