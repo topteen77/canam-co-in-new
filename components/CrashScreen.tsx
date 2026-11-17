@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { reportCrashToWebadmin } from '../services/crashReporter';
 
 export type CrashDetails = {
   title?: string;
@@ -16,6 +17,8 @@ type CrashScreenProps = {
   compact?: boolean;
   onRetry?: () => void;
   onBack?: () => void;
+  /** When false, skip auto email (caller already reported). Default true. */
+  autoReport?: boolean;
 };
 
 export function formatCrashReport(details: CrashDetails): string {
@@ -35,9 +38,36 @@ export function formatCrashReport(details: CrashDetails): string {
   return lines.join('\n');
 }
 
-export function CrashScreen({ details, compact = false, onRetry, onBack }: CrashScreenProps) {
+export function CrashScreen({ details, compact = false, onRetry, onBack, autoReport = true }: CrashScreenProps) {
   const [copied, setCopied] = useState(false);
+  const [reportStatus, setReportStatus] = useState('Preparing error report…');
   const report = useMemo(() => formatCrashReport(details), [details]);
+
+  useEffect(() => {
+    if (!autoReport) {
+      setReportStatus('Error captured.');
+      return;
+    }
+    let cancelled = false;
+    setReportStatus('Sending error report to webadmin…');
+    void reportCrashToWebadmin(details).then((result) => {
+      if (cancelled) return;
+      if (result.sent) {
+        setReportStatus(`Error report emailed to ${result.email || 'webadmin'}.`);
+      } else if (result.reason === 'not_configured') {
+        setReportStatus('No webadmin email configured yet (Admin → Webadmin Email).');
+      } else if (result.reason === 'disabled') {
+        setReportStatus('Automatic error emails are disabled.');
+      } else if (result.reason === 'duplicate') {
+        setReportStatus('Same error was already reported recently.');
+      } else if (result.reason === 'smtp_not_configured') {
+        setReportStatus('SMTP is not configured on the server, so email was not sent.');
+      } else {
+        setReportStatus(result.error || `Report not sent (${result.reason || 'unknown'}).`);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [autoReport, details.message, details.name, details.source, details.stack, details.url, details.time]);
 
   const copyReport = async () => {
     try {
@@ -73,9 +103,10 @@ export function CrashScreen({ details, compact = false, onRetry, onBack }: Crash
             {details.message || 'Unknown error'}
           </h2>
           <p className="mt-2 text-sm text-slate-600">
-            The page stayed usable so you can copy this report, retry, or switch screens. Share the
-            details below with the developer to fix it.
+            The page stayed usable so you can copy this report, retry, or switch screens. Full error
+            details are shown below and emailed to webadmin when configured.
           </p>
+          <p className="mt-2 text-sm font-medium text-rose-800">{reportStatus}</p>
         </div>
 
         <div className="px-4 sm:px-6 py-4 space-y-3 text-sm text-slate-700">

@@ -6,6 +6,7 @@ import { getUserDisplayName as utilGetUserDisplayName, cleanCorruptedData } from
 import CompanyManagement from './CompanyManagement';
 import MailchimpSettings from './MailchimpSettings';
 import KommunoSettings from './KommunoSettings';
+import WebadminErrorSettings from './WebadminErrorSettings';
 import DeviceSessions from './DeviceSessions';
 import UserAvatar from './UserAvatar';
 
@@ -58,7 +59,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({
   const hasAdminAccess = isAdmin || isSubAdmin;
   const effectiveUserRole = userRole || 'Account Manager';
   const effectiveCurrentUser = currentUser || '';
-  const [activeTab, setActiveTab] = useState<'users' | 'devices' | 'costs' | 'usage' | 'company-management' | 'mailchimp' | 'kommuno'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'devices' | 'costs' | 'usage' | 'company-management' | 'mailchimp' | 'kommuno' | 'webadmin-email'>('users');
   const [userQuery, setUserQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [deviceFilter, setDeviceFilter] = useState('all');
@@ -566,6 +567,7 @@ Continue?
         <button type="button" onClick={() => setActiveTab('company-management')} className={`chip-btn app-chip ${activeTab === 'company-management' ? 'app-chip--active' : ''}`}>🏢 Companies</button>
         {isAdmin && <button type="button" onClick={() => setActiveTab('mailchimp')} className={`chip-btn app-chip ${activeTab === 'mailchimp' ? 'app-chip--active' : ''}`}>✉️ Mailchimp</button>}
         {isAdmin && <button type="button" onClick={() => setActiveTab('kommuno')} className={`chip-btn app-chip ${activeTab === 'kommuno' ? 'app-chip--active' : ''}`}>☎️ Calls</button>}
+        {isAdmin && <button type="button" onClick={() => setActiveTab('webadmin-email')} className={`chip-btn app-chip ${activeTab === 'webadmin-email' ? 'app-chip--active' : ''}`}>🛠️ Webadmin Email</button>}
         <button type="button" onClick={() => setActiveTab('costs')} className={`chip-btn app-chip ${activeTab === 'costs' ? 'app-chip--active' : ''}`}>💰 Costs</button>
         <button type="button" onClick={() => setActiveTab('usage')} className={`chip-btn app-chip ${activeTab === 'usage' ? 'app-chip--active' : ''}`}>👥 Usage</button>
       </div>
@@ -576,6 +578,7 @@ Continue?
           <button onClick={() => setActiveTab('company-management')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'company-management' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>🏢 Company Management</button>
           {isAdmin && <button onClick={() => setActiveTab('mailchimp')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'mailchimp' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>✉️ Mailchimp</button>}
           {isAdmin && <button onClick={() => setActiveTab('kommuno')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'kommuno' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>☎️ Calls</button>}
+          {isAdmin && <button onClick={() => setActiveTab('webadmin-email')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'webadmin-email' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>🛠️ Webadmin Email</button>}
           <button onClick={() => setActiveTab('costs')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'costs' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>💰 Cost Calculator</button>
           <button onClick={() => setActiveTab('usage')} className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'usage' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>👥 User Usage Tracker</button>
         </nav>
@@ -1010,6 +1013,10 @@ Continue?
 
       {isAdmin && activeTab === 'kommuno' && (
         <KommunoSettings />
+      )}
+
+      {isAdmin && activeTab === 'webadmin-email' && (
+        <WebadminErrorSettings />
       )}
 
       {activeTab === 'usage' && (

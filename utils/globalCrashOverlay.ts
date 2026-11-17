@@ -114,6 +114,27 @@ export function showGlobalCrashOverlay(payload: CrashPayload): void {
   });
   root.querySelector('[data-crash-reload]')?.addEventListener('click', () => location.reload());
   root.querySelector('[data-crash-dismiss]')?.addEventListener('click', () => root.remove());
+
+  // Auto-email webadmin (same path as React crash screen).
+  void import('../services/crashReporter')
+    .then(({ reportCrashToWebadmin }) => reportCrashToWebadmin({
+      name: payload.name,
+      message: payload.message,
+      stack: payload.stack || '',
+      source: payload.source,
+      url: location.href,
+      time: new Date().toISOString(),
+    }))
+    .then((result) => {
+      const status = document.createElement('div');
+      status.style.cssText = 'padding:0 20px 12px;font-size:13px;color:#9f1239;font-weight:600';
+      if (result?.sent) status.textContent = `Error report emailed to ${result.email || 'webadmin'}.`;
+      else if (result?.reason === 'not_configured') status.textContent = 'No webadmin email configured yet.';
+      else if (result?.reason === 'duplicate') status.textContent = 'Same error was already reported recently.';
+      else status.textContent = result?.error || `Report not sent (${result?.reason || 'unknown'}).`;
+      root.firstElementChild?.insertBefore(status, root.firstElementChild.lastElementChild);
+    })
+    .catch(() => undefined);
 }
 
 export function installGlobalCrashHandlers(): void {

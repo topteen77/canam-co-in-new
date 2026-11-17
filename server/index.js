@@ -51,6 +51,7 @@ import {
   syncLeadToMailchimp,
   testMailchimpConnection,
 } from './services/mailchimpService.js';
+import * as webadminErrorService from './services/webadminErrorService.js';
 
 // Load environment variables
 const __filename = fileURLToPath(import.meta.url);
@@ -908,6 +909,74 @@ app.post('/api/admin/mailchimp/test', authenticateToken, requireAdmin, async (re
   }
 });
 
+app.get('/api/admin/webadmin-error-email', authenticateToken, requireAdmin, async (_req, res) => {
+  try {
+    const settings = await webadminErrorService.getWebadminErrorSettings();
+    res.json({ ok: true, ...settings });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || 'Could not load webadmin error email.' });
+  }
+});
+
+app.put('/api/admin/webadmin-error-email', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const settings = await webadminErrorService.saveWebadminErrorSettings({
+      email: req.body?.email,
+      enabled: req.body?.enabled !== false && req.body?.enabled !== 0 && req.body?.enabled !== '0',
+      updatedBy: req.user?.email || req.user?.name || 'admin',
+    });
+    res.json({ ok: true, ...settings });
+  } catch (error) {
+    res.status(error.status || 500).json({ ok: false, error: error.message || 'Could not save webadmin error email.' });
+  }
+});
+
+app.post('/api/admin/webadmin-error-email/test', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await webadminErrorService.sendWebadminTestEmail(req.user?.email || '');
+    if (!result.sent) {
+      return res.status(400).json({ ok: false, ...result, error: result.reason || 'Test email was not sent.' });
+    }
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || 'Test email failed.' });
+  }
+});
+
+const clientErrorLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many error reports. Try again later.' },
+});
+
+app.post('/api/client-errors', clientErrorLimiter, authenticateToken, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = await webadminErrorService.reportClientError({
+      name: String(body.name || 'Error').slice(0, 120),
+      message: String(body.message || 'Unknown error').slice(0, 2000),
+      stack: String(body.stack || '').slice(0, 12000),
+      componentStack: String(body.componentStack || '').slice(0, 8000),
+      source: String(body.source || 'client').slice(0, 200),
+      url: String(body.url || '').slice(0, 2000),
+      time: String(body.time || new Date().toISOString()).slice(0, 80),
+      report: String(body.report || '').slice(0, 20000),
+      userAgent: String(body.userAgent || req.headers['user-agent'] || '').slice(0, 500),
+      viewport: String(body.viewport || '').slice(0, 80),
+      appVersion: String(body.appVersion || '').slice(0, 80),
+      userEmail: req.user?.email || String(body.userEmail || '').slice(0, 255),
+      userName: String(body.userName || '').slice(0, 255),
+      userRole: req.user?.role || String(body.userRole || '').slice(0, 120),
+      userId: req.user?.id || String(body.userId || '').slice(0, 255),
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || 'Could not report error.' });
+  }
+});
+
 app.post('/api/mailchimp/test', mailchimpLocalOnly, async (req, res) => {
   const email = String(req.body?.email || '').trim();
   if (!email) {
@@ -1323,6 +1392,12 @@ loadMailchimpSettings().then(() => {
   console.log('✅ Mailchimp settings ready');
 }).catch((err) => {
   console.error('⚠️ Could not prepare Mailchimp settings:', err.message);
+});
+
+webadminErrorService.ensureWebadminErrorTables().then(() => {
+  console.log('✅ Webadmin error email settings ready');
+}).catch((err) => {
+  console.error('⚠️ Could not prepare webadmin error email settings:', err.message);
 });
 
 kommunoService.ensureKommuno().then(() => {
