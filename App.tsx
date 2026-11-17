@@ -74,6 +74,7 @@ import LocationMaster from './components/LocationMaster';
 import TrainingTargets from './components/TrainingTargets';
 import UserAvatar from './components/UserAvatar';
 import PageLoader from './components/PageLoader';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { parseViewFromHash, syncViewHash } from './utils/appView';
 import { ensureLocationMasterLoaded } from './services/locationMasterService';
 
@@ -909,6 +910,12 @@ const App: React.FC = () => {
               />
             )}
             <div className={`main-content-area px-1.5 sm:px-4 w-full max-w-full min-w-0 pb-24 md:pb-8 ${view === 'leads' ? 'pt-0' : 'py-2 sm:py-4'}`}>
+              <ErrorBoundary
+                key={view}
+                label={`${view} view`}
+                compact
+                onBack={() => setView('leads')}
+              >
               {isLoadingLeads && ['leads', 'pipeline'].includes(view) && (
                 <PageLoader label="Loading leads…" />
               )}
@@ -1054,6 +1061,7 @@ const App: React.FC = () => {
                     )}
                 </>
               ) : null}
+              </ErrorBoundary>
             </div>
           </main>
         </div>
