@@ -281,7 +281,10 @@ const App: React.FC = () => {
               const left = alert.alertType === 'left_place';
               const who = alert.userName || alert.userEmail;
               const place = alert.leadName || 'a client meeting';
-              const stamp = alert.createdAt ? new Date(alert.createdAt).toISOString() : new Date().toISOString();
+              const createdDate = alert.createdAt ? new Date(alert.createdAt) : new Date();
+              const stamp = Number.isNaN(createdDate.getTime())
+                ? new Date().toISOString()
+                : createdDate.toISOString();
               return {
                   id: `meeting_alert_${alert.id}`,
                   category: 'meeting' as const,

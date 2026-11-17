@@ -92,21 +92,55 @@ function sanitizeUser(user, passwordCol) {
   };
 }
 
+function isBcryptHash(value) {
+  const s = String(value || '');
+  return s.startsWith('$2a$') || s.startsWith('$2b$') || s.startsWith('$2y$');
+}
+
+async function passwordMatches(stored, password) {
+  if (stored == null || stored === '') return false;
+  const value = String(stored);
+  if (isBcryptHash(value)) return bcrypt.compare(password, value);
+  // Legacy/default passwords in this CRM are stored as plaintext in defaultPassword.
+  return value === password;
+}
+
 async function findUserByEmail(email) {
   const table = await resolveTableNameOrFallback(['users', 'Users'], 'users');
   const cols = await getColumns(table);
   const emailCol = cols.has('email') ? 'email' : 'userEmail';
   const passwordCol = pickPasswordCol(cols);
   if (!passwordCol) throw new Error('Users table has no password column');
-  const [users] = await db.query(`SELECT * FROM ${table} WHERE \`${emailCol}\` = ?`, [email]);
-  return { user: users[0] || null, passwordCol };
+  const normalized = String(email || '').trim().toLowerCase();
+  const [users] = await db.query(
+    `SELECT * FROM ${table} WHERE LOWER(TRIM(\`${emailCol}\`)) = ? LIMIT 1`,
+    [normalized]
+  );
+  return { user: users[0] || null, passwordCol, cols };
 }
 
 async function verifyUserPassword(email, password) {
-  const { user, passwordCol } = await findUserByEmail(email);
-  if (!user || !user[passwordCol]) return { user: null, passwordCol, ok: false };
-  const ok = await bcrypt.compare(password, user[passwordCol]);
-  return { user: ok ? user : null, passwordCol, ok };
+  const { user, passwordCol, cols } = await findUserByEmail(email);
+  if (!user) return { user: null, passwordCol, ok: false };
+
+  // Prefer hashed customPassword, then fall back to defaultPassword (often plaintext).
+  const candidates = [];
+  if (cols?.has('customPassword') && user.customPassword) {
+    candidates.push(['customPassword', user.customPassword]);
+  }
+  if (cols?.has('defaultPassword') && user.defaultPassword) {
+    candidates.push(['defaultPassword', user.defaultPassword]);
+  }
+  if (!candidates.length && user[passwordCol]) {
+    candidates.push([passwordCol, user[passwordCol]]);
+  }
+
+  for (const [col, stored] of candidates) {
+    if (await passwordMatches(stored, password)) {
+      return { user, passwordCol: col, ok: true };
+    }
+  }
+  return { user: null, passwordCol, ok: false };
 }
 
 async function issueLogin(user, passwordCol, device, force = false) {

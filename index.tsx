@@ -3,6 +3,7 @@ import './src/mobile.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -12,7 +13,27 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary
+      fallback={
+        <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
+          <div className="max-w-md text-center space-y-3">
+            <p className="text-lg font-semibold text-slate-800">Something went wrong</p>
+            <p className="text-sm text-slate-600">
+              The page crashed while loading. Open the browser console for details, then reload.
+            </p>
+            <button
+              type="button"
+              className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+              onClick={() => window.location.reload()}
+            >
+              Reload
+            </button>
+          </div>
+        </div>
+      }
+    >
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );
 

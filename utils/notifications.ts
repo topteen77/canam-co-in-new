@@ -103,6 +103,7 @@ export const buildNotifications = ({
           const snoozedUntil = snoozedMap[notificationId];
           const isMuted = mutedNotifications.has(notificationId);
           const createdToday = new Date(createdMs).toISOString().split('T')[0] === todayISO;
+          const createdIso = new Date(createdMs).toISOString();
           notificationList.push({
             id: notificationId,
             category: 'other',
@@ -110,8 +111,8 @@ export const buildNotifications = ({
             description: lead.createdBy === currentUser
               ? `You added ${lead.agencyName}`
               : `${lead.agencyName}${lead.accountManager === currentUser || lead.salesPerson === currentUser ? ' (assigned to you)' : ''}`,
-            timestamp: createdAt,
-            scheduledAt: createdAt,
+            timestamp: createdIso,
+            scheduledAt: createdIso,
             leadId: lead.id,
             leadName: lead.agencyName,
             status: createdToday ? 'today' : 'upcoming',

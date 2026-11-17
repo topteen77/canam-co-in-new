@@ -3,13 +3,24 @@ import type { Lead } from '../types';
 
 const parseDate = (dateValue: any): any => {
   if (!dateValue) return null;
-  if (typeof dateValue.toDate === 'function') return dateValue; 
+  if (typeof dateValue.toDate === 'function') {
+    try {
+      const inner = dateValue.toDate();
+      if (inner instanceof Date && Number.isNaN(inner.getTime())) return null;
+    } catch {
+      return null;
+    }
+    return dateValue;
+  }
   const dateObj = new Date(dateValue);
+  // Bad DB values (e.g. "0000-00-00", garbage) must not crash render via toISOString().
+  if (Number.isNaN(dateObj.getTime())) return null;
   return {
     toDate: () => dateObj,
     seconds: Math.floor(dateObj.getTime() / 1000),
     nanoseconds: 0,
-    toString: () => dateObj.toISOString()
+    toString: () => dateObj.toISOString(),
+    valueOf: () => dateObj.getTime(),
   };
 };
 
@@ -28,11 +39,22 @@ const normalizeLead = (lead: any): Lead => {
     salesPerson: lead.salesPerson || lead.sales_person,
     createdAt: parseDate(lead.createdAt || lead.created_at),
     updatedAt: parseDate(lead.updatedAt || lead.updated_at),
-    tags: typeof lead.tags === 'string' ? JSON.parse(lead.tags || '[]') : (lead.tags || []),
-    contacts: typeof lead.contacts === 'string' ? JSON.parse(lead.contacts || '[]') : (lead.contacts || []),
-    followUps: typeof lead.followUps === 'string' ? JSON.parse(lead.followUps || '[]') : (lead.followUps || [])
+    tags: safeJsonArray(lead.tags),
+    contacts: safeJsonArray(lead.contacts),
+    followUps: safeJsonArray(lead.followUps),
   };
 };
+
+function safeJsonArray(value: unknown): any[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 // --- GET ALL LEADS ---
 export const getAllLeads = async (): Promise<Lead[]> => {
