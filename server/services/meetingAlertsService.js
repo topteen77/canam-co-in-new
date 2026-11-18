@@ -145,10 +145,21 @@ export async function processMeetingPresence({ email, latitude, longitude, addre
   }
   const meetings = await getAllMeetings();
   const active = meetings.find((row) => {
-    const name = String(row.username || row.salesPersonEmail || '').toLowerCase();
+    // mapMeetingRow already downgrades stale active meetings to completed
     const status = String(row.meetingStatus || row.meeting_status || '').toLowerCase();
-    const checkedOut = row.checkOutTime || row.check_out_time;
-    return name === userEmail && !checkedOut && status !== 'completed' && status !== 'ended';
+    if (status !== 'active') return false;
+    if (row.checkOutTime || row.check_out_time) return false;
+    const rawUser = row.username || row.salesPersonEmail || '';
+    let name = String(rawUser).trim().toLowerCase();
+    if (name.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(String(rawUser));
+        name = String(parsed.email || parsed.userEmail || '').trim().toLowerCase();
+      } catch {
+        name = '';
+      }
+    }
+    return name === userEmail;
   });
 
   if (!active) return { ok: true, inMeeting: false };

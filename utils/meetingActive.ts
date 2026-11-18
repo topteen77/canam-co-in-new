@@ -4,24 +4,80 @@ function cleanEmail(value?: string | null): string {
   return String(value || '').trim().toLowerCase();
 }
 
+/** Extract an email from plain text or a JSON user blob stored in older rows. */
+export function extractMeetingUserEmail(value?: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return cleanEmail(String(obj.email || obj.userEmail || obj.username || ''));
+  }
+  const raw = String(value).trim();
+  if (!raw) return '';
+  if (raw.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+      return extractMeetingUserEmail(parsed);
+    } catch {
+      // fall through
+    }
+  }
+  return cleanEmail(raw);
+}
+
 function localDateKey(value?: string | Date | null): string {
   if (!value) return '';
-  const d = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    const raw = String(value);
-    return raw.length >= 10 ? raw.slice(0, 10) : '';
+  if (typeof value === 'object' && value !== null && !((value as Date) instanceof Date)) {
+    const obj = value as { _seconds?: number; seconds?: number };
+    const seconds = Number(obj._seconds ?? obj.seconds);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return localDateKey(new Date(seconds * 1000));
+    }
   }
+  const asString = String(value).trim();
+  // Prefer YYYY-MM-DD prefix when present (avoids UTC/local day shifts).
+  const ymd = asString.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (ymd) return ymd[1];
+
+  const d = value instanceof Date ? value : new Date(asString);
+  if (Number.isNaN(d.getTime())) return '';
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
-export function todayLocalDateKey(now = new Date()): string {
-  return localDateKey(now);
+function parseCheckInInstant(value?: unknown): Date | null {
+  if (!value) return null;
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as { _seconds?: number; seconds?: number };
+    const seconds = Number(obj._seconds ?? obj.seconds);
+    if (Number.isFinite(seconds) && seconds > 0) return new Date(seconds * 1000);
+  }
+  const asString = String(value).trim();
+  if (asString.startsWith('{')) {
+    try {
+      return parseCheckInInstant(JSON.parse(asString));
+    } catch {
+      return null;
+    }
+  }
+  const d = new Date(asString);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** True when the meeting check-in is currently active (not completed / checked out). */
+export function todayLocalDateKey(now = new Date()): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * True only for a meeting that is actively in progress right now:
+ * - meetingStatus is explicitly "active"
+ * - no checkout
+ * - meeting date / check-in is today (local)
+ */
 export function isActiveMeetingRecord(
   meeting: Partial<MeetingCheckInRecord> & { meeting_status?: string; Username?: string } | null | undefined,
   opts: { now?: Date } = {}
@@ -34,18 +90,22 @@ export function isActiveMeetingRecord(
     .trim()
     .toLowerCase();
 
-  if (status === 'completed' || status === 'ended' || status === 'done') return false;
-  if (meeting.checkOutTime) return false;
+  // Must be explicitly active — stale rows often keep status=active forever, so also require today.
+  if (status !== 'active') return false;
 
-  // Prefer explicit active flag; otherwise treat open (no checkout) as active only for today.
-  const today = todayLocalDateKey(opts.now);
+  const checkedOut = meeting.checkOutTime || (meeting as any).check_out_time;
+  if (checkedOut) return false;
+
+  const now = opts.now || new Date();
+  const today = todayLocalDateKey(now);
   const meetingDay =
     localDateKey(meeting.date) ||
-    localDateKey(meeting.checkInTime) ||
-    '';
-  if (meetingDay && meetingDay !== today) return false;
+    localDateKey(meeting.checkInTime as any) ||
+    localDateKey(parseCheckInInstant(meeting.checkInTime));
 
-  if (status && status !== 'active') return false;
+  // No usable day => not active (prevents false positives from bad/legacy rows).
+  if (!meetingDay || meetingDay !== today) return false;
+
   return true;
 }
 
@@ -55,12 +115,12 @@ export function meetingBelongsToUser(
 ): boolean {
   const email = cleanEmail(userEmail);
   if (!email || !meeting) return false;
-  return (
-    cleanEmail(meeting.username) === email ||
-    cleanEmail((meeting as any).Username) === email ||
-    cleanEmail(meeting.salesPersonEmail) === email ||
-    cleanEmail(meeting.createdBy) === email
-  );
+  const candidates = [
+    extractMeetingUserEmail(meeting.username),
+    extractMeetingUserEmail((meeting as any).Username),
+    extractMeetingUserEmail(meeting.salesPersonEmail),
+  ].filter(Boolean);
+  return candidates.includes(email);
 }
 
 /** Header button: current user is personally in an active meeting. */

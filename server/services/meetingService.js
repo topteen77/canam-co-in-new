@@ -11,6 +11,46 @@ const safeJsonParse = (val, fallback) => {
   }
 };
 
+function meetingDayKey(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'object') {
+    const seconds = Number(value._seconds ?? value.seconds);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return meetingDayKey(new Date(seconds * 1000).toISOString());
+    }
+  }
+  const raw = String(value).trim();
+  if (raw.startsWith('{')) {
+    try {
+      return meetingDayKey(JSON.parse(raw));
+    } catch {
+      return '';
+    }
+  }
+  const ymd = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  return ymd ? ymd[1] : '';
+}
+
+function todayKeyLocal(now = new Date()) {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Stale rows often stay meetingStatus=active with no checkout for months — only today counts. */
+function normalizeActiveStatus(row) {
+  const status = String(row.meetingStatus ?? row.meeting_status ?? '').trim().toLowerCase();
+  const checkedOut = row.checkOutTime ?? row.check_out_time;
+  if (checkedOut) {
+    return status === 'active' ? 'completed' : (row.meetingStatus ?? row.meeting_status ?? 'completed');
+  }
+  if (status !== 'active') return row.meetingStatus ?? row.meeting_status ?? status;
+  const day = meetingDayKey(row.date) || meetingDayKey(row.checkInTime ?? row.check_in_time);
+  if (!day || day !== todayKeyLocal()) return 'completed';
+  return 'active';
+}
+
 const mapMeetingRow = (row) => {
   const id = row.id ?? row.firebase_id;
   // Support both camelCase and snake_case column names from DB
@@ -20,10 +60,12 @@ const mapMeetingRow = (row) => {
   const completionPhotoMetadata = safeJsonParse(row.completionPhotoMetadata ?? row.completion_photo_metadata, {});
   const location = safeJsonParse(row.location ?? row.location, {});
   const photoUploadCount = row.photoUploadCount ?? row.photo_upload_count;
+  const meetingStatus = normalizeActiveStatus(row);
   return {
     ...row,
     id,
     firebase_id: row.firebase_id,
+    meetingStatus,
     checkInPhotos: Array.isArray(checkInPhotos) ? checkInPhotos : (checkInPhotos ? [checkInPhotos] : []),
     completionPhotos: Array.isArray(completionPhotos) ? completionPhotos : (completionPhotos ? [completionPhotos] : []),
     checkInPhotoMetadata,
