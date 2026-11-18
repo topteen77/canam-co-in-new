@@ -19,6 +19,7 @@ import { canMutateLead } from '../utils/leadPermissions';
 import { CONTACT_COUNTRY_OPTIONS, DEFAULT_CONTACT_COUNTRY, contactMatchesSelectedCountries } from '../utils/countriesAndCities';
 import { cityBelongsToSelectedStates, getCityOptionsForStates, getStateOptionsForCountries } from '../utils/locationSuggest';
 import { resolveLeadSource, partitionLeadsByOwnership, getLeadRelation, getLeadRelationBadge, LEAD_RELATION_HEADERS } from '../utils/leadVisibility';
+import { getActiveMeetingForLead, isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
 
 type ViewModeType = 'list' | 'board' | 'compact' | 'mobile-cards';
 
@@ -235,11 +236,20 @@ const LeadCard: React.FC<{
           : 'bg-white border border-slate-200'
     }`}>
       {showSelection && (
-        <div className="flex items-center gap-2 mb-2">
+        <div
+          className="flex items-center gap-2 mb-2"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           <input
             type="checkbox"
             checked={isSelected || false}
-            onChange={onToggleSelection}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              e.stopPropagation();
+              onToggleSelection?.();
+            }}
             className="lead-list-checkbox h-3 w-3 sm:h-3 sm:w-3 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded flex-shrink-0"
           />
           <span className="text-xs text-slate-500">Select</span>
@@ -906,7 +916,17 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
 
                             const todayStr = new Date().toDateString();
                             const hasMeetingToday = safeFollowUps.some(f => f.type === 'Meeting' && new Date(f.date).toDateString() === todayStr);
-                            const checkInRecord = meetingCheckIns.find(c => c.leadId === lead.id && new Date(c.checkInTime).toDateString() === todayStr && c.username === currentUser);
+                            const activeMeeting = getActiveMeetingForLead(meetingCheckIns, {
+                              leadId: lead.id,
+                              currentUser,
+                              isAdmin,
+                            });
+                            const completedCheckInToday = meetingCheckIns.find((c) =>
+                              c.leadId === lead.id &&
+                              new Date(c.checkInTime).toDateString() === todayStr &&
+                              (isAdmin || meetingBelongsToUser(c, currentUser)) &&
+                              !isActiveMeetingRecord(c)
+                            );
 
                             return (
                                 <tr key={lead.id} className={`transition-colors border-l-4 ${
@@ -917,11 +937,20 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
                                       : 'bg-amber-50 hover:bg-amber-100 border-l-amber-500'
                                 }`}>
                                     {isAdmin && (
-                                        <td className="px-2 sm:px-6 py-4 whitespace-nowrap w-8 sm:w-auto">
+                                        <td
+                                          className="px-2 sm:px-6 py-4 whitespace-nowrap w-8 sm:w-auto"
+                                          onClick={(e) => e.stopPropagation()}
+                                          onMouseDown={(e) => e.stopPropagation()}
+                                        >
                                             <input
                                                 type="checkbox"
                                                 checked={selectedLeads?.includes(lead.id) || false}
-                                                onChange={() => onToggleLeadSelection?.(lead.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                onChange={(e) => {
+                                                  e.stopPropagation();
+                                                  onToggleLeadSelection?.(lead.id);
+                                                }}
                                                 className="lead-list-checkbox h-4 w-4 sm:h-4 sm:w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded flex-shrink-0"
                                             />
                                         </td>
@@ -1000,10 +1029,23 @@ const ListView: React.FC<Pick<LeadsDashboardProps, 'leads' | 'onSelectLead' | 'o
                                       })()}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                      {hasMeetingToday ? (
-                                        checkInRecord ? (
+                                      {activeMeeting ? (
+                                        <span className="live-meeting-active text-xs" title={activeMeeting.username || activeMeeting.salesPersonName || 'Active meeting'}>
+                                          <span className="relative flex h-2 w-2 shrink-0" aria-hidden>
+                                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-75" />
+                                            <span className="relative inline-flex h-2 w-2 rounded-full bg-orange-600" />
+                                          </span>
+                                          In Meeting
+                                          {isAdmin && (activeMeeting.salesPersonName || activeMeeting.username) ? (
+                                            <span className="font-medium text-[10px] opacity-80">
+                                              · {activeMeeting.salesPersonName || getUserDisplayName(activeMeeting.username || '', availableUsers || [])}
+                                            </span>
+                                          ) : null}
+                                        </span>
+                                      ) : hasMeetingToday ? (
+                                        completedCheckInToday ? (
                                            <span className="text-xs text-green-700 font-medium">
-                                             Checked In @ {new Date(checkInRecord.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                             Done @ {new Date(completedCheckInToday.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                            </span>
                                         ) : (
                                           <button onClick={() => onMeetingCheckIn(lead.id)} className="px-2 py-1 text-xs font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">

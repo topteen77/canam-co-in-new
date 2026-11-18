@@ -657,18 +657,25 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                     onClick={() => onSelectLead(lead)}
                   >
                     {visibleColumns.map(column => {
-                      // Check if this column should prevent row click
-                      const isClickableColumn = column.id === 'followUps' || column.id === 'nextAction' || column.id === 'city';
+                      // Prevent row click (lead popup) for interactive cells
+                      const isClickableColumn =
+                        column.id === 'select' ||
+                        column.id === 'followUps' ||
+                        column.id === 'nextAction' ||
+                        column.id === 'city';
                         return (
                         <td
                           key={column.id}
                           className={`${column.width} px-0.5 sm:px-1 py-0.5 sm:py-1 text-[10px] sm:text-xs border-r border-slate-100 last:border-r-0 overflow-hidden min-w-0`}
                           onClick={isClickableColumn ? (e) => e.stopPropagation() : undefined}
+                          onMouseDown={column.id === 'select' ? (e) => e.stopPropagation() : undefined}
                         >
                         {column.id === 'select' && (
                           <input
                             type="checkbox"
                             checked={selectedLeads.includes(lead.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
                             onChange={(e) => {
                               e.stopPropagation();
                               onToggleLeadSelection(lead.id);
@@ -1166,6 +1173,8 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                     <input
                       type="checkbox"
                       checked={selectedLeads.includes(lead.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
                       onChange={(e) => {
                         e.stopPropagation();
                         onToggleLeadSelection(lead.id);

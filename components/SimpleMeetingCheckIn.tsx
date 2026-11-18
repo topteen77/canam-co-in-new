@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import apiClient from '../services/apiClient';
 import type { Lead } from '../types';
 import { EnhancedPhotoUpload } from './EnhancedPhotoUpload';
+import { isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
 
 interface SimpleMeetingCheckInProps {
   isOpen: boolean;
@@ -94,14 +95,10 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
   const checkActiveMeeting = async () => {
     try {
       console.log('🔍 Checking for active meeting...');
-      const today = new Date().toISOString().split('T')[0];
       const { data: rows } = await apiClient.get('/meetings/all');
       const list = Array.isArray(rows) ? rows : [];
       const active = list.find(
-        (r: any) =>
-          (r.username === currentUser || r.Username === currentUser) &&
-          (r.date === today || r.Date === today) &&
-          (r.meetingStatus === 'active' || r.meeting_status === 'active')
+        (r: any) => meetingBelongsToUser(r, currentUser) && isActiveMeetingRecord(r)
       );
       if (active) {
         const id = active.id ?? active.firebase_id;
@@ -501,7 +498,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
               disabled={isSubmitting}
               className="w-full flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
             >
-              {isSubmitting ? 'Completing…' : 'Complete Meeting'}
+              {isSubmitting ? 'Saving meeting and photos…' : 'Complete Meeting'}
             </button>
           </div>
         </div>
@@ -729,7 +726,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
               disabled={isSubmitting || !location || checkInPhotos.length === 0}
               className="w-full flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Starting…' : 'Start Meeting'}
+              {isSubmitting ? 'Sending meeting and photos…' : 'Start Meeting'}
             </button>
           </div>
         </form>

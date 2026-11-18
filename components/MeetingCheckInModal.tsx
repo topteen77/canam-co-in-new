@@ -6,6 +6,7 @@ import { formatTimeIST } from '../utils/dateTime';
 import { MeetingPhotoUpload } from './MeetingPhotoUpload';
 import { SimplePhotoUpload } from './SimplePhotoUpload';
 import { EnhancedPhotoCapture } from './EnhancedPhotoCapture';
+import { isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
 
 interface MeetingCheckInModalProps {
   isOpen: boolean;
@@ -102,11 +103,10 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
 
   const checkActiveMeeting = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
       const { data: rows } = await apiClient.get('/meetings/all');
       const list = Array.isArray(rows) ? rows : [];
       const active = list
-        .filter((r: any) => (r.username === currentUser || r.Username === currentUser) && (r.date === today || r.Date === today) && (r.meetingStatus === 'active' || r.meeting_status === 'active'))
+        .filter((r: any) => meetingBelongsToUser(r, currentUser) && isActiveMeetingRecord(r))
         .sort((a: any, b: any) => new Date(b.checkInTime || b.check_in_time || 0).getTime() - new Date(a.checkInTime || a.check_in_time || 0).getTime())[0];
       if (active) {
         setActiveMeeting({ id: active.id ?? active.firebase_id, ...active });

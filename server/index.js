@@ -37,6 +37,8 @@ import * as emailTemplatesService from './services/emailTemplatesService.js';
 import * as emailCampaignsService from './services/emailCampaignsService.js';
 import * as fieldConfigsService from './services/fieldConfigsService.js';
 import * as locationMasterService from './services/locationMasterService.js';
+import * as lostReasonMasterService from './services/lostReasonMasterService.js';
+import * as leadsService from './services/leadsService.js';
 import { SEED_STATES_BY_COUNTRY, SEED_CITY_TO_STATE } from './data/locationMasterSeed.js';
 import { inlinePreviewDisposition, isPreviewOnlyRole, wantsAttachmentDownload } from '../shared/documentAccess.js';
 import * as trainingTargetsService from './services/trainingTargetsService.js';
@@ -1184,6 +1186,53 @@ app.post('/api/location-master/seed', authenticateToken, requireAdmin, async (_r
   }
 });
 
+// --- LOST REASON MASTER ---
+app.get('/api/lost-reason-master', authenticateToken, async (req, res) => {
+  try {
+    await lostReasonMasterService.seedDefaultsIfEmpty();
+    const wantInactive = String(req.query.includeInactive || '') === 'true' || String(req.query.includeInactive || '') === '1';
+    const { isAdminAccount } = await import('./services/sessionService.js');
+    const rows = await lostReasonMasterService.listLostReasons({
+      includeInactive: wantInactive && isAdminAccount(req.user || {}),
+    });
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.post('/api/lost-reason-master', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await lostReasonMasterService.upsertLostReason(req.body || {});
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.put('/api/lost-reason-master/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await lostReasonMasterService.upsertLostReason({ ...(req.body || {}), id: req.params.id });
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.delete('/api/lost-reason-master/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await lostReasonMasterService.deleteLostReason(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+app.post('/api/lost-reason-master/ensure', authenticateToken, async (req, res) => {
+  try {
+    const result = await lostReasonMasterService.ensureReasonExists(req.body?.name);
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
 // --- TRAINING / ONBOARDING / TEAM TARGETS ---
 app.get('/api/training/meta', authenticateToken, async (_req, res) => {
   try {
@@ -1386,6 +1435,23 @@ locationMasterService.ensureLocationMasterTables()
   })
   .catch((err) => {
     console.error('⚠️ Could not prepare location master:', err.message);
+  });
+
+lostReasonMasterService.ensureLostReasonMasterTables()
+  .then(() => lostReasonMasterService.seedDefaultsIfEmpty())
+  .then((result) => {
+    console.log(result?.seeded ? '✅ Lost reason master seeded' : '✅ Lost reason master ready');
+  })
+  .catch((err) => {
+    console.error('⚠️ Could not prepare lost reason master:', err.message);
+  });
+
+leadsService.ensureLostReasonColumn()
+  .then((result) => {
+    console.log(result?.created ? '✅ leads.lostReason column added' : '✅ leads.lostReason column ready');
+  })
+  .catch((err) => {
+    console.error('⚠️ Could not ensure leads.lostReason column:', err.message);
   });
 
 loadMailchimpSettings().then(() => {

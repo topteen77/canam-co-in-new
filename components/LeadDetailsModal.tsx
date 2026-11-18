@@ -17,6 +17,8 @@ import { callStatusLabel } from '../utils/callStatusLabel';
 import { CallRecordingPlay } from './CallRecordingPlay';
 import { IcpScoringModal, TRAINING_SCORE_ROWS, clampIcpScore, emptyTrainingCategoryScores } from './IcpScoringModal';
 import { getLeadOwnerHistory, type LeadOwnerHistoryRow } from '../services/leadsService';
+import { LostReasonPicker } from './LostReasonPicker';
+import { ensureCustomLostReason, isLostLeadStatus } from '../services/lostReasonMasterService';
 
 interface LeadDetailsModalProps {
   lead: Lead | null;
@@ -324,6 +326,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         onboardingDate: lead.onboardingDate,
         applicants: lead.applicants,
         remarks: lead.remarks,
+        lostReason: lead.lostReason || '',
         websiteLink: lead.websiteLink,
         agencyDocuments: lead.agencyDocuments,
         countryInterest: safeCountryInterest,
@@ -445,9 +448,24 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       alert('Lead id is missing or invalid. Cannot update.');
       return;
     }
+    const nextStatus = String(editData.status || lead.status || '');
+    const nextReason = String(editData.lostReason || '').trim();
+    if (isLostLeadStatus(nextStatus) && !nextReason) {
+      alert('Please select or enter a Lost reason.');
+      return;
+    }
     try {
       if (onUpdateLead) {
-        await onUpdateLead(id, editData);
+        const payload: Partial<Lead> = { ...editData };
+        if (isLostLeadStatus(nextStatus)) {
+          payload.lostReason = nextReason;
+          // Persist custom Other reasons into master for next time
+          const known = await ensureCustomLostReason(nextReason).catch(() => null);
+          void known;
+        } else if (Object.prototype.hasOwnProperty.call(editData, 'lostReason')) {
+          payload.lostReason = '';
+        }
+        await onUpdateLead(id, payload);
         setIsEditing(false);
       } else {
         console.error('❌ onUpdateLead function not provided');
@@ -758,7 +776,14 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                     {isEditing ? (
                       <select
                         value={editData.status || lead.status}
-                        onChange={(e) => setEditData(prev => ({ ...prev, status: e.target.value as LeadStatus }))}
+                        onChange={(e) => {
+                          const status = e.target.value as LeadStatus;
+                          setEditData((prev) => ({
+                            ...prev,
+                            status,
+                            lostReason: isLostLeadStatus(status) ? (prev.lostReason || lead.lostReason || '') : '',
+                          }));
+                        }}
                         className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800"
                       >
                         {LEAD_STATUSES.map(status => (
@@ -769,6 +794,22 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">{lead.status}</p>
                     )}
                   </div>
+
+                  {isLostLeadStatus(isEditing ? (editData.status || lead.status) : lead.status) && (
+                    isEditing ? (
+                      <LostReasonPicker
+                        value={editData.lostReason || ''}
+                        onChange={(lostReason) => setEditData((prev) => ({ ...prev, lostReason }))}
+                      />
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-bold text-slate-800 mb-1">❗ Lost reason</label>
+                        <p className="text-sm text-slate-900 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                          {lead.lostReason?.trim() || 'No reason recorded'}
+                        </p>
+                      </div>
+                    )
+                  )}
                 </div>
               </div>
 

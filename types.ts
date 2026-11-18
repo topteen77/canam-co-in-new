@@ -120,6 +120,8 @@ export interface Lead {
   refund?: string;
   visa?: string;
   remarks?: string;
+  /** Why the lead was marked Lost / Lost post onboarding (from lost-reason master or Other). */
+  lostReason?: string;
   action?: string;
   // Website and documents
   websiteLink?: string;

@@ -1,4 +1,5 @@
 import type { Lead, FollowUp, MeetingCheckInRecord } from '../types';
+import { isActiveMeetingRecord, meetingBelongsToUser } from './meetingActive';
 
 export type NotificationCategory =
   | 'call'
@@ -213,10 +214,17 @@ export const buildNotifications = ({
     });
 
   meetingCheckInRecords
-    .filter((meeting) => meeting.username === currentUser)
+    .filter((meeting) => meetingBelongsToUser(meeting, currentUser))
     .forEach((meeting) => {
       const checkInDate = new Date(meeting.checkInTime);
       if (Number.isNaN(checkInDate.getTime())) return;
+
+      const active = isActiveMeetingRecord(meeting);
+      // Only keep completed meetings from the last 2 days in the bell; active always show.
+      if (!active) {
+        const ageMs = now.getTime() - checkInDate.getTime();
+        if (ageMs > 2 * 24 * 60 * 60 * 1000) return;
+      }
 
       const snoozedUntil = snoozedMap[`active_meeting_${meeting.id}`];
       const isMuted =
@@ -225,15 +233,15 @@ export const buildNotifications = ({
       notificationList.push({
         id: `active_meeting_${meeting.id}`,
         category: 'meeting',
-        title: meeting.checkOutTime ? 'Meeting Summary' : 'Active Meeting',
-        description: meeting.checkOutTime
-          ? `Meeting with ${meeting.leadName || 'Client'} completed`
-          : `Meeting with ${meeting.leadName || 'Client'} in progress`,
+        title: active ? 'Active Meeting' : 'Meeting Summary',
+        description: active
+          ? `Meeting with ${meeting.leadName || 'Client'} in progress`
+          : `Meeting with ${meeting.leadName || 'Client'} completed`,
         timestamp: meeting.checkInTime,
         scheduledAt: meeting.checkInTime,
         leadId: meeting.leadId,
         leadName: meeting.leadName,
-        status: meeting.checkOutTime ? 'today' : 'active',
+        status: active ? 'active' : 'today',
         followUpType: 'Meeting',
         isMuted,
         snoozedUntil

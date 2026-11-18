@@ -21,6 +21,8 @@ import type { Lead, AgencyDocuments } from '../types';
 import type { ExtractedLeadData } from '../services/ocrService';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES } from '../types';
 import { CountryInterestSelector } from './LeadDetailsModal';
+import { LostReasonPicker } from './LostReasonPicker';
+import { ensureCustomLostReason, isLostLeadStatus } from '../services/lostReasonMasterService';
 
 const PHONE_RE = /^\d{10}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -86,6 +88,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     onboardingDate: '',
     potentialStudentsCount: '',
     remarks: '',
+    lostReason: '',
     websiteLink: '',
     icpScore: undefined as number | undefined,
     trainingDate: '',
@@ -282,9 +285,17 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
       scrollToFormAlert();
       return;
     }
+    if (isLostLeadStatus(formData.status) && !formData.lostReason.trim()) {
+      setFormAlert('Please select or enter a Lost reason.');
+      scrollToFormAlert();
+      return;
+    }
     setFormAlert(null);
     setIsSubmitting(true);
     try {
+      if (isLostLeadStatus(formData.status) && formData.lostReason.trim()) {
+        await ensureCustomLostReason(formData.lostReason.trim()).catch(() => null);
+      }
       const contactId = `contact_${Date.now()}`;
       await onAddLead({
         agencyName: formData.agencyName.trim(),
@@ -296,6 +307,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         accountManager: formData.accountManager.trim() || undefined,
         salesPerson: formData.salesPerson.trim() || undefined,
         remarks: formData.remarks.trim() || undefined,
+        lostReason: isLostLeadStatus(formData.status) ? formData.lostReason.trim() || undefined : undefined,
         websiteLink: formData.websiteLink.trim() || undefined,
         icpScore: formData.icpScore ?? undefined,
         onboardingDate: formData.onboardingDate.trim() || undefined,
@@ -572,12 +584,22 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 <label className="block text-sm font-bold text-slate-800 mb-1">📊 Status</label>
                 <select
                   value={formData.status}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
+                  onChange={(e) => {
+                    const status = e.target.value as Lead['status'];
+                    handleInputChange('status', status);
+                    if (!isLostLeadStatus(status)) handleInputChange('lostReason', '');
+                  }}
                   className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
                 >
                   {LEAD_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
+              {isLostLeadStatus(formData.status) && (
+                <LostReasonPicker
+                  value={formData.lostReason}
+                  onChange={(lostReason) => handleInputChange('lostReason', lostReason)}
+                />
+              )}
               <div>
                 <label className="block text-sm font-bold text-slate-800 mb-1">🔍 Lead Source</label>
                 <select

@@ -103,6 +103,27 @@ async function getLeadsColumns() {
     return _leadsColumns;
 }
 
+function invalidateLeadsColumnsCache() {
+    _leadsColumns = null;
+}
+
+/** Ensure leads table has a column to store why a lead was marked Lost. */
+export async function ensureLostReasonColumn() {
+    const table = await getLeadsTable();
+    const tableName = String(table).replace(/`/g, '');
+    const [rows] = await db.query(
+        `SELECT COLUMN_NAME AS name
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+           AND LOWER(COLUMN_NAME) IN ('lostreason', 'lost_reason')`,
+        [tableName]
+    );
+    if ((rows || []).length) return { created: false };
+    await db.query(`ALTER TABLE ${table} ADD COLUMN lostReason VARCHAR(255) NULL`);
+    invalidateLeadsColumnsCache();
+    return { created: true };
+}
+
 // camelCase -> snake_case (e.g. agencyName -> agency_name)
 function camelToSnake(str) {
     return str.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
@@ -238,7 +259,7 @@ function hydrateTrainingFields(lead) {
 
 const ADD_LEAD_KEYS = [
     'agencyName', 'status', 'agentCategory', 'leadSource', 'tags', 'accountManager', 'salesPerson',
-    'contacts', 'followUps', 'countryInterest', 'agencyDocuments', 'remarks', 'websiteLink', 'icpScore', 'createdBy',
+    'contacts', 'followUps', 'countryInterest', 'agencyDocuments', 'remarks', 'lostReason', 'websiteLink', 'icpScore', 'createdBy',
     'onboardingDate', 'applicants', 'trainingDate', 'trainingScore'
 ];
 
@@ -274,6 +295,7 @@ export const addLead = async (lead) => {
         else if (key === 'countryInterest') values.push(toJson(lead.countryInterest));
         else if (key === 'agencyDocuments') values.push(toJson(lead.agencyDocuments));
         else if (key === 'remarks') values.push(lead.remarks || '');
+        else if (key === 'lostReason') values.push(lead.lostReason || null);
         else if (key === 'websiteLink') values.push(lead.websiteLink || '');
         else if (key === 'icpScore') values.push(lead.icpScore ?? 0);
         else if (key === 'createdBy') values.push(lead.createdBy || 'System');

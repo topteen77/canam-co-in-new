@@ -39,6 +39,7 @@ const formatLead = (lead) => ({
       agencyDocuments: parseJSON(lead.agencyDocuments || lead.agency_documents),
       
       remarks: lead.remarks || '',
+      lostReason: lead.lostReason || lead.lost_reason || '',
       websiteLink: lead.websiteLink || lead.website_link || ''
 });
 

@@ -108,8 +108,34 @@ input, select, textarea {
   animation: meeting-alert-pulse 1.4s ease-in-out infinite;
 }
 
+@keyframes in-meeting-label-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.in-meeting-label {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  animation: in-meeting-label-blink 1.2s ease-in-out infinite;
+}
+
+.live-meeting-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+  font-weight: 700;
+  animation: meeting-alert-pulse 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .app-header-btn--alert {
+  .app-header-btn--alert,
+  .in-meeting-label,
+  .live-meeting-active {
     animation: none;
   }
 }

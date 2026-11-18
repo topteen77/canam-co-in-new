@@ -60,6 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: 'last-login-info', label: 'Last login info', icon: '🕘', view: 'last-login-info' },
         { id: 'state-master', label: 'State Master', icon: '🗺️', view: 'state-master' },
         { id: 'city-master', label: 'City Master', icon: '🏙️', view: 'city-master' },
+        { id: 'lost-reason-master', label: 'Lost Reason Master', icon: '❗', view: 'lost-reason-master' },
       ] : []),
       // { id: 'meeting-photos', label: 'Meeting Photos', icon: '📸', view: 'meeting-photos' }
     ] : [])

@@ -19,6 +19,7 @@ import { getUserDisplayName as utilGetUserDisplayName } from './utils/dataCleani
 import { canMutateLead } from './utils/leadPermissions';
 import { appendLeadFollowUp, mergeLeadFields, sameLeadId } from './utils/leadState';
 import { getAssignedLeads } from './utils/leadVisibility';
+import { countActiveMeetings, userHasActiveMeeting } from './utils/meetingActive';
 import type { FollowUp, Lead, AttendanceRecord, MeetingCheckInRecord } from './types';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES, COUNTRY_OPTIONS } from './types';
 
@@ -71,6 +72,7 @@ import LastLoginPopup from './components/LastLoginPopup';
 import KommunoLiveCalls from './components/KommunoLiveCalls';
 import LastLoginInfo from './components/LastLoginInfo';
 import LocationMaster from './components/LocationMaster';
+import LostReasonMaster from './components/LostReasonMaster';
 import TrainingTargets from './components/TrainingTargets';
 import UserAvatar from './components/UserAvatar';
 import PageLoader from './components/PageLoader';
@@ -337,9 +339,16 @@ const App: React.FC = () => {
       return attendanceRecords.find(r => r.username === currentUser && (r.date === today || (r.checkInTime && String(r.checkInTime).startsWith(today))));
   }, [attendanceRecords, currentUser]);
 
-  const hasActiveMeeting = useMemo(() => 
-    meetingCheckIns.some(m => m.username === currentUser && !m.checkOutTime),
+  // Personal "In Meeting" — only the signed-in user's active meeting (admin included).
+  const hasActiveMeeting = useMemo(
+    () => userHasActiveMeeting(meetingCheckIns, currentUser),
     [meetingCheckIns, currentUser]
+  );
+
+  // Admin can see how many team members are currently in an active meeting.
+  const teamActiveMeetingCount = useMemo(
+    () => (isAdmin ? countActiveMeetings(meetingCheckIns, { isAdmin: true }) : 0),
+    [meetingCheckIns, isAdmin]
   );
 
   useMeetingPresenceWatch(currentUser, hasActiveMeeting);
@@ -825,9 +834,10 @@ const App: React.FC = () => {
                     {view === 'last-login-info' && (<> <span className="sm:hidden">Logins</span><span className="hidden sm:inline">Last Login Info</span></>)}
                     {view === 'state-master' && (<> <span className="sm:hidden">States</span><span className="hidden sm:inline">State Master</span></>)}
                     {view === 'city-master' && (<> <span className="sm:hidden">Cities</span><span className="hidden sm:inline">City Master</span></>)}
+                    {view === 'lost-reason-master' && (<> <span className="sm:hidden">Lost</span><span className="hidden sm:inline">Lost Reason Master</span></>)}
                     {view === 'meeting-photos' && <><span className="sm:hidden">Photos</span><span className="hidden sm:inline">Meeting Photos Gallery</span></>}
                     {view === 'website-control' && (<> <span className="sm:hidden">Site</span><span className="hidden sm:inline">Website Control</span></>)}
-                    {!['leads', 'pipeline', 'meetings', 'followups', 'live-tracking', 'travel-claims', 'reports', 'calls-report', 'bulk-email', 'notifications', 'admin-users', 'training-targets', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'meeting-photos', 'website-control'].includes(view) && view.replace(/-/g, ' ')}
+                    {!['leads', 'pipeline', 'meetings', 'followups', 'live-tracking', 'travel-claims', 'reports', 'calls-report', 'bulk-email', 'notifications', 'admin-users', 'training-targets', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'lost-reason-master', 'meeting-photos', 'website-control'].includes(view) && view.replace(/-/g, ' ')}
                   </h1>
                 </div>
                 <div className="app-header-actions flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
@@ -873,7 +883,13 @@ const App: React.FC = () => {
                   <button
                     onClick={() => setIsMeetingCheckInModalOpen(true)}
                     className={`app-header-btn ${hasActiveMeeting ? 'app-header-btn--alert' : 'app-header-btn--ghost'}`}
-                    title={hasActiveMeeting ? 'Active meeting' : 'Meeting check-in'}
+                    title={
+                      hasActiveMeeting
+                        ? 'You are in an active meeting'
+                        : isAdmin && teamActiveMeetingCount > 0
+                          ? `${teamActiveMeetingCount} team member${teamActiveMeetingCount === 1 ? '' : 's'} in active meeting`
+                          : 'Meeting check-in'
+                    }
                     aria-label={hasActiveMeeting ? 'Active meeting' : 'Meeting check-in'}
                   >
                     {hasActiveMeeting && (
@@ -882,8 +898,15 @@ const App: React.FC = () => {
                         <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-orange-600" />
                       </span>
                     )}
+                    {!hasActiveMeeting && isAdmin && teamActiveMeetingCount > 0 && (
+                      <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden>
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-sky-500" />
+                      </span>
+                    )}
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    <span className="hidden md:inline">{hasActiveMeeting ? 'In Meeting' : 'Meeting'}</span>
+                    <span className={`hidden md:inline ${hasActiveMeeting ? 'in-meeting-label' : ''}`}>
+                      {hasActiveMeeting ? 'In Meeting' : 'Meeting'}
+                    </span>
                   </button>
                   <NotificationBell
                     notifications={visibleNotifications}
@@ -1050,13 +1073,14 @@ const App: React.FC = () => {
                     {view === 'last-login-info' && isAdmin && <LastLoginInfo availableUsers={availableUsers} />}
                     {view === 'state-master' && isAdmin && <LocationMaster mode="states" />}
                     {view === 'city-master' && isAdmin && <LocationMaster mode="cities" />}
+                    {view === 'lost-reason-master' && isAdmin && <LostReasonMaster />}
                     {view === 'meeting-photos' && <MeetingPhotosAdmin isOpen={true} onClose={() => setView('leads')} />}
                     {view === 'website-control' && isAdmin && (
                         <div className="bg-white p-4 rounded-xl shadow">
                             <WebsiteControlPanel isAdmin={isAdmin} />
                         </div>
                     )}
-                    {!['leads', 'pipeline', 'reports', 'meetings', 'followups', 'notifications', 'calls-report', 'travel-claims', 'bulk-email', 'live-tracking', 'website-control', 'admin-users', 'training-targets', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'meeting-photos'].includes(view) && (
+                    {!['leads', 'pipeline', 'reports', 'meetings', 'followups', 'notifications', 'calls-report', 'travel-claims', 'bulk-email', 'live-tracking', 'website-control', 'admin-users', 'training-targets', 'usage-report', 'database-admin', 'data-export', 'last-login-info', 'state-master', 'city-master', 'lost-reason-master', 'meeting-photos'].includes(view) && (
                         <div className="text-slate-600 text-center py-8">Select a section from the sidebar.</div>
                     )}
                 </>
