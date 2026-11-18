@@ -124,12 +124,20 @@ export const buildNotifications = ({
 
       const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
 
-      const leadOwnedByUser = lead.accountManager === currentUser || lead.salesPerson === currentUser || lead.createdBy === currentUser;
+      const leadOwnedByUser =
+        lead.accountManager === currentUser ||
+        lead.salesPerson === currentUser ||
+        lead.createdBy === currentUser;
 
       safeFollowUps.forEach((followUp: any) => {
         const assignedTo = followUp.assignedTo || lead.accountManager;
         const createdBy = followUp.createdBy;
-        const isAssignedToUser = assignedTo === currentUser || createdBy === currentUser || leadOwnedByUser;
+        // Admin sees every follow-up, including unassigned leads / missing assignees
+        const isAssignedToUser =
+          isAdmin ||
+          assignedTo === currentUser ||
+          createdBy === currentUser ||
+          leadOwnedByUser;
 
         // Planned: upcoming/overdue follow-ups (show if assigned to user, or if user owns the lead)
         if (followUp.status === 'Planned') {

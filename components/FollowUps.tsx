@@ -286,10 +286,16 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
   // All follow-ups with simple filtering
   const allFollowUpsFiltered = useMemo(() => {
     return filteredFollowUps.filter(followUp => {
-      // User filter
-      const userMatches = userFilter === 'all' ||
-        (followUp.assignedTo && followUp.assignedTo.toLowerCase().includes(userFilter.toLowerCase())) ||
-        (followUp.leadId && leads.find(l => l.id === followUp.leadId)?.createdBy?.toLowerCase().includes(userFilter.toLowerCase()));
+      // User filter (admin can isolate unassigned leads / follow-ups)
+      const leadForFilter = followUp.leadId ? leads.find(l => l.id === followUp.leadId) : undefined;
+      const effectiveAssignee = followUp.assignedTo || leadForFilter?.accountManager || '';
+      const userMatches =
+        userFilter === 'all' ||
+        (userFilter === 'unassigned' && !String(effectiveAssignee).trim()) ||
+        (userFilter !== 'unassigned' && (
+          (followUp.assignedTo && followUp.assignedTo.toLowerCase().includes(userFilter.toLowerCase())) ||
+          (leadForFilter?.createdBy?.toLowerCase().includes(userFilter.toLowerCase()))
+        ));
 
       // Agency Category filter
       const agencyCategoryMatches = agencyCategoryFilter === 'all' ||
@@ -911,7 +917,9 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {userFilter !== 'all' && (
-                        <span className="lead-chip bg-sky-50 text-sky-800 border-sky-200">User: {getUserDisplayName(userFilter)}</span>
+                        <span className="lead-chip bg-sky-50 text-sky-800 border-sky-200">
+                          User: {userFilter === 'unassigned' ? 'Unassigned' : getUserDisplayName(userFilter)}
+                        </span>
                       )}
                       {agencyCategoryFilter !== 'all' && (
                         <span className="lead-chip bg-amber-50 text-amber-800 border-amber-200">Category: {agencyCategoryFilter}</span>
@@ -953,6 +961,7 @@ const FollowUpsInner: React.FC<FollowUpsProps> = ({
                           }
                         >
                           <option value="all">All Users</option>
+                          {isAdmin && <option value="unassigned">Unassigned</option>}
                           <UserFilterOptions users={availableUsers} />
                         </select>
                       </div>

@@ -1394,7 +1394,11 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
     [filters.state, filters.country, contactLocations]
   );
 
-  const uniqueAccountManagers = [...new Set(catalogLeads.map(lead => lead.accountManager).filter(Boolean))];
+  const hasUnassignedLeads = catalogLeads.some(lead => !String(lead.accountManager || '').trim());
+  const uniqueAccountManagers = [
+    ...(props.isAdmin && hasUnassignedLeads ? [''] : []),
+    ...new Set(catalogLeads.map(lead => lead.accountManager).filter(Boolean)),
+  ];
   const uniqueSalesPersons = [...new Set(catalogLeads.map(lead => lead.salesPerson).filter(Boolean))];
   const uniqueCreatedBy = [...new Set(catalogLeads.map(lead => lead.createdBy).filter(Boolean))];
   
@@ -1790,7 +1794,9 @@ export const ItineraryForm: React.FC<LeadsDashboardProps> = (props) => {
                         <MultiSelect
                             options={uniqueAccountManagers.map(manager => ({ 
                                 value: manager, 
-                                label: getUserDisplayName(manager as string, props.availableUsers || [])
+                                label: manager
+                                  ? getUserDisplayName(manager as string, props.availableUsers || [])
+                                  : 'Unassigned'
                             }))}
                             selectedValues={filters.accountManager}
                             onChange={(values) => setFilters(prev => ({ ...prev, accountManager: values }))}
