@@ -34,10 +34,17 @@ export async function deleteLostReason(id: string) {
   return data;
 }
 
-/** Persist a custom "Other" reason into master so it appears next time. */
+/** Persist custom "Other" reason(s) into master so they appear next time. Supports "A | B" multi values. */
 export async function ensureCustomLostReason(name: string) {
-  const trimmed = String(name || '').trim();
-  if (!trimmed) return null;
-  const { data } = await apiClient.post('/lost-reason-master/ensure', { name: trimmed });
-  return data;
+  const parts = String(name || '')
+    .split(/\s*\|\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  let last: unknown = null;
+  for (const trimmed of parts) {
+    const { data } = await apiClient.post('/lost-reason-master/ensure', { name: trimmed });
+    last = data;
+  }
+  return last;
 }
