@@ -47,41 +47,6 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
     }
   };
 
-  const handleDownload = async () => {
-    if (!safeUrl) {
-      alert('Error: File URL is missing.');
-      return;
-    }
-
-    try {
-      if (document.isBase64) {
-        // Handle base64 documents
-        const link = document.createElement('a');
-        link.href = safeUrl;
-        link.download = safeFileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        // Handle regular URL documents
-        const response = await fetch(safeUrl);
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = window.document.createElement('a');
-        a.href = url;
-        a.download = safeFileName;
-        window.document.body.appendChild(a);
-        a.click();
-        window.document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-      }
-    } catch (error) {
-      console.error('❌ Download failed:', error);
-      // Fallback
-      window.open(safeUrl, '_blank');
-    }
-  };
-
   const handleMouseDown = (e: React.MouseEvent) => {
     if (zoom > 100) {
       setIsDragging(true);
@@ -166,13 +131,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
             </button>
           </div>
 
-          <button
-            onClick={handleDownload}
-            className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold text-sm flex items-center gap-2"
-          >
-            <span>⬇</span>
-            Download
-          </button>
+          <span className="text-sm text-slate-500">Preview only</span>
         </div>
 
         {/* Document Display */}
@@ -183,6 +142,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
+          onContextMenu={(event) => event.preventDefault()}
         >
           <div className="absolute inset-0 flex items-center justify-center overflow-auto">
             {isImage ? (
@@ -199,7 +159,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
               />
             ) : isPDF ? (
               <iframe
-                src={`${safeUrl}#toolbar=1&navpanes=0&scrollbar=1`}
+                src={safeUrl ? `${safeUrl}#toolbar=0&navpanes=0&scrollbar=1` : undefined}
                 className="w-full h-full border-0"
                 title={safeFileName}
               />
@@ -208,15 +168,9 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 <div className="text-white mb-4">
                   <p className="text-lg font-semibold mb-2">Preview not available</p>
                   <p className="text-sm text-slate-300">
-                    This file type cannot be previewed in the browser.
+                    This file type cannot be previewed in the browser. Download is not available.
                   </p>
                 </div>
-                <button
-                  onClick={handleDownload}
-                  className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold"
-                >
-                  Download to View
-                </button>
               </div>
             )}
           </div>

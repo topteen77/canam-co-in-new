@@ -4,7 +4,6 @@ import {
   createTrainingDocument,
   deleteTeamTarget,
   deleteTrainingDocument,
-  downloadTrainingDocument,
   fetchTrainingDocumentBlob,
   fetchTrainingMeta,
   fileToBase64,
@@ -311,15 +310,18 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
     try {
       setError(null);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
+      const pdf = isPdfFile(doc.fileName) || isPdfFile(doc.fileType);
+      setPreviewTitle(doc.title || doc.fileName);
+      if (!pdf) {
+        if (previewUrl && previewUrl !== localPreviewUrl) URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+        setPreviewKind('other');
+        return;
+      }
       const blob = await fetchTrainingDocumentBlob(doc.id);
       const url = URL.createObjectURL(blob);
-      const pdf = isPdfFile(doc.fileName) || isPdfFile(doc.fileType);
       setPreviewUrl(url);
-      setPreviewTitle(doc.title || doc.fileName);
-      setPreviewKind(pdf ? 'pdf' : 'other');
-      if (!pdf) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
+      setPreviewKind('pdf');
     } catch (err: any) {
       setError(err?.message || 'Preview failed');
     }
@@ -639,13 +641,6 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
                       >
                         Preview
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => downloadTrainingDocument(doc.id, doc.fileName).catch((err) => setError(err.message))}
-                        className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
-                      >
-                        Download
-                      </button>
                       {isAdmin && (
                         <>
                           <button
@@ -834,23 +829,38 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
         </div>
       )}
 
-      {previewUrl && previewKind === 'pdf' && (
+      {(previewUrl || previewKind === 'other') && previewTitle && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
-              <h3 className="font-semibold text-slate-900 truncate">{previewTitle}</h3>
+              <div className="min-w-0">
+                <h3 className="font-semibold text-slate-900 truncate">{previewTitle}</h3>
+                <p className="text-xs text-slate-500">Preview only</p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   if (previewUrl && previewUrl !== localPreviewUrl) URL.revokeObjectURL(previewUrl);
                   setPreviewUrl(null);
+                  setPreviewKind('other');
+                  setPreviewTitle('');
                 }}
                 className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
               >
                 Close
               </button>
             </div>
-            <iframe title="Document preview" src={previewUrl} className="flex-1 w-full bg-slate-100" />
+            {previewUrl && previewKind === 'pdf' ? (
+              <iframe
+                title="Document preview"
+                src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                className="flex-1 w-full bg-slate-100"
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center p-8 text-center text-slate-600">
+                This file type cannot be previewed in the browser. Download is not available.
+              </div>
+            )}
           </div>
         </div>
       )}

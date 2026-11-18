@@ -101,16 +101,8 @@ export async function fetchTrainingDocumentBlob(id: string): Promise<Blob> {
   return res.blob();
 }
 
-export async function downloadTrainingDocument(id: string, fileName: string): Promise<void> {
-  const blob = await fetchTrainingDocumentBlob(id);
-  const objectUrl = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = objectUrl;
-  a.download = fileName || 'training-document';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(objectUrl);
+export async function downloadTrainingDocument(_id: string, _fileName: string): Promise<void> {
+  throw new Error('Documents can be previewed only. Download is not available.');
 }
 
 export function isPdfFile(nameOrType: string): boolean {

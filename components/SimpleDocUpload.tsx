@@ -22,6 +22,7 @@ export const SimpleDocUpload: React.FC<SimpleDocUploadProps> = ({
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ src: string; name: string; type: string } | null>(null);
 
   const compressImage = (file: File, maxWidth: number = 1200, quality: number = 0.7): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -160,62 +161,9 @@ export const SimpleDocUpload: React.FC<SimpleDocUploadProps> = ({
     }
   };
 
-  const handleDownload = (dataUrl: string, fileName: string) => {
-    try {
-        const link = document.createElement('a');
-        link.href = dataUrl;
-        link.download = fileName;
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } catch (e) {
-        console.error("Download failed:", e);
-        alert("Failed to download file. Please try again.");
-    }
-  };
-
   const handlePreview = (dataUrl: string, fileName: string, fileType: string) => {
-    try {
-        const newWindow = window.open();
-        if (newWindow) {
-          if (fileType.startsWith('image/')) {
-            newWindow.document.write(`
-              <html>
-                <head><title>${fileName}</title></head>
-                <body style="margin:0; padding:20px; background:#f5f5f5; text-align:center;">
-                  <img src="${dataUrl}" style="max-width:100%; height:auto; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1);" />
-                </body>
-              </html>
-            `);
-          } else if (fileType === 'application/pdf') {
-            // Check if base64 PDF, otherwise download might be safer for some browsers
-             newWindow.document.write(
-                `<iframe width='100%' height='100%' src='${dataUrl}'></iframe>`
-             );
-          } else {
-            // For other file types, show download option
-            newWindow.document.write(`
-              <html>
-                <head><title>${fileName}</title></head>
-                <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center; background: #f5f5f5;">
-                  <div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: inline-block;">
-                    <h2 style="color: #1e293b; margin-bottom: 10px;">${fileName}</h2>
-                    <p style="color: #64748b; margin-bottom: 20px;">This file type cannot be previewed in the browser.</p>
-                    <p style="color: #64748b; margin-bottom: 30px;">Please download the file to view it.</p>
-                    <a href="${dataUrl}" download="${fileName}" style="display: inline-block; padding: 12px 24px; background: #4f46e5; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; transition: background 0.2s;">⬇️ Download File</a>
-                  </div>
-                </body>
-              </html>
-            `);
-          }
-        } else {
-            alert("Pop-up blocked! Please allow pop-ups for this site to view documents.");
-        }
-    } catch (e) {
-        console.error("Preview failed:", e);
-        alert("Failed to open preview.");
-    }
+    if (!dataUrl) return;
+    setPreview({ src: dataUrl, name: fileName || 'Document', type: fileType || '' });
   };
 
   return (
@@ -248,20 +196,6 @@ export const SimpleDocUpload: React.FC<SimpleDocUploadProps> = ({
               </div>
             </div>
             <div className="flex gap-2 flex-shrink-0">
-              {(currentDocument.fileData || currentDocument.url) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const dataUrl = currentDocument.fileData || currentDocument.url;
-                    const fileName = currentDocument.fileName || `document.${currentDocument.fileType?.split('/').pop() || 'pdf'}`;
-                    handleDownload(dataUrl, fileName);
-                  }}
-                  className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                  title="Download document"
-                >
-                  ⬇️ Download
-                </button>
-              )}
               {(currentDocument.fileData || currentDocument.url) && (
                 <button
                   type="button"
@@ -310,6 +244,41 @@ export const SimpleDocUpload: React.FC<SimpleDocUploadProps> = ({
       {error && (
         <div className="text-xs text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">
           <span>⚠️ {error}</span>
+        </div>
+      )}
+
+      {preview && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onContextMenu={(event) => event.preventDefault()}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="font-semibold text-slate-900 truncate">{preview.name}</h3>
+                <p className="text-xs text-slate-500">Preview only</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreview(null)}
+                className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+            {preview.type.startsWith('image/') ? (
+              <div className="flex-1 overflow-auto bg-slate-50 flex items-center justify-center p-4">
+                <img src={preview.src} alt={preview.name} draggable={false} className="max-w-full max-h-full object-contain" />
+              </div>
+            ) : preview.type === 'application/pdf' ? (
+              <iframe
+                title={preview.name}
+                src={`${preview.src}#toolbar=0&navpanes=0&scrollbar=1`}
+                className="flex-1 w-full bg-slate-100"
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center p-8 text-center text-slate-600">
+                This file type cannot be previewed in the browser. Download is not available.
+              </div>
+            )}
+          </div>
         </div>
       )}
 

@@ -32,21 +32,7 @@ export const SimpleDocViewer: React.FC<SimpleDocViewerProps> = ({
   const fileType = document.fileType || '';
   const isImage = fileType.startsWith('image/');
   const isPDF = fileType === 'application/pdf';
-
-  const handleDownload = () => {
-    try {
-      const link = window.document.createElement('a');
-      link.href = document.fileData || document.url;
-      link.download = document.fileName || 'download';
-      link.target = '_blank'; // Fallback for some mobile browsers
-      window.document.body.appendChild(link); // Required for Firefox
-      link.click();
-      window.document.body.removeChild(link);
-    } catch (e) {
-      console.error("Download failed", e);
-      alert("Could not download file. Please try again.");
-    }
-  };
+  const previewSrc = document.fileData || document.url || '';
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 300));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 25));
@@ -65,12 +51,7 @@ export const SimpleDocViewer: React.FC<SimpleDocViewerProps> = ({
             </p>
           </div>
           <div className="flex gap-2 flex-shrink-0">
-            <button
-              onClick={handleDownload}
-              className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-            >
-              📥 Download
-            </button>
+            <span className="px-3 py-1.5 text-sm text-slate-500">Preview only</span>
             <button
               onClick={onClose}
               className="px-3 py-1.5 text-sm bg-slate-100 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors"
@@ -81,14 +62,16 @@ export const SimpleDocViewer: React.FC<SimpleDocViewerProps> = ({
         </div>
 
         {/* Document Content */}
-        <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50 min-h-[300px] flex items-center justify-center relative">
+        <div
+          className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50 min-h-[300px] flex items-center justify-center relative"
+          onContextMenu={(event) => event.preventDefault()}
+        >
           {isImage ? (
             <div className="relative w-full h-full flex items-center justify-center overflow-auto p-4">
               {imgError ? (
                 <div className="text-center p-8">
                   <div className="text-4xl mb-2">⚠️</div>
                   <p className="text-slate-500">Failed to load image preview.</p>
-                  <button onClick={handleDownload} className="mt-2 text-indigo-600 hover:underline">Download to view</button>
                 </div>
               ) : (
                 <>
@@ -98,8 +81,9 @@ export const SimpleDocViewer: React.FC<SimpleDocViewerProps> = ({
                     </div>
                   )}
                   <img
-                    src={document.fileData || document.url}
+                    src={previewSrc}
                     alt={document.fileName}
+                    draggable={false}
                     className="max-w-full h-auto object-contain transition-transform duration-200 ease-out"
                     style={{
                       transform: `scale(${zoom / 100})`,
@@ -146,7 +130,7 @@ export const SimpleDocViewer: React.FC<SimpleDocViewerProps> = ({
           ) : isPDF ? (
             <div className="w-full h-[600px] bg-white">
               <iframe
-                src={document.fileData || document.url}
+                src={previewSrc ? `${previewSrc}#toolbar=0&navpanes=0&scrollbar=1` : undefined}
                 className="w-full h-full border-0"
                 title={document.fileName}
               />
@@ -155,15 +139,9 @@ export const SimpleDocViewer: React.FC<SimpleDocViewerProps> = ({
             <div className="p-12 text-center">
               <div className="text-6xl mb-4 opacity-50">📄</div>
               <h3 className="text-lg font-semibold text-slate-800 mb-2">{document.fileName}</h3>
-              <p className="text-slate-600 mb-6">
-                This file type cannot be previewed in the browser.
+              <p className="text-slate-600">
+                This file type cannot be previewed in the browser. Download is not available.
               </p>
-              <button
-                onClick={handleDownload}
-                className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm font-medium"
-              >
-                📥 Download File
-              </button>
             </div>
           )}
         </div>

@@ -1,5 +1,94 @@
 import React, { useState, useRef } from 'react';
 
+const waitForPaint = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 30));
+  });
+
+const isSlowDevice = () => {
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const lowMemory = typeof nav.deviceMemory === 'number' && nav.deviceMemory <= 4;
+  const fewCores = (navigator.hardwareConcurrency || 8) <= 4;
+  return mobile || lowMemory || fewCores;
+};
+
+const blobToDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Could not read the prepared photo'));
+    reader.readAsDataURL(blob);
+  });
+
+const compressImage = (file: File, quality: number): Promise<string> => {
+  return new Promise(async (resolve, reject) => {
+    const slow = isSlowDevice();
+    const maxEdge = slow ? 1280 : 1600;
+    const jpegQuality = slow ? Math.min(quality, 0.62) : quality;
+    let bitmap: ImageBitmap | null = null;
+
+    try {
+      if (typeof createImageBitmap === 'function') {
+        bitmap = await createImageBitmap(file);
+      }
+    } catch {
+      bitmap = null;
+    }
+
+    const draw = (source: CanvasImageSource, sourceWidth: number, sourceHeight: number) => {
+      const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('This phone could not prepare the photo');
+      ctx.drawImage(source, 0, 0, width, height);
+      canvas.toBlob(async (blob) => {
+        bitmap?.close();
+        if (!blob) {
+          reject(new Error('Could not prepare the photo'));
+          return;
+        }
+        try {
+          resolve(await blobToDataUrl(blob));
+        } catch (error) {
+          reject(error);
+        }
+      }, 'image/jpeg', jpegQuality);
+    };
+
+    if (bitmap) {
+      try {
+        draw(bitmap, bitmap.width, bitmap.height);
+        return;
+      } catch (error) {
+        bitmap.close();
+        reject(error);
+        return;
+      }
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      try {
+        draw(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Could not open this photo'));
+    };
+    img.src = objectUrl;
+  });
+};
+
 interface EnhancedPhotoUploadProps {
   onUploadComplete: (photos: string[], fileSize?: string) => void;
   onUploadError: (error: string) => void;
@@ -20,60 +109,8 @@ export const EnhancedPhotoUpload: React.FC<EnhancedPhotoUploadProps> = ({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [compressionProgress, setCompressionProgress] = useState(0);
+  const [statusText, setStatusText] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Image compression function
-  const compressImage = (file: File, quality: number): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      
-      const objectUrl = URL.createObjectURL(file);
-      
-      img.onload = () => {
-        // Calculate new dimensions (max 1920x1080 for performance)
-        const maxWidth = 1920;
-        const maxHeight = 1080;
-        let { width, height } = img;
-        
-        if (width > maxWidth || height > maxHeight) {
-          const ratio = Math.min(maxWidth / width, maxHeight / height);
-          width *= ratio;
-          height *= ratio;
-        }
-        
-        // 🟢 SAFE FIX: Guard against zero dimensions
-        if (width <= 0 || height <= 0) {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error('Invalid image dimensions'));
-            return;
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        // Draw and compress
-        try {
-            ctx?.drawImage(img, 0, 0, width, height);
-            const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-            resolve(compressedDataUrl);
-        } catch (e) {
-            reject(e);
-        } finally {
-            // 🟢 SAFE FIX: Cleanup memory
-            URL.revokeObjectURL(objectUrl);
-        }
-      };
-      
-      img.onerror = () => {
-          URL.revokeObjectURL(objectUrl);
-          reject(new Error('Failed to load image'));
-      };
-      
-      img.src = objectUrl;
-    });
-  };
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
@@ -102,11 +139,10 @@ export const EnhancedPhotoUpload: React.FC<EnhancedPhotoUploadProps> = ({
     }
     
     setSelectedFiles(validFiles);
-    console.log('✅ Valid files:', validFiles.length);
-    
-    // Automatically upload when files are selected
-    // Note: We need to pass the files directly because state updates are async
-    // and setSelectedFiles won't have updated 'selectedFiles' in time for this call
+    setUploading(true);
+    setCompressionProgress(8);
+    setStatusText(validFiles.length === 1 ? 'Photo received. Preparing it…' : `${validFiles.length} photos received. Preparing them…`);
+    await waitForPaint();
     await uploadPhotos(validFiles);
     
     // Clear the input so the same file can be selected again
@@ -124,26 +160,25 @@ export const EnhancedPhotoUpload: React.FC<EnhancedPhotoUploadProps> = ({
       return;
     }
 
-    console.log('🚀 Starting upload with compression...');
     setUploading(true);
-    setCompressionProgress(0);
+    setStatusText('Making the photo smaller so this stays smooth…');
+    await waitForPaint();
 
     try {
       const compressedPhotos: string[] = [];
       
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        console.log(`📸 Compressing photo ${i + 1}/${files.length}: ${file.name}`);
+        setStatusText(`Preparing photo ${i + 1} of ${files.length}…`);
+        setCompressionProgress(Math.max(12, (i / files.length) * 100));
+        await waitForPaint();
         
         try {
-          // Compress the image
           const compressedDataUrl = await compressImage(file, compressionQuality);
           compressedPhotos.push(compressedDataUrl);
-          
-          // Update progress
           setCompressionProgress(((i + 1) / files.length) * 100);
-          
-          console.log(`✅ Photo ${i + 1} compressed successfully`);
+          setStatusText(`Photo ${i + 1} of ${files.length} is ready`);
+          await waitForPaint();
         } catch (error) {
           console.error(`❌ Failed to compress photo ${i + 1}:`, error);
           // Fallback to original if compression fails
@@ -163,8 +198,10 @@ export const EnhancedPhotoUpload: React.FC<EnhancedPhotoUploadProps> = ({
         }
       }
 
-      console.log('✅ All photos compressed:', compressedPhotos.length);
-      
+      if (compressedPhotos.length === 0) {
+        throw new Error('No photo could be prepared. Try again with a smaller picture.');
+      }
+
       // Calculate total size after compression
       const totalSize = compressedPhotos.reduce((total, photo) => {
         // Base64 data URL size calculation (approximately)
@@ -174,9 +211,13 @@ export const EnhancedPhotoUpload: React.FC<EnhancedPhotoUploadProps> = ({
       const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
       const fileSizeText = `${totalSizeMB}MB`;
       
+      setStatusText('Photo ready');
+      setCompressionProgress(100);
+      await waitForPaint();
       onUploadComplete(compressedPhotos, fileSizeText);
       setSelectedFiles([]);
       setCompressionProgress(0);
+      setStatusText('');
       
     } catch (error) {
       console.error('❌ Upload error:', error);
@@ -237,7 +278,7 @@ export const EnhancedPhotoUpload: React.FC<EnhancedPhotoUploadProps> = ({
           disabled={disabled || uploading}
           className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold flex items-center justify-center gap-2"
         >
-          {uploading ? 'Processing...' : '📸 Select Photos'}
+          {uploading ? 'Please wait…' : '📸 Take or choose photo'}
         </button>
       </div>
 
@@ -264,17 +305,18 @@ export const EnhancedPhotoUpload: React.FC<EnhancedPhotoUploadProps> = ({
           </div>
           
           {uploading && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span>Compressing photos...</span>
-                <span>{Math.round(compressionProgress)}%</span>
+            <div className="space-y-2 rounded-lg border border-green-200 bg-white p-3" role="status" aria-live="polite">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium text-green-900">{statusText || 'Preparing your photo…'}</span>
+                <span className="tabular-nums text-green-800">{Math.round(compressionProgress)}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${compressionProgress}%` }}
-                ></div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-green-100">
+                <div
+                  className="h-2.5 rounded-full bg-green-600 transition-all duration-300"
+                  style={{ width: `${Math.max(compressionProgress, 8)}%` }}
+                />
               </div>
+              <p className="text-xs text-slate-600">Keep this screen open. A phone photo can take a few seconds.</p>
             </div>
           )}
           
