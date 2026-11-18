@@ -11,6 +11,8 @@ interface SimpleMeetingCheckInProps {
   availableUsers: Array<{ id: string, name: string, email: string, role: string }>;
   userLeads: Lead[];
   currentUser: string;
+  /** Refresh parent meeting list so header "In Meeting" stays in sync. */
+  onMeetingsChange?: () => void | Promise<void>;
 }
 
 export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
@@ -18,7 +20,8 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
   onClose,
   availableUsers,
   userLeads,
-  currentUser
+  currentUser,
+  onMeetingsChange,
 }) => {
   const [selectedSalesPerson, setSelectedSalesPerson] = useState('');
   const [personMeetingName, setPersonMeetingName] = useState('');
@@ -88,9 +91,13 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
   // Check for active meeting
   useEffect(() => {
     if (isOpen && currentUser) {
-      checkActiveMeeting();
+      void (async () => {
+        await checkActiveMeeting();
+        // Keep header blink state aligned with live API data.
+        await onMeetingsChange?.();
+      })();
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, onMeetingsChange]);
 
   const checkActiveMeeting = async () => {
     try {
@@ -260,6 +267,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
 
       // Check for active meeting to update UI
       await checkActiveMeeting();
+      await onMeetingsChange?.();
 
     } catch (error: any) {
       console.error('❌ Error starting meeting:', error);
@@ -346,6 +354,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
       setActiveMeeting(null);
       setMeetingOutcome('successful');
       setCompletionNotes('');
+      await onMeetingsChange?.();
 
     } catch (error: any) {
       console.error('❌ Error ending meeting:', error);

@@ -51,11 +51,21 @@ interface SessionRow {
   usage?: UsageRow[];
 }
 
+/** Match server LOGIN_HISTORY_DAYS — hide older login/device noise. */
+const LOGIN_HISTORY_DAYS = 7;
+
 function formatWhen(value?: string) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+function isWithinLoginHistory(value?: string, now = Date.now()) {
+  if (!value) return false;
+  const t = new Date(value).getTime();
+  if (!Number.isFinite(t)) return false;
+  return now - t <= LOGIN_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 }
 
 interface DeviceSessionsProps {
@@ -105,9 +115,15 @@ const DeviceSessions: React.FC<DeviceSessionsProps> = ({ users = [] }) => {
       const headers = masterUnlockHeaders();
       const intelRes = await apiClient.get('/admin/login-intel', { headers });
       const intel = intelRes.data || {};
-      setAdminLogins(Array.isArray(intel.currentAdminLogins) ? intel.currentAdminLogins : []);
-      setDevices(Array.isArray(intel.devices) ? intel.devices : []);
-      setSessions(Array.isArray(intel.sessions) ? intel.sessions : []);
+      const recentAdmin = (Array.isArray(intel.currentAdminLogins) ? intel.currentAdminLogins : [])
+        .filter((row: SessionRow) => isWithinLoginHistory(row.lastSeen));
+      const recentDevices = (Array.isArray(intel.devices) ? intel.devices : [])
+        .filter((row: DeviceRow) => isWithinLoginHistory(row.lastSeen));
+      const recentSessions = (Array.isArray(intel.sessions) ? intel.sessions : [])
+        .filter((row: SessionRow) => isWithinLoginHistory(row.lastSeen));
+      setAdminLogins(recentAdmin);
+      setDevices(recentDevices);
+      setSessions(recentSessions);
     } catch (err: any) {
       if (err?.response?.data?.error === 'MASTER_UNLOCK_REQUIRED' || err?.response?.status === 401) {
         lockAgain();
@@ -235,6 +251,7 @@ const DeviceSessions: React.FC<DeviceSessionsProps> = ({ users = [] }) => {
           <h3 className="text-base sm:text-lg font-semibold text-slate-900">Admin device intelligence</h3>
           <p className="text-xs sm:text-sm text-slate-500">
             See the device on the current admin login, then match it to the account that uses that Device ID most often.
+            Only activity from the last {LOGIN_HISTORY_DAYS} days is shown; older login logs are removed.
           </p>
         </div>
         <div className="flex gap-2">

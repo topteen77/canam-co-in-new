@@ -31,7 +31,53 @@ const ADMIN_EMAILS = new Set(
     .map((e) => e.toLowerCase())
 );
 
+/** Admin login / device history retention window. */
+export const LOGIN_HISTORY_DAYS = 7;
+
 let tablesReady = false;
+
+function isWithinLoginHistory(value, now = Date.now()) {
+  if (!value) return false;
+  const t = new Date(value).getTime();
+  if (!Number.isFinite(t)) return false;
+  return now - t <= LOGIN_HISTORY_DAYS * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Drop stale login noise: revoke idle "active" sessions, delete ended sessions
+ * and device rows older than the retention window.
+ */
+export async function pruneLoginHistoryOlderThanWeek() {
+  await ensureTables();
+  const days = LOGIN_HISTORY_DAYS;
+  try {
+    await db.query(
+      `UPDATE user_sessions
+       SET status = 'revoked', revoked_at = NOW(), revoked_by = 'retention'
+       WHERE status = 'active'
+         AND last_seen < (NOW() - INTERVAL ? DAY)`,
+      [days]
+    );
+    await db.query(
+      `DELETE FROM user_sessions
+       WHERE status <> 'active'
+         AND COALESCE(revoked_at, last_seen, created_at) < (NOW() - INTERVAL ? DAY)`,
+      [days]
+    );
+    await db.query(
+      `DELETE FROM user_devices
+       WHERE last_seen < (NOW() - INTERVAL ? DAY)`,
+      [days]
+    );
+    await db.query(
+      `DELETE FROM last_login_info
+       WHERE COALESCE(last_seen, created_at) < (NOW() - INTERVAL ? DAY)`,
+      [days]
+    );
+  } catch (error) {
+    console.warn('pruneLoginHistoryOlderThanWeek skipped:', error.message);
+  }
+}
 
 export function isPrivateIp(ip = '') {
   const value = String(ip || '').replace('::ffff:', '').trim();
@@ -477,17 +523,20 @@ export async function recordForceLoginInfo(sessionRow) {
 
 export async function listLastLogins() {
   await ensureTables();
+  await pruneLoginHistoryOlderThanWeek();
   const [rows] = await db.query(`
     SELECT l.*
     FROM last_login_info l
     INNER JOIN (
       SELECT user_email, MAX(created_at) AS created_at
       FROM last_login_info
+      WHERE COALESCE(last_seen, created_at) >= (NOW() - INTERVAL ? DAY)
       GROUP BY user_email
     ) latest
       ON latest.user_email = l.user_email AND latest.created_at = l.created_at
+    WHERE COALESCE(l.last_seen, l.created_at) >= (NOW() - INTERVAL ? DAY)
     ORDER BY l.created_at DESC
-  `);
+  `, [LOGIN_HISTORY_DAYS, LOGIN_HISTORY_DAYS]);
   const mapped = [];
   for (const row of rows || []) {
     const item = {
@@ -628,9 +677,16 @@ export async function touchSession(sessionId, { deviceId, deviceType, deviceName
 
 export async function listDevices() {
   await ensureTables();
-  const [devices] = await db.query(`SELECT * FROM user_devices ORDER BY last_seen DESC`);
+  const [devices] = await db.query(
+    `SELECT * FROM user_devices
+     WHERE last_seen >= (NOW() - INTERVAL ? DAY)
+     ORDER BY last_seen DESC`,
+    [LOGIN_HISTORY_DAYS]
+  );
   const [active] = await db.query(
-    `SELECT user_email, device_id, environment FROM user_sessions WHERE status = 'active'`
+    `SELECT user_email, device_id, environment FROM user_sessions
+     WHERE status = 'active' AND last_seen >= (NOW() - INTERVAL ? DAY)`,
+    [LOGIN_HISTORY_DAYS]
   );
   const restrictedIds = await listRestrictedDeviceIds();
   const currentKeys = new Set(active.map((row) => `${row.user_email}|${row.environment || 'local'}|${row.device_id}`));
@@ -643,7 +699,13 @@ export async function listDevices() {
 
 export async function listSessions() {
   await ensureTables();
-  const [rows] = await db.query(`SELECT * FROM user_sessions ORDER BY last_seen DESC LIMIT 300`);
+  const [rows] = await db.query(
+    `SELECT * FROM user_sessions
+     WHERE last_seen >= (NOW() - INTERVAL ? DAY)
+     ORDER BY last_seen DESC
+     LIMIT 300`,
+    [LOGIN_HISTORY_DAYS]
+  );
   return rows.map(publicSession);
 }
 
@@ -749,8 +811,10 @@ export async function getUsageByDevice() {
     `SELECT device_id AS deviceId, user_email AS userEmail,
             COUNT(*) AS loginCount, MIN(created_at) AS firstSeen, MAX(last_seen) AS lastSeen
      FROM user_sessions
+     WHERE last_seen >= (NOW() - INTERVAL ? DAY)
      GROUP BY device_id, user_email
-     ORDER BY loginCount DESC, lastSeen DESC`
+     ORDER BY loginCount DESC, lastSeen DESC`,
+    [LOGIN_HISTORY_DAYS]
   );
   const map = new Map();
   for (const row of rows) {
@@ -782,6 +846,7 @@ async function getAdminEmailSet() {
 }
 
 export async function getLoginIntel() {
+  await pruneLoginHistoryOlderThanWeek();
   const [devices, sessions, usageMap, adminEmails] = await Promise.all([
     listDevices(),
     listSessions(),
@@ -799,13 +864,18 @@ export async function getLoginIntel() {
   };
 
   const currentAdminLogins = sessions
-    .filter((row) => row.status === 'active' && adminEmails.has(String(row.userEmail || '').toLowerCase()))
+    .filter((row) =>
+      row.status === 'active'
+      && adminEmails.has(String(row.userEmail || '').toLowerCase())
+      && isWithinLoginHistory(row.lastSeen)
+    )
     .map((row) => ({
       ...row,
       ...attachUsage(row.deviceId, row.userEmail),
     }));
 
   return {
+    retentionDays: LOGIN_HISTORY_DAYS,
     currentAdminLogins,
     devices: devices.map((row) => ({
       ...row,

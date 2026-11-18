@@ -229,7 +229,9 @@ export const register = async (req, res) => {
 };
 
 export const login = async (req, res) => {
-  console.log('🔵 Login Request Received:', req.body.email);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('🔵 Login Request Received:', req.body.email);
+  }
 
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
@@ -250,7 +252,9 @@ export const login = async (req, res) => {
 
     const payload = await issueLogin(user, passwordCol, device, false);
     const safeUser = sanitizeUser(user, passwordCol);
-    console.log('✅ Login Successful for user:', safeUser.email, 'userId:', safeUser.id, 'device:', device.deviceId);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('✅ Login Successful for user:', safeUser.email, 'userId:', safeUser.id, 'device:', device.deviceId);
+    }
     res.json(payload);
   } catch (error) {
     console.error('🔴 REAL ERROR IN TERMINAL:', error);

@@ -123,16 +123,67 @@ export function meetingBelongsToUser(
   return candidates.includes(email);
 }
 
+/** Current user's active meeting record (newest first), or null. */
+export function getActiveMeetingForUser(
+  meetings: Array<Partial<MeetingCheckInRecord>> | null | undefined,
+  userEmail?: string | null,
+  now = new Date()
+): Partial<MeetingCheckInRecord> | null {
+  if (!userEmail || !Array.isArray(meetings)) return null;
+  const mine = meetings.filter(
+    (m) => meetingBelongsToUser(m, userEmail) && isActiveMeetingRecord(m, { now })
+  );
+  if (mine.length === 0) return null;
+  mine.sort((a, b) => {
+    const ta = new Date(String(a.checkInTime || a.date || 0)).getTime();
+    const tb = new Date(String(b.checkInTime || b.date || 0)).getTime();
+    return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+  });
+  return mine[0] || null;
+}
+
 /** Header button: current user is personally in an active meeting. */
 export function userHasActiveMeeting(
   meetings: Array<Partial<MeetingCheckInRecord>> | null | undefined,
   userEmail?: string | null,
   now = new Date()
 ): boolean {
-  if (!userEmail || !Array.isArray(meetings)) return false;
-  return meetings.some(
-    (m) => meetingBelongsToUser(m, userEmail) && isActiveMeetingRecord(m, { now })
-  );
+  return Boolean(getActiveMeetingForUser(meetings, userEmail, now));
+}
+
+/** Human-readable hover text explaining why the header shows In Meeting. */
+export function describeActiveMeetingReason(
+  meeting: Partial<MeetingCheckInRecord> | null | undefined,
+  opts: { userEmail?: string | null } = {}
+): string {
+  if (!meeting) return 'Meeting check-in';
+  const lead = String(meeting.leadName || meeting.leadId || 'Unknown lead').trim();
+  const type = String(meeting.meetingType || '').trim();
+  const status = String(meeting.meetingStatus || (meeting as any).meeting_status || 'active').trim();
+  let started = '';
+  try {
+    const raw = meeting.checkInTime;
+    if (raw) {
+      const d = new Date(String(raw));
+      if (!Number.isNaN(d.getTime())) {
+        started = d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
+      }
+    }
+  } catch {
+    started = '';
+  }
+  const id = meeting.id != null ? String(meeting.id) : '';
+  const who = opts.userEmail ? String(opts.userEmail) : '';
+  const lines = [
+    'In Meeting — active check-in for you',
+    who ? `User: ${who}` : '',
+    `Lead: ${lead}`,
+    type ? `Type: ${type}` : '',
+    started ? `Started: ${started}` : '',
+    `Status: ${status} (today, no checkout)`,
+    id ? `Meeting ID: ${id}` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
 }
 
 /**

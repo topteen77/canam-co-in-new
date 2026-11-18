@@ -9,11 +9,20 @@ interface LastLoginInfoProps {
   availableUsers?: Array<{ email?: string; name?: string }>;
 }
 
+const LOGIN_HISTORY_DAYS = 7;
+
 function formatWhen(value?: string) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+function isWithinLoginHistory(value?: string, now = Date.now()) {
+  if (!value) return false;
+  const t = new Date(value).getTime();
+  if (!Number.isFinite(t)) return false;
+  return now - t <= LOGIN_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 }
 
 const LastLoginInfo: React.FC<LastLoginInfoProps> = ({ availableUsers = [] }) => {
@@ -35,7 +44,9 @@ const LastLoginInfo: React.FC<LastLoginInfoProps> = ({ availableUsers = [] }) =>
       setLoading(true);
       setError(null);
       const { data } = await apiClient.get('/admin/last-logins');
-      const list = Array.isArray(data) ? data : [];
+      const list = (Array.isArray(data) ? data : []).filter((row: ActiveSessionInfo) =>
+        isWithinLoginHistory(row.lastSeen || row.createdAt)
+      );
       setRows(await Promise.all(list.map((row) => withIpLocation(row))));
     } catch (err: any) {
       const status = err?.response?.status;
@@ -70,7 +81,10 @@ const LastLoginInfo: React.FC<LastLoginInfoProps> = ({ availableUsers = [] }) =>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">Last login info</h3>
-          <p className="text-sm text-slate-500">Shown only when someone signed in with the master password and ended the previous session.</p>
+          <p className="text-sm text-slate-500">
+            Shown only when someone signed in with the master password and ended the previous session.
+            Records older than {LOGIN_HISTORY_DAYS} days are hidden and cleaned up.
+          </p>
         </div>
         <button type="button" onClick={load} className="px-3 py-2 text-sm bg-slate-800 text-white rounded-lg min-h-[44px]">
           Refresh

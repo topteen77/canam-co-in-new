@@ -10,7 +10,8 @@ import { getAllLeads, getLeadById, addLead, updateLead, subscribeToLeads, delete
 import { getLeadTags, addLeadTag, subscribeToLeadTags } from './services/leadTagService';
 import { 
   subscribeToAttendanceRecords, 
-  subscribeToMeetingCheckInRecords, 
+  subscribeToMeetingCheckInRecords,
+  getAllMeetingCheckInRecords,
   addAttendanceRecord 
 } from './services/attendanceService';
 import apiClient from './services/apiClient';
@@ -19,7 +20,11 @@ import { getUserDisplayName as utilGetUserDisplayName } from './utils/dataCleani
 import { canMutateLead } from './utils/leadPermissions';
 import { appendLeadFollowUp, mergeLeadFields, sameLeadId } from './utils/leadState';
 import { getAssignedLeads } from './utils/leadVisibility';
-import { countActiveMeetings, userHasActiveMeeting } from './utils/meetingActive';
+import {
+  countActiveMeetings,
+  describeActiveMeetingReason,
+  getActiveMeetingForUser,
+} from './utils/meetingActive';
 import type { FollowUp, Lead, AttendanceRecord, MeetingCheckInRecord } from './types';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES, COUNTRY_OPTIONS } from './types';
 
@@ -340,10 +345,32 @@ const App: React.FC = () => {
   }, [attendanceRecords, currentUser]);
 
   // Personal "In Meeting" — only the signed-in user's active meeting (admin included).
-  const hasActiveMeeting = useMemo(
-    () => userHasActiveMeeting(meetingCheckIns, currentUser),
+  const activeMeetingForUser = useMemo(
+    () => getActiveMeetingForUser(meetingCheckIns, currentUser),
     [meetingCheckIns, currentUser]
   );
+  const hasActiveMeeting = Boolean(activeMeetingForUser);
+  const meetingHeaderTitle = useMemo(() => {
+    if (activeMeetingForUser) {
+      return describeActiveMeetingReason(activeMeetingForUser, { userEmail: currentUser });
+    }
+    if (isAdmin) {
+      const teamCount = countActiveMeetings(meetingCheckIns, { isAdmin: true });
+      if (teamCount > 0) {
+        return `${teamCount} team member${teamCount === 1 ? '' : 's'} in an active meeting today (you are not). Click to check in.`;
+      }
+    }
+    return 'Meeting check-in — shown as In Meeting only when you have an active check-in today with no checkout.';
+  }, [activeMeetingForUser, currentUser, isAdmin, meetingCheckIns]);
+
+  const refreshMeetingCheckIns = useCallback(async () => {
+    try {
+      const records = await getAllMeetingCheckInRecords();
+      setMeetingCheckIns(records);
+    } catch (err) {
+      console.error('Failed to refresh meeting check-ins:', err);
+    }
+  }, []);
 
   // Admin can see how many team members are currently in an active meeting.
   const teamActiveMeetingCount = useMemo(
@@ -883,13 +910,7 @@ const App: React.FC = () => {
                   <button
                     onClick={() => setIsMeetingCheckInModalOpen(true)}
                     className={`app-header-btn ${hasActiveMeeting ? 'app-header-btn--alert' : 'app-header-btn--ghost'}`}
-                    title={
-                      hasActiveMeeting
-                        ? 'You are in an active meeting'
-                        : isAdmin && teamActiveMeetingCount > 0
-                          ? `${teamActiveMeetingCount} team member${teamActiveMeetingCount === 1 ? '' : 's'} in active meeting`
-                          : 'Meeting check-in'
-                    }
+                    title={meetingHeaderTitle}
                     aria-label={hasActiveMeeting ? 'Active meeting' : 'Meeting check-in'}
                   >
                     {hasActiveMeeting && (
@@ -1125,6 +1146,7 @@ const App: React.FC = () => {
                 availableUsers={availableUsers}
                 userLeads={displayedLeads}
                 currentUser={currentUser!}
+                onMeetingsChange={refreshMeetingCheckIns}
             />
         )}
 
