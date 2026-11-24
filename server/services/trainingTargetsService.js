@@ -3,12 +3,24 @@ import db from '../db.js';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_DOCS = 10;
-const ALLOWED_EXT = new Set(['pdf', 'doc', 'docx']);
+const ALLOWED_EXT = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx']);
 const ALLOWED_MIME = new Set([
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]);
+
+function isAllowedMime(fileType = '') {
+  const value = String(fileType || '').toLowerCase();
+  if (!value) return true;
+  if (ALLOWED_MIME.has(value)) return true;
+  if (value.includes('pdf')) return true;
+  if (value.includes('msword') || value.includes('wordprocessingml')) return true;
+  if (value.includes('ms-excel') || value.includes('spreadsheetml')) return true;
+  return false;
+}
 
 export const TRAINING_MODULES = [
   'System How-to',
@@ -173,12 +185,12 @@ export async function createTrainingDocument(payload, uploadedBy = '') {
     throw err;
   }
   if (!ALLOWED_EXT.has(ext)) {
-    const err = new Error('Only Word (.doc, .docx) and PDF files are allowed');
+    const err = new Error('Only Word (.doc, .docx), Excel (.xls, .xlsx), and PDF files are allowed');
     err.statusCode = 400;
     throw err;
   }
-  if (fileType && !ALLOWED_MIME.has(fileType) && !fileType.includes('pdf') && !fileType.includes('word') && !fileType.includes('msword') && !fileType.includes('officedocument')) {
-    const err = new Error('Invalid file type. Upload Word or PDF only.');
+  if (!isAllowedMime(fileType)) {
+    const err = new Error('Invalid file type. Upload Word, Excel, or PDF only.');
     err.statusCode = 400;
     throw err;
   }
@@ -246,7 +258,12 @@ export async function updateTrainingDocument(id, payload) {
     fileType = clean(payload.fileType || payload.file_type) || fileType;
     const ext = extFromName(fileName);
     if (!ALLOWED_EXT.has(ext)) {
-      const err = new Error('Only Word (.doc, .docx) and PDF files are allowed');
+      const err = new Error('Only Word (.doc, .docx), Excel (.xls, .xlsx), and PDF files are allowed');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!isAllowedMime(fileType)) {
+      const err = new Error('Invalid file type. Upload Word, Excel, or PDF only.');
       err.statusCode = 400;
       throw err;
     }

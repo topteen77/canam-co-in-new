@@ -489,18 +489,22 @@ const App: React.FC = () => {
       refreshLeadInBackground(id);
   }, [findLeadById, currentUser, isAdmin, applyLeadUpdate, refreshLeadInBackground]);
 
-  const handleAddMeeting = useCallback(async (leadId: string, meetingDetails: { date: string; notes?: string; durationMinutes?: number }) => {
+  const handleAddMeeting = useCallback(async (leadId: string, meetingDetails: { date: string; notes?: string; durationMinutes?: number; meetingLink?: string }) => {
       const lead = findLeadById(leadId);
       if (!lead) return;
       const durationNote = meetingDetails.durationMinutes ? `Duration: ${meetingDetails.durationMinutes} min.\n` : '';
+      const link = String(meetingDetails.meetingLink || '').trim();
       await handleAddFollowUp(leadId, {
           type: 'Meeting',
           status: 'Planned',
           date: meetingDetails.date,
           notes: durationNote + (meetingDetails.notes || ''),
+          meetingLink: link || undefined,
+          createdBy: currentUser || undefined,
+          createdAt: new Date().toISOString(),
       });
       setPlanMeetingModalOpen(false);
-  }, [findLeadById, handleAddFollowUp]);
+  }, [findLeadById, handleAddFollowUp, currentUser]);
 
   const handleBulkAddLeads = useCallback(async (newLeads: Array<Partial<Lead>>) => {
     const allResults: Array<{ index: number; agencyName: string; success: boolean; error?: string; isDuplicate?: boolean }> = [];
@@ -1039,7 +1043,13 @@ const App: React.FC = () => {
                     )}
                     {view === 'meetings' && (
                         <>
-                            <MeetingPlanner leads={displayedLeads} meetingCheckInRecords={meetingCheckIns} onUpdateLead={(lead) => handleUpdateLead(lead.id, { followUps: lead.followUps })} onPlanNewMeeting={() => setPlanMeetingModalOpen(true)} />
+                            <MeetingPlanner
+                              leads={displayedLeads}
+                              meetingCheckInRecords={meetingCheckIns}
+                              availableUsers={availableUsers}
+                              onUpdateLead={(lead) => handleUpdateLead(lead.id, { followUps: lead.followUps })}
+                              onPlanNewMeeting={() => setPlanMeetingModalOpen(true)}
+                            />
                             <div className="mt-6 sm:mt-10">
                                 <CompletedMeetings meetingCheckIns={meetingCheckIns} leads={displayedLeads} currentUser={currentUser} availableUsers={availableUsers} />
                             </div>

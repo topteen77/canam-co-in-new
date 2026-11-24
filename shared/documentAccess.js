@@ -19,3 +19,8 @@ export function inlinePreviewDisposition(fileName) {
   const safe = String(fileName || 'document').replace(/"/g, '');
   return `inline; filename="${safe}"`;
 }
+
+export function attachmentDownloadDisposition(fileName) {
+  const safe = String(fileName || 'document').replace(/"/g, '');
+  return `attachment; filename="${safe}"`;
+}

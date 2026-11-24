@@ -67,6 +67,8 @@ export interface FollowUp {
   status: FollowUpStatus;
   date: string; // ISO string
   notes: string;
+  /** Virtual meeting URL (Zoom, Google Meet, Teams, etc.). */
+  meetingLink?: string;
   assignedTo?: string;
   createdBy?: string;
   createdAt?: string;

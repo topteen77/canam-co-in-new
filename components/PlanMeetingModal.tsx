@@ -5,7 +5,10 @@ import type { Lead, FollowUp } from '../types';
 interface PlanMeetingModalProps {
   leads: Lead[];
   onClose: () => void;
-  onSchedule: (leadId: string, meetingDetails: Omit<FollowUp, 'id' | 'type' | 'status'> & { durationMinutes?: number }) => void;
+  onSchedule: (
+    leadId: string,
+    meetingDetails: Omit<FollowUp, 'id' | 'type' | 'status'> & { durationMinutes?: number; meetingLink?: string }
+  ) => void;
 }
 
 function getLeadContacts(lead: Lead): Record<string, unknown>[] {
@@ -62,6 +65,7 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
     return now.toISOString().slice(0, 16);
   });
   const [durationMinutes, setDurationMinutes] = useState(60);
+  const [meetingLink, setMeetingLink] = useState('');
   const [notes, setNotes] = useState('');
 
   const filteredLeads = useMemo(() => {
@@ -90,6 +94,7 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
       date: new Date(date).toISOString(),
       notes,
       durationMinutes,
+      meetingLink: meetingLink.trim(),
     });
   };
 
@@ -182,6 +187,22 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(Number(e.target.value) || 60)}
           />
+        </div>
+
+        <div className="meeting-field">
+          <label htmlFor="meeting-link">Meeting link (optional)</label>
+          <input
+            id="meeting-link"
+            type="url"
+            value={meetingLink}
+            onChange={(e) => setMeetingLink(e.target.value)}
+            placeholder="https://zoom.us/j/… or meet.google.com/…"
+            inputMode="url"
+            autoComplete="url"
+          />
+          <p className="mt-1 text-xs text-slate-500 normal-case tracking-normal font-normal">
+            Zoom, Google Meet, Teams, etc. Opens in a new tab when clicked from the agenda.
+          </p>
         </div>
 
         <div className="meeting-field">

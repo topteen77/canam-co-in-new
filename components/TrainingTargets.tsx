@@ -1,13 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isInactiveUser } from '../utils/userSelect';
 import {
+  canPreviewTrainingDocument,
   createTrainingDocument,
   deleteTeamTarget,
   deleteTrainingDocument,
+  downloadTrainingDocument,
   fetchTrainingDocumentBlob,
   fetchTrainingMeta,
   fileToBase64,
   formatFileSize,
+  isExcelFile,
   isPdfFile,
   isWordFile,
   listTeamTargets,
@@ -79,17 +82,20 @@ function FileThumb({
 }) {
   const pdf = isPdfFile(fileName) || isPdfFile(fileType || '');
   const word = isWordFile(fileName) || isWordFile(fileType || '');
+  const excel = isExcelFile(fileName) || isExcelFile(fileType || '');
   const box =
     size === 'lg' ? 'h-24 w-20 text-sm' : size === 'sm' ? 'h-12 w-10 text-[10px]' : 'h-16 w-14 text-xs';
   const tone = pdf
     ? 'bg-rose-50 border-rose-200 text-rose-700'
-    : word
-      ? 'bg-sky-50 border-sky-200 text-sky-700'
-      : 'bg-slate-50 border-slate-200 text-slate-600';
+    : excel
+      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+      : word
+        ? 'bg-sky-50 border-sky-200 text-sky-700'
+        : 'bg-slate-50 border-slate-200 text-slate-600';
   return (
     <div className={`${box} ${tone} border rounded-lg flex flex-col items-center justify-center font-semibold shrink-0`}>
-      <span className="text-lg leading-none">{pdf ? 'PDF' : word ? 'W' : 'DOC'}</span>
-      <span className="mt-1 opacity-80">{pdf ? 'Adobe' : word ? 'Word' : 'File'}</span>
+      <span className="text-lg leading-none">{pdf ? 'PDF' : excel ? 'XLS' : word ? 'W' : 'DOC'}</span>
+      <span className="mt-1 opacity-80">{pdf ? 'Adobe' : excel ? 'Excel' : word ? 'Word' : 'File'}</span>
     </div>
   );
 }
@@ -166,7 +172,7 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
       const [meta, documentRows, targetRows] = await Promise.all([
         fetchTrainingMeta().catch(() => ({
           modules: DEFAULT_MODULES,
-          limits: { maxFileBytes: maxBytes, maxDocuments: maxDocs, allowedExt: ['pdf', 'doc', 'docx'] },
+          limits: { maxFileBytes: maxBytes, maxDocuments: maxDocs, allowedExt: ['pdf', 'doc', 'docx', 'xls', 'xlsx'] },
         })),
         listTrainingDocuments(),
         listTeamTargets(isAdmin ? undefined : currentUser || undefined),
@@ -222,8 +228,14 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
   const validateFile = (file: File) => {
     if (file.size > maxBytes) throw new Error('File size must be 5 MB or less');
     const lower = file.name.toLowerCase();
-    if (!lower.endsWith('.pdf') && !lower.endsWith('.doc') && !lower.endsWith('.docx')) {
-      throw new Error('Only Word (.doc, .docx) and PDF files are allowed');
+    const allowed =
+      lower.endsWith('.pdf') ||
+      lower.endsWith('.doc') ||
+      lower.endsWith('.docx') ||
+      lower.endsWith('.xls') ||
+      lower.endsWith('.xlsx');
+    if (!allowed) {
+      throw new Error('Only Word (.doc, .docx), Excel (.xls, .xlsx), and PDF files are allowed');
     }
   };
 
@@ -252,7 +264,7 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
       setNotice(null);
       if (!docForm.title.trim()) throw new Error('Document title is required');
       if (!docForm.module.trim()) throw new Error('Module is required');
-      if (!docForm.id && !docForm.file) throw new Error('Choose a Word or PDF file to upload');
+      if (!docForm.id && !docForm.file) throw new Error('Choose a Word, Excel, or PDF file to upload');
       if (docForm.file) validateFile(docForm.file);
       if (!docForm.id && docs.length >= maxDocs) {
         throw new Error(`Maximum ${maxDocs} training documents allowed`);
@@ -309,21 +321,30 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
   const openPreview = async (doc: TrainingDocument) => {
     try {
       setError(null);
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      const pdf = isPdfFile(doc.fileName) || isPdfFile(doc.fileType);
-      setPreviewTitle(doc.title || doc.fileName);
-      if (!pdf) {
-        if (previewUrl && previewUrl !== localPreviewUrl) URL.revokeObjectURL(previewUrl);
-        setPreviewUrl(null);
-        setPreviewKind('other');
+      const canView = canPreviewTrainingDocument(doc.fileName) || canPreviewTrainingDocument(doc.fileType);
+      if (!canView) {
+        setNotice('This file type cannot be previewed. Use Download instead.');
         return;
       }
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewTitle(doc.title || doc.fileName);
       const blob = await fetchTrainingDocumentBlob(doc.id);
       const url = URL.createObjectURL(blob);
       setPreviewUrl(url);
       setPreviewKind('pdf');
     } catch (err: any) {
-      setError(err?.message || 'Preview failed');
+      setError(err?.message || 'View failed');
+    }
+  };
+
+  const onDownloadDoc = async (doc: TrainingDocument) => {
+    try {
+      setError(null);
+      setNotice(null);
+      await downloadTrainingDocument(doc.id, doc.fileName || `${doc.title || 'training'}.bin`);
+      setNotice(`Downloaded ${doc.fileName || doc.title}`);
+    } catch (err: any) {
+      setError(err?.message || 'Download failed');
     }
   };
 
@@ -413,7 +434,7 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
             </h2>
             <p className="text-sm text-slate-600 mt-1">
               {isAdmin
-                ? `Add up to ${maxDocs} Word/PDF guides (max ${formatFileSize(maxBytes)} each), preview files, add tool links, and set team targets.`
+                ? `Add up to ${maxDocs} Word/Excel/PDF guides (max ${formatFileSize(maxBytes)} each), preview files, add tool links, and set team targets.`
                 : 'Open training guides and tool links. Your targets are listed below.'}
             </p>
           </div>
@@ -452,7 +473,7 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
                   </button>
                 )}
               </div>
-              <p className="text-xs text-slate-500">{docs.length}/{maxDocs} records · PDF / DOC / DOCX · max 5 MB</p>
+              <p className="text-xs text-slate-500">{docs.length}/{maxDocs} records · PDF / DOC / DOCX / XLS / XLSX · max 5 MB</p>
               {atMaxDocs && (
                 <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                   Maximum {maxDocs} records reached. Delete one before adding another.
@@ -504,7 +525,7 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
                       {previewFileName || 'No file selected'}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {previewFileName ? formatFileSize(previewFileSize) : 'PDF / DOC / DOCX · max 5 MB'}
+                      {previewFileName ? formatFileSize(previewFileSize) : 'PDF / DOC / DOCX / XLS / XLSX · max 5 MB'}
                     </p>
                     <div className="flex flex-wrap gap-2 mt-2">
                       <button
@@ -525,28 +546,51 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
                           }}
                           className="px-3 py-1.5 text-sm rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
                         >
-                          Preview
+                          View
                         </button>
                       )}
                       {docForm.id && !docForm.file && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openPreview({
-                              id: docForm.id,
-                              title: docForm.title,
-                              module: docForm.module,
-                              fileName: docForm.existingFileName,
-                              fileType: docForm.existingFileType,
-                              fileSize: docForm.existingFileSize,
-                              toolUrl: docForm.toolUrl,
-                              sortOrder: 0,
-                            })
-                          }
-                          className="px-3 py-1.5 text-sm rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                        >
-                          Preview
-                        </button>
+                        <>
+                          {(canPreviewTrainingDocument(docForm.existingFileName) ||
+                            canPreviewTrainingDocument(docForm.existingFileType)) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openPreview({
+                                  id: docForm.id,
+                                  title: docForm.title,
+                                  module: docForm.module,
+                                  fileName: docForm.existingFileName,
+                                  fileType: docForm.existingFileType,
+                                  fileSize: docForm.existingFileSize,
+                                  toolUrl: docForm.toolUrl,
+                                  sortOrder: 0,
+                                })
+                              }
+                              className="px-3 py-1.5 text-sm rounded-lg bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                            >
+                              View
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onDownloadDoc({
+                                id: docForm.id,
+                                title: docForm.title,
+                                module: docForm.module,
+                                fileName: docForm.existingFileName,
+                                fileType: docForm.existingFileType,
+                                fileSize: docForm.existingFileSize,
+                                toolUrl: docForm.toolUrl,
+                                sortOrder: 0,
+                              })
+                            }
+                            className="px-3 py-1.5 text-sm rounded-lg bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+                          >
+                            Download
+                          </button>
+                        </>
                       )}
                       {docForm.file && (
                         <button
@@ -566,7 +610,7 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   className="hidden"
                   onChange={(e) => onPickFile(e.target.files?.[0] || null)}
                 />
@@ -634,12 +678,21 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 shrink-0">
+                      {(canPreviewTrainingDocument(doc.fileName) || canPreviewTrainingDocument(doc.fileType)) && (
+                        <button
+                          type="button"
+                          onClick={() => openPreview(doc)}
+                          className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+                        >
+                          View
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => openPreview(doc)}
-                        className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+                        onClick={() => onDownloadDoc(doc)}
+                        className="px-3 py-1.5 text-sm rounded-lg border border-emerald-200 text-emerald-800 hover:bg-emerald-50"
                       >
-                        Preview
+                        Download
                       </button>
                       {isAdmin && (
                         <>
@@ -829,13 +882,13 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
         </div>
       )}
 
-      {(previewUrl || previewKind === 'other') && previewTitle && (
+      {previewUrl && previewKind === 'pdf' && previewTitle && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="font-semibold text-slate-900 truncate">{previewTitle}</h3>
-                <p className="text-xs text-slate-500">Preview only</p>
+                <p className="text-xs text-slate-500">In-browser view · use Download to save the file</p>
               </div>
               <button
                 type="button"
@@ -850,17 +903,11 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
                 Close
               </button>
             </div>
-            {previewUrl && previewKind === 'pdf' ? (
-              <iframe
-                title="Document preview"
-                src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                className="flex-1 w-full bg-slate-100"
-              />
-            ) : (
-              <div className="flex-1 flex items-center justify-center p-8 text-center text-slate-600">
-                This file type cannot be previewed in the browser. Download is not available.
-              </div>
-            )}
+            <iframe
+              title="Document preview"
+              src={`${previewUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+              className="flex-1 w-full bg-slate-100"
+            />
           </div>
         </div>
       )}

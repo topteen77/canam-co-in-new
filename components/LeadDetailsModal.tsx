@@ -1260,7 +1260,12 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 {(Array.isArray(lead.contacts) ? lead.contacts : []).map((contact, index) => (
                   <div key={index} className="bg-gradient-to-br from-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-200">
                     <div className="flex justify-between items-start mb-2">
-                      <h4 className="text-sm font-bold text-slate-800">{contact.name}</h4>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-800">{contact.name}</h4>
+                        {contact.role && contact.role !== 'POC' && (
+                          <p className="text-xs font-medium text-indigo-700">{contact.role}</p>
+                        )}
+                      </div>
                       {isEditing && (
                         <button
                           onClick={() => handleEditContact(contact)}

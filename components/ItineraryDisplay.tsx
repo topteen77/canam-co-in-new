@@ -1,14 +1,43 @@
 import React, { useMemo, useState } from 'react';
 import type { Lead, FollowUp, MeetingCheckInRecord } from '../types';
 import { PlusIcon } from './icons/SparklesIcon';
+import { getUserDisplayName } from '../utils/dataCleaning';
 
-type MeetingItem = FollowUp & { leadId: string; agencyName: string; isCheckIn?: boolean };
+type MeetingItem = FollowUp & {
+  leadId: string;
+  agencyName: string;
+  isCheckIn?: boolean;
+  creatorLabel?: string;
+};
 
 interface MeetingPlannerProps {
   leads: Lead[];
   meetingCheckInRecords?: MeetingCheckInRecord[];
+  availableUsers?: Array<{ id?: string; name?: string; email?: string; role?: string }>;
   onUpdateLead: (lead: Lead) => void;
   onPlanNewMeeting: () => void;
+}
+
+function normalizeMeetingUrl(raw: string): string {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return value;
+  return `https://${value}`;
+}
+
+function meetingLinkLabel(raw: string): string {
+  const lower = String(raw || '').toLowerCase();
+  if (lower.includes('zoom.')) return 'Join Zoom';
+  if (lower.includes('meet.google.') || lower.includes('google.com/meet')) return 'Join Google Meet';
+  if (lower.includes('teams.microsoft.') || lower.includes('teams.live.')) return 'Join Teams';
+  if (lower.includes('webex.')) return 'Join Webex';
+  return 'Open meeting link';
+}
+
+function openMeetingLink(raw: string) {
+  const url = normalizeMeetingUrl(raw);
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 const Calendar: React.FC<{
@@ -111,6 +140,7 @@ const Calendar: React.FC<{
 export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   leads,
   meetingCheckInRecords = [],
+  availableUsers = [],
   onUpdateLead,
   onPlanNewMeeting,
 }) => {
@@ -120,7 +150,15 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
           const safeFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
           return safeFollowUps
             .filter((f) => f.type === 'Meeting')
-            .map((meeting) => ({ ...meeting, leadId: lead.id, agencyName: lead.agencyName, isCheckIn: false }));
+            .map((meeting) => ({
+              ...meeting,
+              leadId: lead.id,
+              agencyName: lead.agencyName,
+              isCheckIn: false,
+              creatorLabel: meeting.createdBy
+                ? getUserDisplayName(meeting.createdBy, availableUsers)
+                : '',
+            }));
         })
       : [];
     const fromCheckIns: MeetingItem[] = Array.isArray(meetingCheckInRecords)
@@ -128,15 +166,21 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
           const id = (r as { id?: string }).id ?? (r as { firebase_id?: string }).firebase_id ?? `checkin-${i}`;
           const dateStr = r.date || r.checkInTime || '';
           const status = r.meetingStatus === 'completed' ? ('Done' as const) : ('Planned' as const);
+          const creatorRaw = r.createdBy || r.salesPersonEmail || r.username || r.salesPersonName || '';
           return {
             id,
-            type: 'Meeting',
+            type: 'Meeting' as const,
             status,
             date: dateStr,
             notes: r.notes || '',
+            meetingLink: (r as { meetingLink?: string }).meetingLink || '',
+            createdBy: creatorRaw,
             leadId: r.leadId || '',
             agencyName: r.leadName || '—',
             isCheckIn: true,
+            creatorLabel: creatorRaw
+              ? r.salesPersonName || getUserDisplayName(creatorRaw, availableUsers)
+              : '',
           };
         })
       : [];
@@ -145,10 +189,11 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
       const dateB = new Date(b.date).getTime();
       return (isNaN(dateA) ? 0 : dateA) - (isNaN(dateB) ? 0 : dateB);
     });
-  }, [leads, meetingCheckInRecords]);
+  }, [leads, meetingCheckInRecords, availableUsers]);
 
   const [editingMeeting, setEditingMeeting] = useState<MeetingItem | null>(null);
   const [remarks, setRemarks] = useState('');
+  const [editLink, setEditLink] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const filteredMeetings = useMemo(() => {
@@ -164,17 +209,37 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     );
   }, [allMeetings, selectedDate]);
 
-  const handleMarkAsDone = (meetingToUpdate: MeetingItem) => {
-    if (meetingToUpdate.isCheckIn) return; // Check-in records are updated via meetings API, not lead followUps
+  const persistFollowUpPatch = (meetingToUpdate: MeetingItem, patch: Partial<FollowUp>) => {
+    if (meetingToUpdate.isCheckIn) return;
     const lead = leads.find((l) => l.id === meetingToUpdate.leadId);
     if (!lead) return;
     const currentFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
     const updatedFollowUps = currentFollowUps.map((f) =>
-      f.id === meetingToUpdate.id ? { ...f, status: 'Done' as const, notes: remarks || f.notes } : f
+      f.id === meetingToUpdate.id ? { ...f, ...patch } : f
     );
     onUpdateLead({ ...lead, followUps: updatedFollowUps });
+  };
+
+  const handleMarkAsDone = (meetingToUpdate: MeetingItem) => {
+    if (meetingToUpdate.isCheckIn) return;
+    persistFollowUpPatch(meetingToUpdate, {
+      status: 'Done',
+      notes: remarks || meetingToUpdate.notes,
+      meetingLink: editLink.trim() || meetingToUpdate.meetingLink || undefined,
+    });
     setEditingMeeting(null);
     setRemarks('');
+    setEditLink('');
+  };
+
+  const handleSaveLinkOnly = (meetingToUpdate: MeetingItem) => {
+    if (meetingToUpdate.isCheckIn) return;
+    persistFollowUpPatch(meetingToUpdate, {
+      meetingLink: editLink.trim() || undefined,
+    });
+    setEditingMeeting(null);
+    setRemarks('');
+    setEditLink('');
   };
 
   return (
@@ -220,6 +285,21 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                         timeStyle: 'short',
                       })}
                     </p>
+                    {meeting.creatorLabel && (
+                      <p className="text-sm text-slate-500 mt-1">
+                        Created by: <span className="font-medium text-slate-700">{meeting.creatorLabel}</span>
+                      </p>
+                    )}
+                    {meeting.meetingLink?.trim() && editingMeeting?.id !== meeting.id && (
+                      <button
+                        type="button"
+                        onClick={() => openMeetingLink(meeting.meetingLink!)}
+                        className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
+                        title={meeting.meetingLink}
+                      >
+                        🔗 {meetingLinkLabel(meeting.meetingLink)}
+                      </button>
+                    )}
                     {editingMeeting?.id !== meeting.id && (
                       <p className="text-sm text-slate-500 mt-1">
                         Notes: {meeting.notes || '—'}
@@ -240,11 +320,13 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                 </div>
 
                 {meeting.status === 'Planned' && !meeting.isCheckIn && editingMeeting?.id !== meeting.id && (
-                  <div className="mt-3 sm:mt-4 sm:text-right">
+                  <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row sm:justify-end gap-2">
                     <button
+                      type="button"
                       onClick={() => {
                         setEditingMeeting({ ...meeting, leadId: meeting.leadId });
                         setRemarks(meeting.notes || '');
+                        setEditLink(meeting.meetingLink || '');
                       }}
                       className="w-full sm:w-auto min-h-[44px] px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
                     >
@@ -255,6 +337,27 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
 
                 {editingMeeting?.id === meeting.id && (
                   <div className="mt-4 space-y-2">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700">
+                        Meeting link (Zoom / Google Meet / etc.)
+                      </label>
+                      <input
+                        type="url"
+                        value={editLink}
+                        onChange={(e) => setEditLink(e.target.value)}
+                        className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        placeholder="https://zoom.us/j/… or meet.google.com/…"
+                      />
+                      {editLink.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => openMeetingLink(editLink)}
+                          className="mt-1 text-sm text-indigo-700 hover:underline"
+                        >
+                          Test open link
+                        </button>
+                      )}
+                    </div>
                     <label className="block text-sm font-medium text-slate-700">
                       Outcome / Remarks
                     </label>
@@ -267,10 +370,20 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                     />
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                       <button
-                        onClick={() => setEditingMeeting(null)}
+                        onClick={() => {
+                          setEditingMeeting(null);
+                          setEditLink('');
+                        }}
                         className="min-h-[44px] px-3 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-lg"
                       >
                         Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveLinkOnly(meeting)}
+                        className="min-h-[44px] px-3 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg"
+                      >
+                        Save link
                       </button>
                       <button
                         onClick={() => handleMarkAsDone(meeting)}

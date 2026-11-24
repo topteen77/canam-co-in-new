@@ -27,6 +27,24 @@ import { ensureCustomLostReason, isLostLeadStatus } from '../services/lostReason
 const PHONE_RE = /^\d{10}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+interface ExtraContact {
+  id: string;
+  name: string;
+  phone: string;
+  designation: string;
+  email: string;
+}
+
+function createExtraContact(): ExtraContact {
+  return {
+    id: `extra_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    phone: '',
+    designation: '',
+    email: '',
+  };
+}
+
 function FieldMessage({
   message,
   tone = 'error',
@@ -94,6 +112,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     trainingDate: '',
     trainingScore: undefined as number | undefined
   });
+  const [extraContacts, setExtraContacts] = useState<ExtraContact[]>(() => [createExtraContact()]);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formAlert, setFormAlert] = useState<string | null>(null);
   const formTopRef = useRef<HTMLFormElement>(null);
@@ -167,6 +186,19 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     if (formData.alternateMobile.trim() && !PHONE_RE.test(formData.alternateMobile.trim())) {
       errors.alternateMobile = 'Alternate mobile must be exactly 10 digits.';
     }
+
+    extraContacts.forEach((contact, index) => {
+      const name = contact.name.trim();
+      const phone = contact.phone.trim();
+      const email = contact.email.trim();
+      const designation = contact.designation.trim();
+      if (!name && !phone && !email && !designation) return;
+      const label = index === 0 ? 'Secondary contact' : `Contact ${index + 2}`;
+      if (!name) errors[`extra_${contact.id}_name`] = `${label}: contact person name is required.`;
+      if (!phone) errors[`extra_${contact.id}_phone`] = `${label}: enter a 10-digit contact number.`;
+      else if (!PHONE_RE.test(phone)) errors[`extra_${contact.id}_phone`] = `${label}: contact number must be exactly 10 digits.`;
+      if (email && !EMAIL_RE.test(email)) errors[`extra_${contact.id}_email`] = `${label}: enter a valid email address.`;
+    });
 
     setFormErrors(errors);
     return errors;
@@ -275,6 +307,35 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const designationSuggestions = useCallback((query: string) => suggestDesignations(query), []);
   const addressSuggestions = useCallback((query: string) => suggestAddresses(query), []);
 
+  const addExtraContact = () => {
+    setExtraContacts((prev) => [...prev, createExtraContact()]);
+  };
+
+  const updateExtraContact = (id: string, field: keyof Omit<ExtraContact, 'id'>, value: string) => {
+    const nextValue = field === 'phone'
+      ? value.replace(/\D/g, '').slice(0, 10)
+      : field === 'email'
+        ? value.trim().toLowerCase()
+        : value;
+    setExtraContacts((prev) => prev.map((contact) => (
+      contact.id === id ? { ...contact, [field]: nextValue } : contact
+    )));
+    const errorKey = `extra_${id}_${field}`;
+    if (formErrors[errorKey]) setFormErrors((prev) => ({ ...prev, [errorKey]: '' }));
+    if (formAlert) setFormAlert(null);
+  };
+
+  const removeExtraContact = (id: string) => {
+    setExtraContacts((prev) => prev.filter((contact) => contact.id !== id));
+    setFormErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((key) => {
+        if (key.startsWith(`extra_${id}_`)) delete next[key];
+      });
+      return next;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -297,6 +358,17 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
         await ensureCustomLostReason(formData.lostReason.trim()).catch(() => null);
       }
       const contactId = `contact_${Date.now()}`;
+      const additionalContacts = extraContacts
+        .filter((contact) => contact.name.trim() || contact.phone.trim() || contact.designation.trim() || contact.email.trim())
+        .map((contact, index) => ({
+          id: `contact_${Date.now()}_${index + 1}`,
+          name: contact.name.trim(),
+          role: contact.designation.trim() || 'Contact',
+          phone: contact.phone.trim(),
+          email: contact.email.trim() || undefined,
+          pocName: contact.name.trim() || undefined,
+          pocDesignation: contact.designation.trim() || undefined,
+        }));
       await onAddLead({
         agencyName: formData.agencyName.trim(),
         status: formData.status,
@@ -328,7 +400,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
           alternateMobile: formData.alternateMobile.trim() || undefined,
           pocName: formData.contactName.trim() || undefined,
           pocDesignation: formData.pocDesignation.trim() || undefined
-        }],
+        }, ...additionalContacts],
         followUps: []
       });
       onClose();
@@ -480,6 +552,86 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 </OcrInputRow>
                 <FieldMessage message={formErrors.alternateMobile} />
               </DroppableField>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Additional contacts</h4>
+                  <p className="text-xs text-slate-500">Optional. Add more people with name, contact number, and designation.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addExtraContact}
+                  className="inline-flex items-center justify-center gap-1 px-3 py-2 min-h-[44px] text-sm font-bold text-indigo-700 bg-indigo-50 border-2 border-indigo-200 rounded-lg hover:bg-indigo-100"
+                >
+                  + Add contact
+                </button>
+              </div>
+              {extraContacts.map((contact, index) => (
+                <div key={contact.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-600">
+                      {index === 0 ? 'Secondary contact' : `Contact ${index + 2}`}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => removeExtraContact(contact.id)}
+                      className="px-2 min-h-[44px] text-xs font-bold text-rose-700 hover:text-rose-900"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-sm font-bold text-slate-800 mb-1">Contact person name</label>
+                      <input
+                        type="text"
+                        value={contact.name}
+                        onChange={(e) => updateExtraContact(contact.id, 'name', e.target.value)}
+                        className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] bg-white ${formErrors[`extra_${contact.id}_name`] ? 'border-red-500' : 'border-slate-300'}`}
+                        placeholder="Secondary contact person name"
+                      />
+                      <FieldMessage message={formErrors[`extra_${contact.id}_name`]} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-800 mb-1">Contact number</label>
+                      <input
+                        type="tel"
+                        value={contact.phone}
+                        onChange={(e) => updateExtraContact(contact.id, 'phone', e.target.value)}
+                        className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] bg-white ${formErrors[`extra_${contact.id}_phone`] ? 'border-red-500' : 'border-slate-300'}`}
+                        placeholder="9876543210"
+                        maxLength={10}
+                        inputMode="numeric"
+                      />
+                      <FieldMessage message={formErrors[`extra_${contact.id}_phone`]} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-800 mb-1">Designation</label>
+                      <SuggestInput
+                        value={contact.designation}
+                        onChange={(value) => updateExtraContact(contact.id, 'designation', value)}
+                        getSuggestions={designationSuggestions}
+                        placeholder="Director, Manager"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-800 mb-1">Email</label>
+                      <input
+                        type="text"
+                        inputMode="email"
+                        autoComplete="email"
+                        value={contact.email}
+                        onChange={(e) => updateExtraContact(contact.id, 'email', e.target.value)}
+                        className={`block w-full px-3 py-2 text-sm border-2 rounded-lg min-h-[44px] bg-white ${formErrors[`extra_${contact.id}_email`] ? 'border-red-500' : 'border-slate-300'}`}
+                        placeholder="name@agency.com"
+                      />
+                      <FieldMessage message={formErrors[`extra_${contact.id}_email`]} />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

@@ -40,7 +40,11 @@ import * as locationMasterService from './services/locationMasterService.js';
 import * as lostReasonMasterService from './services/lostReasonMasterService.js';
 import * as leadsService from './services/leadsService.js';
 import { SEED_STATES_BY_COUNTRY, SEED_CITY_TO_STATE } from './data/locationMasterSeed.js';
-import { inlinePreviewDisposition, isPreviewOnlyRole, wantsAttachmentDownload } from '../shared/documentAccess.js';
+import {
+  attachmentDownloadDisposition,
+  inlinePreviewDisposition,
+  wantsAttachmentDownload,
+} from '../shared/documentAccess.js';
 import * as trainingTargetsService from './services/trainingTargetsService.js';
 import * as travelSessionsService from './services/travelSessionsService.js';
 import * as meetingCompletionsService from './services/meetingCompletionsService.js';
@@ -1254,14 +1258,17 @@ app.get('/api/training/documents', authenticateToken, async (_req, res) => {
 });
 app.get('/api/training/documents/:id/download', authenticateToken, async (req, res) => {
   try {
-    if (isPreviewOnlyRole(req.user?.role) && wantsAttachmentDownload(req.query)) {
-      return res.status(403).json({ error: 'Documents can be previewed only. Download is not available.' });
-    }
     const doc = await trainingTargetsService.getTrainingDocument(req.params.id, { includeData: true });
     if (!doc || !doc.fileData) return res.status(404).json({ error: 'Document not found' });
     const buffer = Buffer.isBuffer(doc.fileData) ? doc.fileData : Buffer.from(doc.fileData);
+    const asAttachment = wantsAttachmentDownload(req.query);
     res.setHeader('Content-Type', doc.fileType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', inlinePreviewDisposition(doc.fileName || 'training'));
+    res.setHeader(
+      'Content-Disposition',
+      asAttachment
+        ? attachmentDownloadDisposition(doc.fileName || 'training')
+        : inlinePreviewDisposition(doc.fileName || 'training')
+    );
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Length', String(buffer.length));
     res.send(buffer);

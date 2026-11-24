@@ -90,8 +90,9 @@ function authToken(): string {
   return sessionStorage.getItem('crmToken') || localStorage.getItem('crmToken') || '';
 }
 
-export async function fetchTrainingDocumentBlob(id: string): Promise<Blob> {
-  const res = await fetch(trainingDownloadUrl(id), {
+export async function fetchTrainingDocumentBlob(id: string, opts: { download?: boolean } = {}): Promise<Blob> {
+  const url = opts.download ? `${trainingDownloadUrl(id)}?download=1` : trainingDownloadUrl(id);
+  const res = await fetch(url, {
     headers: authToken() ? { Authorization: `Bearer ${authToken()}` } : {},
   });
   if (!res.ok) {
@@ -101,8 +102,25 @@ export async function fetchTrainingDocumentBlob(id: string): Promise<Blob> {
   return res.blob();
 }
 
-export async function downloadTrainingDocument(_id: string, _fileName: string): Promise<void> {
-  throw new Error('Documents can be previewed only. Download is not available.');
+export async function downloadTrainingDocument(id: string, fileName: string): Promise<void> {
+  const blob = await fetchTrainingDocumentBlob(id, { download: true });
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'training-document';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Only PDF can be viewed inline in the browser. */
+export function canPreviewTrainingDocument(nameOrType: string): boolean {
+  return isPdfFile(nameOrType);
 }
 
 export function isPdfFile(nameOrType: string): boolean {
@@ -112,7 +130,28 @@ export function isPdfFile(nameOrType: string): boolean {
 
 export function isWordFile(nameOrType: string): boolean {
   const value = String(nameOrType || '').toLowerCase();
-  return value.includes('word') || value.includes('msword') || value.endsWith('.doc') || value.endsWith('.docx') || value.includes('officedocument');
+  return (
+    value.includes('msword') ||
+    value.includes('wordprocessingml') ||
+    value.endsWith('.doc') ||
+    value.endsWith('.docx') ||
+    /(^|[^\w])word([^\w]|$)/.test(value)
+  );
+}
+
+export function isExcelFile(nameOrType: string): boolean {
+  const value = String(nameOrType || '').toLowerCase();
+  return (
+    value.includes('ms-excel') ||
+    value.includes('spreadsheetml') ||
+    value.endsWith('.xls') ||
+    value.endsWith('.xlsx') ||
+    value.includes('excel')
+  );
+}
+
+export function isAllowedTrainingUpload(nameOrType: string): boolean {
+  return isPdfFile(nameOrType) || isWordFile(nameOrType) || isExcelFile(nameOrType);
 }
 
 export async function listTeamTargets(userEmail?: string): Promise<TeamTarget[]> {
