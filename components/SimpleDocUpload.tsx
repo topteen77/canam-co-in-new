@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { canPreviewDocument, downloadStoredDocument } from '../utils/documentPreview';
 import apiClient from '../services/apiClient';
 
 interface SimpleDocUploadProps {
@@ -197,19 +198,30 @@ export const SimpleDocUpload: React.FC<SimpleDocUploadProps> = ({
             </div>
             <div className="flex gap-2 flex-shrink-0">
               {(currentDocument.fileData || currentDocument.url) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const dataUrl = currentDocument.fileData || currentDocument.url;
-                    const fileName = currentDocument.fileName || 'Document';
-                    const fileType = currentDocument.fileType || '';
-                    handlePreview(dataUrl, fileName, fileType);
-                  }}
-                  className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
-                  title="Preview document"
-                >
-                  👁️ Preview
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const dataUrl = currentDocument.fileData || currentDocument.url;
+                      const fileName = currentDocument.fileName || 'Document';
+                      const fileType = currentDocument.fileType || '';
+                      handlePreview(dataUrl, fileName, fileType);
+                    }}
+                    className="inline-flex items-center justify-center h-7 min-w-[5.5rem] px-3 text-xs font-semibold leading-none rounded border box-border border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                    title="Preview document"
+                  >
+                    Preview
+                  </button>
+                  {!canPreviewDocument(currentDocument.fileType, currentDocument.fileName) && (
+                    <button
+                      type="button"
+                      onClick={() => downloadStoredDocument(currentDocument)}
+                      className="inline-flex items-center justify-center h-7 min-w-[5.5rem] px-3 text-xs font-semibold leading-none rounded border box-border border-indigo-600 bg-white text-indigo-700 hover:bg-indigo-50 transition-colors"
+                    >
+                      Download
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -274,8 +286,19 @@ export const SimpleDocUpload: React.FC<SimpleDocUploadProps> = ({
                 className="flex-1 w-full bg-slate-100"
               />
             ) : (
-              <div className="flex-1 flex items-center justify-center p-8 text-center text-slate-600">
-                This file type cannot be previewed in the browser. Download is not available.
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center text-slate-600">
+                <p>This file type cannot be previewed in the browser.</p>
+                <button
+                  type="button"
+                  onClick={() => downloadStoredDocument({
+                    fileData: preview.src,
+                    fileName: preview.name,
+                    fileType: preview.type,
+                  })}
+                  className="inline-flex items-center justify-center h-8 min-w-[5.5rem] px-4 text-xs font-semibold leading-none rounded-lg border box-border border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                >
+                  Download
+                </button>
               </div>
             )}
           </div>

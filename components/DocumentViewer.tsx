@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal } from './Modal';
 import type { AgencyDocument } from '../types';
+import { downloadStoredDocument } from '../utils/documentPreview';
 
 interface DocumentViewerProps {
   document: AgencyDocument;
@@ -167,9 +168,16 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
               <div className="text-center p-8">
                 <div className="text-white mb-4">
                   <p className="text-lg font-semibold mb-2">Preview not available</p>
-                  <p className="text-sm text-slate-300">
-                    This file type cannot be previewed in the browser. Download is not available.
+                  <p className="text-sm text-slate-300 mb-4">
+                    This file type cannot be previewed in the browser.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => downloadStoredDocument(document)}
+                    className="inline-flex items-center justify-center h-8 min-w-[5.5rem] px-4 text-xs font-semibold leading-none rounded-lg border box-border border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                  >
+                    Download
+                  </button>
                 </div>
               </div>
             )}

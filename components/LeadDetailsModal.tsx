@@ -7,6 +7,7 @@ import { ContactEditModal } from './ContactEditModal';
 import { SimpleDocUpload } from './SimpleDocUpload';
 import { SimpleDocViewer } from './SimpleDocViewer';
 import { getDocumentsByType } from '../services/documentService';
+import { canPreviewDocument, downloadStoredDocument } from '../utils/documentPreview';
 import MeetingRemarksIntegration from './MeetingRemarksIntegration';
 import { MultiSelect } from './MultiSelect';
 import { CustomDateTimePicker } from './CustomDateTimePicker';
@@ -630,6 +631,30 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     setIsDocumentViewerOpen(true);
   };
 
+  const docActionBtnClass =
+    'inline-flex items-center justify-center h-7 min-w-[5.5rem] px-3 text-xs font-semibold leading-none rounded border box-border transition-colors';
+
+  const renderDocumentActions = (doc: any, label: string) => (
+    <div className="flex items-center gap-2 flex-shrink-0">
+      <button
+        type="button"
+        onClick={() => handleViewDocument(doc, label)}
+        className={`${docActionBtnClass} bg-green-600 text-white border-green-600 hover:bg-green-700`}
+      >
+        View
+      </button>
+      {!canPreviewDocument(doc?.fileType, doc?.fileName) && (
+        <button
+          type="button"
+          onClick={() => downloadStoredDocument(doc)}
+          className={`${docActionBtnClass} bg-white text-green-700 border-green-600 hover:bg-green-100`}
+        >
+          Download
+        </button>
+      )}
+    </div>
+  );
+
   const formatDate = (dateString: string) => {
     try {
       if (!dateString) return 'Not set';
@@ -1112,12 +1137,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                             <span className="text-green-700">📄</span>
                             <span className="text-green-800 font-medium truncate">{documents.companyRegistration.fileName}</span>
                           </div>
-                          <button
-                            onClick={() => handleViewDocument(documents.companyRegistration, 'Company Registration Proof')}
-                            className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                          >
-                            View
-                          </button>
+                          {renderDocumentActions(documents.companyRegistration, 'Company Registration Proof')}
                         </div>
                       ) : (
                         <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 italic">
@@ -1152,12 +1172,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                             <span className="text-green-700">📄</span>
                             <span className="text-green-800 font-medium truncate">{documents.panCard.fileName}</span>
                           </div>
-                          <button
-                            onClick={() => handleViewDocument(documents.panCard, 'PAN CARD')}
-                            className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                          >
-                            View
-                          </button>
+                          {renderDocumentActions(documents.panCard, 'PAN CARD')}
                         </div>
                       ) : (
                         <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 italic">
@@ -1192,12 +1207,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                             <span className="text-green-700">📄</span>
                             <span className="text-green-800 font-medium truncate">{documents.gstNumber.fileName}</span>
                           </div>
-                          <button
-                            onClick={() => handleViewDocument(documents.gstNumber, 'GST NUMBER')}
-                            className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                          >
-                            View
-                          </button>
+                          {renderDocumentActions(documents.gstNumber, 'GST NUMBER')}
                         </div>
                       ) : (
                         <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 italic">
@@ -1232,12 +1242,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                             <span className="text-green-700">📄</span>
                             <span className="text-green-800 font-medium truncate">{documents.mou.fileName}</span>
                           </div>
-                          <button
-                            onClick={() => handleViewDocument(documents.mou, 'MOU')}
-                            className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                          >
-                            View
-                          </button>
+                          {renderDocumentActions(documents.mou, 'MOU')}
                         </div>
                       ) : (
                         <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 italic">
@@ -1854,6 +1859,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           document={selectedDocument}
           isOpen={isDocumentViewerOpen}
           onClose={() => setIsDocumentViewerOpen(false)}
+          documentLabel={selectedDocumentLabel}
         />
       )}
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from './Modal';
+import { downloadStoredDocument } from '../utils/documentPreview';
 
 interface SimpleDocViewerProps {
   document: any;
@@ -50,13 +51,13 @@ export const SimpleDocViewer: React.FC<SimpleDocViewerProps> = ({
               {document.uploadedBy ? ` by ${document.uploadedBy}` : ''}
             </p>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <span className="px-3 py-1.5 text-sm text-slate-500">Preview only</span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-sm text-slate-500">Preview only</span>
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-sm bg-slate-100 text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors"
+              className="inline-flex items-center justify-center h-8 min-w-[5.5rem] px-3 text-xs font-semibold leading-none rounded-lg border box-border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
             >
-              ✕ Close
+              Close
             </button>
           </div>
         </div>
@@ -71,7 +72,14 @@ export const SimpleDocViewer: React.FC<SimpleDocViewerProps> = ({
               {imgError ? (
                 <div className="text-center p-8">
                   <div className="text-4xl mb-2">⚠️</div>
-                  <p className="text-slate-500">Failed to load image preview.</p>
+                  <p className="text-slate-500 mb-4">Failed to load image preview.</p>
+                  <button
+                    type="button"
+                    onClick={() => downloadStoredDocument(document)}
+                    className="inline-flex items-center justify-center h-8 min-w-[5.5rem] px-4 text-xs font-semibold leading-none rounded-lg border box-border border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                  >
+                    Download
+                  </button>
                 </div>
               ) : (
                 <>
@@ -139,9 +147,16 @@ export const SimpleDocViewer: React.FC<SimpleDocViewerProps> = ({
             <div className="p-12 text-center">
               <div className="text-6xl mb-4 opacity-50">📄</div>
               <h3 className="text-lg font-semibold text-slate-800 mb-2">{document.fileName}</h3>
-              <p className="text-slate-600">
-                This file type cannot be previewed in the browser. Download is not available.
+              <p className="text-slate-600 mb-4">
+                This file type cannot be previewed in the browser.
               </p>
+              <button
+                type="button"
+                onClick={() => downloadStoredDocument(document)}
+                className="inline-flex items-center justify-center h-8 min-w-[5.5rem] px-4 text-xs font-semibold leading-none rounded-lg border box-border border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+              >
+                Download
+              </button>
             </div>
           )}
         </div>
