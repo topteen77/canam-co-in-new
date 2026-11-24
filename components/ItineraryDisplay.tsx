@@ -2,20 +2,29 @@ import React, { useMemo, useState } from 'react';
 import type { Lead, FollowUp, MeetingCheckInRecord } from '../types';
 import { PlusIcon } from './icons/SparklesIcon';
 import { getUserDisplayName } from '../utils/dataCleaning';
+import { emailsMatch } from '../utils/leadPermissions';
+import { isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
+import { stripScheduledFollowUpId, type ScheduledMeetingStart } from '../utils/scheduledMeeting';
 
 type MeetingItem = FollowUp & {
   leadId: string;
   agencyName: string;
   isCheckIn?: boolean;
   creatorLabel?: string;
+  accountManager?: string;
+  salesPerson?: string;
+  city?: string;
 };
 
 interface MeetingPlannerProps {
   leads: Lead[];
   meetingCheckInRecords?: MeetingCheckInRecord[];
   availableUsers?: Array<{ id?: string; name?: string; email?: string; role?: string }>;
+  currentUser?: string | null;
+  canViewAllMeetings?: boolean;
   onUpdateLead: (lead: Lead) => void;
   onPlanNewMeeting: () => void;
+  onStartScheduledMeeting?: (meeting: ScheduledMeetingStart) => void;
 }
 
 function normalizeMeetingUrl(raw: string): string {
@@ -32,6 +41,16 @@ function meetingLinkLabel(raw: string): string {
   if (lower.includes('teams.microsoft.') || lower.includes('teams.live.')) return 'Join Teams';
   if (lower.includes('webex.')) return 'Join Webex';
   return 'Open meeting link';
+}
+
+function leadCity(lead?: Lead | null): string {
+  const contacts = Array.isArray(lead?.contacts) ? lead.contacts : [];
+  return contacts.map((contact) => String(contact.city || '').trim()).find(Boolean) || '';
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b));
 }
 
 function openMeetingLink(raw: string) {
@@ -141,8 +160,10 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   leads,
   meetingCheckInRecords = [],
   availableUsers = [],
-  onUpdateLead,
+  currentUser = null,
+  canViewAllMeetings = false,
   onPlanNewMeeting,
+  onStartScheduledMeeting,
 }) => {
   const allMeetings = useMemo((): MeetingItem[] => {
     const fromLeads: MeetingItem[] = Array.isArray(leads)
@@ -158,6 +179,9 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
               creatorLabel: meeting.createdBy
                 ? getUserDisplayName(meeting.createdBy, availableUsers)
                 : '',
+              accountManager: lead.accountManager || '',
+              salesPerson: lead.salesPerson || '',
+              city: leadCity(lead),
             }));
         })
       : [];
@@ -167,20 +191,24 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
           const dateStr = r.date || r.checkInTime || '';
           const status = r.meetingStatus === 'completed' ? ('Done' as const) : ('Planned' as const);
           const creatorRaw = r.createdBy || r.salesPersonEmail || r.username || r.salesPersonName || '';
+          const linkedLead = leads.find((lead) => String(lead.id) === String(r.leadId || ''));
           return {
             id,
             type: 'Meeting' as const,
             status,
             date: dateStr,
-            notes: r.notes || '',
+            notes: stripScheduledFollowUpId(r.notes || ''),
             meetingLink: (r as { meetingLink?: string }).meetingLink || '',
             createdBy: creatorRaw,
             leadId: r.leadId || '',
-            agencyName: r.leadName || '—',
+            agencyName: r.leadName || linkedLead?.agencyName || '—',
             isCheckIn: true,
             creatorLabel: creatorRaw
               ? r.salesPersonName || getUserDisplayName(creatorRaw, availableUsers)
               : '',
+            accountManager: linkedLead?.accountManager || r.salesPersonEmail || r.username || '',
+            salesPerson: linkedLead?.salesPerson || '',
+            city: leadCity(linkedLead),
           };
         })
       : [];
@@ -191,55 +219,67 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     });
   }, [leads, meetingCheckInRecords, availableUsers]);
 
-  const [editingMeeting, setEditingMeeting] = useState<MeetingItem | null>(null);
-  const [remarks, setRemarks] = useState('');
-  const [editLink, setEditLink] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [agentFilter, setAgentFilter] = useState('');
+  const [managerFilter, setManagerFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
+
+  const visibleMeetings = useMemo(() => {
+    if (canViewAllMeetings) return allMeetings;
+    return allMeetings.filter((meeting) => (
+      emailsMatch(meeting.accountManager, currentUser)
+      || emailsMatch(meeting.salesPerson, currentUser)
+      || emailsMatch(meeting.createdBy, currentUser)
+    ));
+  }, [allMeetings, canViewAllMeetings, currentUser]);
+
+  const agentOptions = useMemo(
+    () => uniqueSorted(visibleMeetings.map((meeting) => meeting.agencyName)),
+    [visibleMeetings]
+  );
+  const managerOptions = useMemo(
+    () => uniqueSorted(visibleMeetings.map((meeting) => meeting.accountManager || '')).map((email) => ({
+      email,
+      label: getUserDisplayName(email, availableUsers),
+    })),
+    [visibleMeetings, availableUsers]
+  );
+  const cityOptions = useMemo(
+    () => uniqueSorted(visibleMeetings.map((meeting) => meeting.city || '')),
+    [visibleMeetings]
+  );
 
   const filteredMeetings = useMemo(() => {
-    if (!selectedDate) {
-      const today = new Date(new Date().toDateString()).getTime();
-      return allMeetings.filter((m) => {
-        const t = new Date(m.date).getTime();
-        return !isNaN(t) && t >= today;
-      });
-    }
-    return allMeetings.filter(
-      (m) => new Date(m.date).toDateString() === selectedDate.toDateString()
-    );
-  }, [allMeetings, selectedDate]);
-
-  const persistFollowUpPatch = (meetingToUpdate: MeetingItem, patch: Partial<FollowUp>) => {
-    if (meetingToUpdate.isCheckIn) return;
-    const lead = leads.find((l) => l.id === meetingToUpdate.leadId);
-    if (!lead) return;
-    const currentFollowUps = Array.isArray(lead.followUps) ? lead.followUps : [];
-    const updatedFollowUps = currentFollowUps.map((f) =>
-      f.id === meetingToUpdate.id ? { ...f, ...patch } : f
-    );
-    onUpdateLead({ ...lead, followUps: updatedFollowUps });
-  };
-
-  const handleMarkAsDone = (meetingToUpdate: MeetingItem) => {
-    if (meetingToUpdate.isCheckIn) return;
-    persistFollowUpPatch(meetingToUpdate, {
-      status: 'Done',
-      notes: remarks || meetingToUpdate.notes,
-      meetingLink: editLink.trim() || meetingToUpdate.meetingLink || undefined,
+    const matched = visibleMeetings.filter((meeting) => {
+      if (agentFilter && meeting.agencyName !== agentFilter) return false;
+      if (managerFilter && !emailsMatch(meeting.accountManager, managerFilter)) return false;
+      if (cityFilter && (meeting.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
+      if (!selectedDate) {
+        const today = new Date(new Date().toDateString()).getTime();
+        const time = new Date(meeting.date).getTime();
+        return !isNaN(time) && time >= today;
+      }
+      return new Date(meeting.date).toDateString() === selectedDate.toDateString();
     });
-    setEditingMeeting(null);
-    setRemarks('');
-    setEditLink('');
-  };
+    return matched;
+  }, [visibleMeetings, agentFilter, managerFilter, cityFilter, selectedDate]);
 
-  const handleSaveLinkOnly = (meetingToUpdate: MeetingItem) => {
-    if (meetingToUpdate.isCheckIn) return;
-    persistFollowUpPatch(meetingToUpdate, {
-      meetingLink: editLink.trim() || undefined,
+  const accountManagerName = currentUser
+    ? getUserDisplayName(currentUser, availableUsers)
+    : '';
+
+  const startScheduledMeeting = (meeting: MeetingItem) => {
+    onStartScheduledMeeting?.({
+      followUpId: meeting.id,
+      leadId: meeting.leadId,
+      leadName: meeting.agencyName,
+      notes: meeting.notes,
+      meetingLink: meeting.meetingLink,
+      scheduledBy: meeting.creatorLabel,
+      accountManagerName: accountManagerName && accountManagerName !== 'N/A'
+        ? accountManagerName
+        : (meeting.creatorLabel || ''),
     });
-    setEditingMeeting(null);
-    setRemarks('');
-    setEditLink('');
   };
 
   return (
@@ -258,17 +298,65 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
       </div>
 
       <Calendar
-        meetings={allMeetings}
+        meetings={visibleMeetings.filter((meeting) => {
+          if (agentFilter && meeting.agencyName !== agentFilter) return false;
+          if (managerFilter && !emailsMatch(meeting.accountManager, managerFilter)) return false;
+          if (cityFilter && (meeting.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
+          return true;
+        })}
         selectedDate={selectedDate}
         onDateSelect={setSelectedDate}
       />
 
       <div>
-        <h3 className="text-lg sm:text-xl font-bold text-slate-800 mb-3 sm:mb-4">
-          {selectedDate
-            ? `Agenda for ${selectedDate.toLocaleDateString()}`
-            : 'Upcoming Meetings'}
-        </h3>
+        <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-3 mb-3 sm:mb-4">
+          <h3 className="text-lg sm:text-xl font-bold text-slate-800">
+            {selectedDate
+              ? `Agenda for ${selectedDate.toLocaleDateString()}`
+              : 'Upcoming Meetings'}
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full xl:max-w-3xl">
+            <label className="block">
+              <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Agent</span>
+              <select
+                value={agentFilter}
+                onChange={(e) => setAgentFilter(e.target.value)}
+                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+              >
+                <option value="">All agents</option>
+                {agentOptions.map((agent) => <option key={agent} value={agent}>{agent}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Account manager</span>
+              <select
+                value={canViewAllMeetings ? managerFilter : (currentUser || '')}
+                onChange={(e) => canViewAllMeetings && setManagerFilter(e.target.value)}
+                disabled={!canViewAllMeetings}
+                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px] disabled:bg-slate-50"
+              >
+                {canViewAllMeetings && <option value="">All account managers</option>}
+                {(canViewAllMeetings ? managerOptions : [{
+                  email: currentUser || '',
+                  label: accountManagerName && accountManagerName !== 'N/A' ? accountManagerName : 'My meetings',
+                }]).map((manager) => (
+                  <option key={manager.email || 'me'} value={manager.email}>{manager.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">City</span>
+              <select
+                value={cityFilter}
+                onChange={(e) => setCityFilter(e.target.value)}
+                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+              >
+                <option value="">All cities</option>
+                {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
         {filteredMeetings.length > 0 ? (
           <ul className="space-y-4">
             {filteredMeetings.map((meeting) => (
@@ -285,26 +373,9 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                         timeStyle: 'short',
                       })}
                     </p>
-                    {meeting.creatorLabel && (
-                      <p className="text-sm text-slate-500 mt-1">
-                        Created by: <span className="font-medium text-slate-700">{meeting.creatorLabel}</span>
-                      </p>
-                    )}
-                    {meeting.meetingLink?.trim() && editingMeeting?.id !== meeting.id && (
-                      <button
-                        type="button"
-                        onClick={() => openMeetingLink(meeting.meetingLink!)}
-                        className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline"
-                        title={meeting.meetingLink}
-                      >
-                        🔗 {meetingLinkLabel(meeting.meetingLink)}
-                      </button>
-                    )}
-                    {editingMeeting?.id !== meeting.id && (
-                      <p className="text-sm text-slate-500 mt-1">
-                        Notes: {meeting.notes || '—'}
-                      </p>
-                    )}
+                    <p className="text-sm text-slate-500 mt-1">
+                      Notes: {meeting.notes || '—'}
+                    </p>
                   </div>
                   <div className="text-left sm:text-right flex-shrink-0">
                     <span
@@ -319,79 +390,35 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                   </div>
                 </div>
 
-                {meeting.status === 'Planned' && !meeting.isCheckIn && editingMeeting?.id !== meeting.id && (
-                  <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row sm:justify-end gap-2">
+                {meeting.status === 'Planned' && !meeting.isCheckIn && (
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-[44px]">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Scheduled by</p>
+                      <p className="text-sm font-medium text-slate-800 truncate">{meeting.creatorLabel || '—'}</p>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditingMeeting({ ...meeting, leadId: meeting.leadId });
-                        setRemarks(meeting.notes || '');
-                        setEditLink(meeting.meetingLink || '');
-                      }}
-                      className="w-full sm:w-auto min-h-[44px] px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                      onClick={() => meeting.meetingLink?.trim() && openMeetingLink(meeting.meetingLink)}
+                      disabled={!meeting.meetingLink?.trim()}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 min-h-[44px] text-left disabled:opacity-70"
+                      title={meeting.meetingLink || 'No meeting link'}
                     >
-                      Complete Meeting
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Meeting link</p>
+                      <p className="text-sm font-medium text-indigo-700 truncate">
+                        {meeting.meetingLink?.trim() ? meetingLinkLabel(meeting.meetingLink) : 'No link added'}
+                      </p>
                     </button>
-                  </div>
-                )}
-
-                {editingMeeting?.id === meeting.id && (
-                  <div className="mt-4 space-y-2">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700">
-                        Meeting link (Zoom / Google Meet / etc.)
-                      </label>
-                      <input
-                        type="url"
-                        value={editLink}
-                        onChange={(e) => setEditLink(e.target.value)}
-                        className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                        placeholder="https://zoom.us/j/… or meet.google.com/…"
-                      />
-                      {editLink.trim() && (
-                        <button
-                          type="button"
-                          onClick={() => openMeetingLink(editLink)}
-                          className="mt-1 text-sm text-indigo-700 hover:underline"
-                        >
-                          Test open link
-                        </button>
-                      )}
-                    </div>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Outcome / Remarks
-                    </label>
-                    <textarea
-                      value={remarks}
-                      onChange={(e) => setRemarks(e.target.value)}
-                      rows={2}
-                      className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                      placeholder="How did the meeting go?"
-                    />
-                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
-                      <button
-                        onClick={() => {
-                          setEditingMeeting(null);
-                          setEditLink('');
-                        }}
-                        className="min-h-[44px] px-3 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-lg"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSaveLinkOnly(meeting)}
-                        className="min-h-[44px] px-3 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg"
-                      >
-                        Save link
-                      </button>
-                      <button
-                        onClick={() => handleMarkAsDone(meeting)}
-                        className="min-h-[44px] px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg"
-                      >
-                        Mark as Done
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => startScheduledMeeting(meeting)}
+                      className="rounded-lg min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
+                    >
+                      {meetingCheckInRecords.some((record) => (
+                        String(record.leadId || '') === String(meeting.leadId)
+                        && meetingBelongsToUser(record, currentUser)
+                        && isActiveMeetingRecord(record)
+                      )) ? 'End meeting' : 'Start meeting'}
+                    </button>
                   </div>
                 )}
               </li>

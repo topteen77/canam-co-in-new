@@ -318,12 +318,24 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
     }
   };
 
+  const onDownloadDoc = async (doc: TrainingDocument) => {
+    try {
+      setError(null);
+      setNotice(null);
+      await downloadTrainingDocument(doc.id, doc.fileName || `${doc.title || 'training'}.bin`);
+      setNotice(`Downloaded ${doc.fileName || doc.title}`);
+    } catch (err: any) {
+      setError(err?.message || 'Download failed');
+    }
+  };
+
   const openPreview = async (doc: TrainingDocument) => {
     try {
       setError(null);
       const canView = canPreviewTrainingDocument(doc.fileName) || canPreviewTrainingDocument(doc.fileType);
+      // Word / Excel / other office files cannot render in-browser — download so the file opens.
       if (!canView) {
-        setNotice('This file type cannot be previewed. Use Download instead.');
+        await onDownloadDoc(doc);
         return;
       }
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -334,17 +346,6 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
       setPreviewKind('pdf');
     } catch (err: any) {
       setError(err?.message || 'View failed');
-    }
-  };
-
-  const onDownloadDoc = async (doc: TrainingDocument) => {
-    try {
-      setError(null);
-      setNotice(null);
-      await downloadTrainingDocument(doc.id, doc.fileName || `${doc.title || 'training'}.bin`);
-      setNotice(`Downloaded ${doc.fileName || doc.title}`);
-    } catch (err: any) {
-      setError(err?.message || 'Download failed');
     }
   };
 
@@ -678,13 +679,22 @@ export const TrainingTargets: React.FC<Props> = ({ isAdmin, currentUser, availab
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 shrink-0">
-                      {(canPreviewTrainingDocument(doc.fileName) || canPreviewTrainingDocument(doc.fileType)) && (
+                      {(canPreviewTrainingDocument(doc.fileName) || canPreviewTrainingDocument(doc.fileType)) ? (
                         <button
                           type="button"
                           onClick={() => openPreview(doc)}
                           className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
                         >
                           View
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onDownloadDoc(doc)}
+                          className="px-3 py-1.5 text-sm rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                          title="Word/Excel cannot preview in browser — download to open the file"
+                        >
+                          Open file
                         </button>
                       )}
                       <button

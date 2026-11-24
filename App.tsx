@@ -25,6 +25,7 @@ import {
   describeActiveMeetingReason,
   getActiveMeetingForUser,
 } from './utils/meetingActive';
+import type { ScheduledMeetingStart } from './utils/scheduledMeeting';
 import type { FollowUp, Lead, AttendanceRecord, MeetingCheckInRecord } from './types';
 import { LEAD_STATUSES, AGENT_CATEGORIES, LEAD_SOURCES, COUNTRY_OPTIONS } from './types';
 
@@ -117,6 +118,7 @@ const App: React.FC = () => {
   const [isUserProfileOpen, setUserProfileOpen] = useState(false); // ✅ Profile Modal State
   const [isCallLoggingModalOpen, setIsCallLoggingModalOpen] = useState(false);
   const [isMeetingCheckInModalOpen, setIsMeetingCheckInModalOpen] = useState(false);
+  const [scheduledMeetingStart, setScheduledMeetingStart] = useState<ScheduledMeetingStart | null>(null);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -477,6 +479,31 @@ const App: React.FC = () => {
       applyLeadUpdate(id, (lead) => mergeLeadFields(lead, data));
       refreshLeadInBackground(id);
   }, [findLeadById, currentUser, isAdmin, applyLeadUpdate, refreshLeadInBackground]);
+
+  const handleScheduledMeetingCompleted = useCallback(async (result: {
+    followUpId: string;
+    leadId: string;
+    outcome: string;
+    outcomeNotes: string;
+  }) => {
+    const lead = findLeadById(result.leadId);
+    if (!lead) return;
+    const followUps = (Array.isArray(lead.followUps) ? lead.followUps : []).map((followUp) => {
+      if (followUp.id !== result.followUpId) return followUp;
+      const outcomeLine = `Outcome: ${result.outcome}${result.outcomeNotes ? ` — ${result.outcomeNotes}` : ''}`;
+      return {
+        ...followUp,
+        status: 'Done' as const,
+        notes: [followUp.notes, outcomeLine].filter(Boolean).join('\n'),
+      };
+    });
+    await handleUpdateLead(result.leadId, { followUps });
+  }, [findLeadById, handleUpdateLead]);
+
+  const openMeetingCheckIn = useCallback((scheduled?: ScheduledMeetingStart | null) => {
+    setScheduledMeetingStart(scheduled || null);
+    setIsMeetingCheckInModalOpen(true);
+  }, []);
 
   const handleAddFollowUp = useCallback(async (id: string, f: Omit<FollowUp, 'id'> & { id?: string }) => {
       const existing = findLeadById(id);
@@ -912,7 +939,7 @@ const App: React.FC = () => {
                     </button>
                   )}
                   <button
-                    onClick={() => setIsMeetingCheckInModalOpen(true)}
+                    onClick={() => openMeetingCheckIn(null)}
                     className={`app-header-btn ${hasActiveMeeting ? 'app-header-btn--alert' : 'app-header-btn--ghost'}`}
                     title={meetingHeaderTitle}
                     aria-label={hasActiveMeeting ? 'Active meeting' : 'Meeting check-in'}
@@ -977,7 +1004,7 @@ const App: React.FC = () => {
                             onSelectLead={handleViewLead}
                             onAddLead={() => setAddLeadModalOpen(true)}
                             onImportLeads={() => setImportModalOpen(true)}
-                            onMeetingCheckIn={() => setIsMeetingCheckInModalOpen(true)}
+                            onMeetingCheckIn={() => openMeetingCheckIn(null)}
                             meetingCheckIns={meetingCheckIns}
                             currentUser={currentUser}
                             isAdmin={isAdmin}
@@ -1020,7 +1047,7 @@ const App: React.FC = () => {
                                     onSelectLead={handleViewLead}
                                     onAddLead={() => setAddLeadModalOpen(true)}
                                     onImportLeads={() => setImportModalOpen(true)}
-                                    onMeetingCheckIn={() => setIsMeetingCheckInModalOpen(true)}
+                                    onMeetingCheckIn={() => openMeetingCheckIn(null)}
                                     meetingCheckIns={meetingCheckIns}
                                     currentUser={currentUser}
                                     isAdmin={isAdmin}
@@ -1047,8 +1074,11 @@ const App: React.FC = () => {
                               leads={displayedLeads}
                               meetingCheckInRecords={meetingCheckIns}
                               availableUsers={availableUsers}
+                              currentUser={currentUser}
+                              canViewAllMeetings={isAdmin || isSubAdmin}
                               onUpdateLead={(lead) => handleUpdateLead(lead.id, { followUps: lead.followUps })}
                               onPlanNewMeeting={() => setPlanMeetingModalOpen(true)}
+                              onStartScheduledMeeting={(meeting) => openMeetingCheckIn(meeting)}
                             />
                             <div className="mt-6 sm:mt-10">
                                 <CompletedMeetings meetingCheckIns={meetingCheckIns} leads={displayedLeads} currentUser={currentUser} availableUsers={availableUsers} />
@@ -1152,11 +1182,16 @@ const App: React.FC = () => {
         {isMeetingCheckInModalOpen && (
             <SimpleMeetingCheckIn
                 isOpen={isMeetingCheckInModalOpen}
-                onClose={() => setIsMeetingCheckInModalOpen(false)}
+                onClose={() => {
+                  setIsMeetingCheckInModalOpen(false);
+                  setScheduledMeetingStart(null);
+                }}
                 availableUsers={availableUsers}
                 userLeads={displayedLeads}
                 currentUser={currentUser!}
                 onMeetingsChange={refreshMeetingCheckIns}
+                scheduledMeeting={scheduledMeetingStart}
+                onScheduledMeetingCompleted={handleScheduledMeetingCompleted}
             />
         )}
 

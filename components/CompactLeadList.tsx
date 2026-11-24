@@ -380,7 +380,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
     { id: 'contact', label: 'Contact', width: 'w-[9%]', visible: true },
     { id: 'phone', label: 'Phone', width: 'w-[8%]', visible: true },
     { id: 'onboardedDate', label: 'Created', width: 'w-[7%]', visible: false, sortable: true },
-    { id: 'onboardingDate', label: 'Onboard', width: 'w-[7%]', visible: true, sortable: true },
+    { id: 'onboardingDate', label: 'Onboard', width: 'w-[10%]', visible: true, sortable: true },
     { id: 'remarks', label: 'Remarks', width: 'w-[8%]', visible: true },
     { id: 'city', label: 'City', width: 'w-[7%]', visible: true },
     { id: 'salesPerson', label: 'Sales', width: 'w-[6%]', visible: false },
@@ -872,22 +872,57 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                         )}
                         
                         {column.id === 'onboardingDate' && (
-                          <div className="text-slate-600 truncate" title={lead.onboardingDate ? new Date(lead.onboardingDate).toLocaleDateString() : 'Not set'}>
-                            {(() => {
-                              if (lead.onboardingDate) {
-                                try {
-                                  const date = new Date(lead.onboardingDate);
-                                  return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString('en-US', {
-                                    year: 'numeric',
-                                    month: 'short',
-                                    day: 'numeric'
-                                  });
-                                } catch (error) {
-                                  return 'Invalid date';
-                                }
-                              }
-                              return 'N/A';
-                            })()}
+                          <div
+                            className="leading-tight space-y-0.5"
+                            title={[
+                              `Onboard: ${lead.onboardingDate && !isNaN(new Date(lead.onboardingDate).getTime())
+                                ? new Date(lead.onboardingDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                                : 'Not set'}`,
+                              `Created: ${lead.createdAt && !isNaN(new Date(lead.createdAt).getTime())
+                                ? new Date(lead.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                                : '—'}`,
+                            ].join('\n')}
+                          >
+                            <div className="truncate text-[11px] text-slate-700">
+                              <span className="font-semibold text-slate-500">Onboard:</span>{' '}
+                              <span className={lead.onboardingDate ? 'text-slate-800' : 'text-slate-400'}>
+                                {(() => {
+                                  if (!lead.onboardingDate) return 'N/A';
+                                  try {
+                                    const date = new Date(lead.onboardingDate);
+                                    return isNaN(date.getTime())
+                                      ? 'Invalid'
+                                      : date.toLocaleDateString('en-US', {
+                                          year: 'numeric',
+                                          month: 'short',
+                                          day: 'numeric',
+                                        });
+                                  } catch {
+                                    return 'Invalid';
+                                  }
+                                })()}
+                              </span>
+                            </div>
+                            <div className="truncate text-[11px] text-slate-700">
+                              <span className="font-semibold text-slate-500">Created:</span>{' '}
+                              <span className={lead.createdAt ? 'text-slate-800' : 'text-slate-400'}>
+                                {(() => {
+                                  if (!lead.createdAt) return '—';
+                                  try {
+                                    const created = new Date(lead.createdAt);
+                                    return isNaN(created.getTime())
+                                      ? '—'
+                                      : created.toLocaleDateString('en-US', {
+                                          year: 'numeric',
+                                          month: 'short',
+                                          day: 'numeric',
+                                        });
+                                  } catch {
+                                    return '—';
+                                  }
+                                })()}
+                              </span>
+                            </div>
                           </div>
                         )}
                         

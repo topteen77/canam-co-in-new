@@ -1261,6 +1261,13 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                   <div key={index} className="bg-gradient-to-br from-blue-50 to-indigo-50 p-3 rounded-lg border border-blue-200">
                     <div className="flex justify-between items-start mb-2">
                       <div>
+                        <p className={`inline-flex mb-1 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide rounded-full ${
+                          index === 0
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}>
+                          {index === 0 ? 'Primary contact' : index === 1 ? 'Secondary contact' : `Contact ${index + 1}`}
+                        </p>
                         <h4 className="text-sm font-bold text-slate-800">{contact.name}</h4>
                         {contact.role && contact.role !== 'POC' && (
                           <p className="text-xs font-medium text-indigo-700">{contact.role}</p>
@@ -1763,20 +1770,56 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 </div>
               )}
 
-              {leadFollowUps.map((followUp, index) => (
+              {leadFollowUps.map((followUp, index) => {
+                const followUpOverdue =
+                  new Date(followUp.date) < new Date() && followUp.status === 'Planned';
+                return (
                 <div key={index} className="bg-white border border-slate-200 rounded-lg p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <div>
-                      <p className="font-medium text-slate-800">{followUp.type} Follow-up</p>
-                      <p className="text-sm text-slate-600">{followUp.notes}</p>
-                      <p className="text-xs text-slate-500">
-                        {followUp.status} • <span className={new Date(followUp.date) < new Date() && followUp.status === 'Planned' ? 'text-red-600 font-semibold' : ''}>{formatDate(followUp.date)}</span> • {getUserDisplayName(followUp.createdBy)}
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 mt-2 bg-blue-500 rounded-full shrink-0"></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 sm:gap-3">
+                        <p className="font-medium text-slate-800">{followUp.type} Follow-up</p>
+                        <p
+                          className={`text-sm font-semibold whitespace-nowrap sm:text-right ${
+                            followUpOverdue ? 'text-red-600' : 'text-slate-800'
+                          }`}
+                          title="Follow-up date & time"
+                        >
+                          {formatDate(followUp.date)}
+                        </p>
+                      </div>
+                      {followUp.notes ? (
+                        <p className="text-sm text-slate-600 mt-1">{followUp.notes}</p>
+                      ) : null}
+                      <p className="text-xs text-slate-500 mt-1">
+                        {followUp.status}
+                        {followUp.createdBy
+                          ? ` • Created by ${getUserDisplayName(followUp.createdBy)}`
+                          : ''}
+                        {followUp.meetingLink?.trim() ? (
+                          <>
+                            {' • '}
+                            <a
+                              href={
+                                /^[a-z][a-z0-9+.-]*:/i.test(followUp.meetingLink.trim())
+                                  ? followUp.meetingLink.trim()
+                                  : `https://${followUp.meetingLink.trim()}`
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:underline"
+                            >
+                              Meeting link
+                            </a>
+                          </>
+                        ) : null}
                       </p>
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Meeting Remarks Integration */}

@@ -4,6 +4,11 @@ import apiClient from '../services/apiClient';
 import type { Lead } from '../types';
 import { EnhancedPhotoUpload } from './EnhancedPhotoUpload';
 import { isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
+import {
+  readScheduledFollowUpId,
+  withScheduledFollowUpId,
+  type ScheduledMeetingStart,
+} from '../utils/scheduledMeeting';
 
 interface SimpleMeetingCheckInProps {
   isOpen: boolean;
@@ -13,6 +18,15 @@ interface SimpleMeetingCheckInProps {
   currentUser: string;
   /** Refresh parent meeting list so header "In Meeting" stays in sync. */
   onMeetingsChange?: () => void | Promise<void>;
+  /** Prefill check-in when an account manager starts a scheduled agenda meeting. */
+  scheduledMeeting?: ScheduledMeetingStart | null;
+  /** Called after a scheduled meeting is checked out with an outcome. */
+  onScheduledMeetingCompleted?: (result: {
+    followUpId: string;
+    leadId: string;
+    outcome: string;
+    outcomeNotes: string;
+  }) => void | Promise<void>;
 }
 
 export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
@@ -22,6 +36,8 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
   userLeads,
   currentUser,
   onMeetingsChange,
+  scheduledMeeting = null,
+  onScheduledMeetingCompleted,
 }) => {
   const [selectedSalesPerson, setSelectedSalesPerson] = useState('');
   const [personMeetingName, setPersonMeetingName] = useState('');
@@ -98,6 +114,15 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
       })();
     }
   }, [isOpen, currentUser, onMeetingsChange]);
+
+  useEffect(() => {
+    if (!isOpen || !scheduledMeeting) return;
+    setSelectedLead(scheduledMeeting.leadId);
+    setLeadSearchTerm('');
+    setSelectedSalesPerson(scheduledMeeting.accountManagerName || '');
+    setMeetingNotes(scheduledMeeting.notes || '');
+    setMeetingType('Follow-up Meeting');
+  }, [isOpen, scheduledMeeting]);
 
   const checkActiveMeeting = async () => {
     try {
@@ -229,7 +254,9 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
         salesPersonName: selectedSalesPerson,
         salesPersonEmail: personMeetingName || '',
         meetingType: meetingType,
-        notes: meetingNotes,
+        notes: scheduledMeeting?.followUpId
+          ? withScheduledFollowUpId(meetingNotes, scheduledMeeting.followUpId)
+          : meetingNotes,
         leadId: selectedLead || '',
         leadName: selectedLeadData?.agencyName || '',
         date: now.toISOString().split('T')[0],
@@ -290,8 +317,27 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
     }
   };
 
+  const scheduledFollowUpId = readScheduledFollowUpId(activeMeeting?.notes)
+    || (
+      scheduledMeeting
+      && String(activeMeeting?.leadId || '') === String(scheduledMeeting.leadId)
+        ? scheduledMeeting.followUpId
+        : ''
+    );
+  const scheduledOutcomeRequired = Boolean(scheduledFollowUpId);
+  const scheduledOutcomeMissing = scheduledOutcomeRequired && (!meetingOutcome || !completionNotes.trim());
+
+  useEffect(() => {
+    if (scheduledFollowUpId) setMeetingOutcome('');
+    else setMeetingOutcome((current) => current || 'successful');
+  }, [scheduledFollowUpId]);
+
   const handleEndMeeting = async () => {
     if (!activeMeeting) return;
+    if (scheduledOutcomeMissing) {
+      alert('Add the meeting outcome before ending this scheduled meeting.');
+      return;
+    }
 
     console.log('🔄 Ending meeting...');
     console.log('📊 Active meeting data:', activeMeeting);
@@ -349,6 +395,14 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
       await apiClient.put(`/meetings/update/${activeMeeting.id}`, updateData);
 
       console.log('✅ Meeting ended successfully');
+      if (scheduledFollowUpId) {
+        await onScheduledMeetingCompleted?.({
+          followUpId: scheduledFollowUpId,
+          leadId: String(activeMeeting.leadId || scheduledMeeting?.leadId || ''),
+          outcome: meetingOutcome,
+          outcomeNotes: completionNotes.trim(),
+        });
+      }
       alert(`Meeting ended successfully! Duration: ${durationMinutes} minutes`);
 
       setActiveMeeting(null);
@@ -414,29 +468,42 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
           </div>
 
           <div className="meeting-field">
-            <label htmlFor="meeting-outcome">Meeting Outcome</label>
+            <label htmlFor="meeting-outcome">
+              Meeting Outcome{scheduledOutcomeRequired ? ' *' : ''}
+            </label>
             <select
               id="meeting-outcome"
               value={meetingOutcome}
               onChange={(e) => setMeetingOutcome(e.target.value)}
+              required={scheduledOutcomeRequired}
             >
+              {scheduledOutcomeRequired && <option value="">Select outcome</option>}
               <option value="successful">Successful</option>
               <option value="rescheduled">Rescheduled</option>
               <option value="cancelled">Cancelled</option>
               <option value="no_show">No Show</option>
               <option value="other">Other</option>
             </select>
+            {scheduledOutcomeRequired && !meetingOutcome && (
+              <p className="mt-1 text-xs font-medium text-rose-700">Select an outcome to end this scheduled meeting.</p>
+            )}
           </div>
 
           <div className="meeting-field">
-            <label htmlFor="completion-notes">Completion Notes</label>
+            <label htmlFor="completion-notes">
+              {scheduledOutcomeRequired ? 'Outcome notes *' : 'Completion Notes'}
+            </label>
             <textarea
               id="completion-notes"
               value={completionNotes}
               onChange={(e) => setCompletionNotes(e.target.value)}
               rows={3}
-              placeholder="Optional notes about how the meeting went..."
+              required={scheduledOutcomeRequired}
+              placeholder={scheduledOutcomeRequired ? 'What was the outcome of this meeting?' : 'Optional notes about how the meeting went...'}
             />
+            {scheduledOutcomeRequired && !completionNotes.trim() && (
+              <p className="mt-1 text-xs font-medium text-rose-700">Outcome notes are required for a scheduled meeting.</p>
+            )}
           </div>
 
           <div className="meeting-field">
@@ -504,7 +571,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
             <button
               type="button"
               onClick={handleEndMeeting}
-              disabled={isSubmitting}
+              disabled={isSubmitting || scheduledOutcomeMissing}
               className="w-full flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
             >
               {isSubmitting ? 'Saving meeting and photos…' : 'Complete Meeting'}
