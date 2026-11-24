@@ -749,14 +749,14 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 {isEditing && (
                   <button
                     onClick={handleSave}
-                    className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 shadow-sm transition-colors"
+                    className="inline-flex items-center justify-center h-9 px-4 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 shadow-sm transition-colors"
                   >
                     Save Changes
                   </button>
                 )}
                 <button
                   onClick={() => setIsEditing(!isEditing)}
-                  className={`px-4 py-2 text-sm font-semibold text-white rounded-lg shadow-sm transition-colors ${
+                  className={`inline-flex items-center justify-center h-9 px-4 text-sm font-semibold text-white rounded-lg shadow-sm transition-colors ${
                     isEditing
                       ? 'bg-slate-600 hover:bg-slate-700'
                       : 'bg-indigo-600 hover:bg-indigo-700'
@@ -961,7 +961,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                         type="date"
                         value={editData.onboardingDate || lead.onboardingDate || ''}
                         onChange={(e) => setEditData(prev => ({ ...prev, onboardingDate: e.target.value }))}
-                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800"
+                        className="block w-full h-9 px-3 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800"
                       />
                     ) : (
                       <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">
@@ -977,7 +977,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                         type="number"
                         value={editData.applicants || lead.applicants || ''}
                         onChange={(e) => setEditData(prev => ({ ...prev, applicants: e.target.value }))}
-                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800 placeholder-slate-400"
+                        className="block w-full h-9 px-3 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800 placeholder-slate-400"
                         placeholder="25"
                         min="0"
                       />
@@ -989,25 +989,23 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                     <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
                       <span>🎯</span> ICP Score (0-10)
                     </label>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                      <div className="relative w-32">
-                        <input
-                          type="text"
-                          value={isEditing 
-                            ? (editData.icpScore !== undefined ? editData.icpScore : (lead.icpScore !== undefined ? lead.icpScore : ''))
-                            : (lead.icpScore !== undefined ? lead.icpScore : '')
-                          }
-                          readOnly
-                          placeholder="0-10"
-                          className="block w-full px-4 py-2 text-sm border-2 border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:outline-none"
-                        />
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={isEditing 
+                          ? (editData.icpScore !== undefined ? editData.icpScore : (lead.icpScore !== undefined ? lead.icpScore : ''))
+                          : (lead.icpScore !== undefined ? lead.icpScore : '')
+                        }
+                        readOnly
+                        placeholder="0-10"
+                        className="block w-24 sm:w-28 h-9 px-3 text-sm border-2 border-slate-300 rounded-lg bg-slate-50 font-semibold text-slate-700 focus:outline-none"
+                      />
                       <button
                         type="button"
                         onClick={() => setShowIcpScoreModal(true)}
-                        className="flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                        className="inline-flex items-center justify-center gap-1.5 h-9 px-3 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm transition-colors"
                       >
-                        <span>📊</span>
+                        <span aria-hidden="true">📊</span>
                         <span>View Scoring</span>
                       </button>
                     </div>
@@ -1019,7 +1017,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                         type="date"
                         value={editData.trainingDate || lead.trainingDate || ''}
                         onChange={(e) => setEditData(prev => ({ ...prev, trainingDate: e.target.value }))}
-                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800"
+                        className="block w-full h-9 px-3 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800"
                       />
                     ) : (
                       <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">
@@ -1031,25 +1029,23 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                     <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
                       <span>🎓</span> Training Score (0-10)
                     </label>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                      <div className="relative w-32">
-                        <input
-                          type="text"
-                          value={isEditing
-                            ? (editData.trainingScore !== undefined ? editData.trainingScore : (lead.trainingScore !== undefined ? lead.trainingScore : ''))
-                            : (lead.trainingScore !== undefined ? lead.trainingScore : '')
-                          }
-                          readOnly
-                          placeholder="0-10"
-                          className="block w-full px-4 py-2 text-sm border-2 border-slate-200 rounded-lg bg-white font-semibold text-slate-700 focus:outline-none"
-                        />
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={isEditing
+                          ? (editData.trainingScore !== undefined ? editData.trainingScore : (lead.trainingScore !== undefined ? lead.trainingScore : ''))
+                          : (lead.trainingScore !== undefined ? lead.trainingScore : '')
+                        }
+                        readOnly
+                        placeholder="0-10"
+                        className="block w-24 sm:w-28 h-9 px-3 text-sm border-2 border-slate-300 rounded-lg bg-slate-50 font-semibold text-slate-700 focus:outline-none"
+                      />
                       <button
                         type="button"
                         onClick={() => setShowTrainingScoreModal(true)}
-                        className="flex items-center justify-center gap-2 w-full sm:w-auto min-h-[44px] px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                        className="inline-flex items-center justify-center gap-1.5 h-9 px-3 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm transition-colors"
                       >
-                        <span>📊</span>
+                        <span aria-hidden="true">📊</span>
                         <span>View Scoring</span>
                       </button>
                     </div>
@@ -1063,7 +1059,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       type="url"
                       value={editData.websiteLink || lead.websiteLink || ''}
                       onChange={(e) => setEditData(prev => ({ ...prev, websiteLink: e.target.value }))}
-                      className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800 placeholder-slate-400"
+                      className="block w-full h-9 px-3 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800 placeholder-slate-400"
                       placeholder="https://www.example.com or social media profile URL"
                     />
                   ) : (
@@ -1281,9 +1277,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       {isEditing && (
                         <button
                           onClick={() => handleEditContact(contact)}
-                          className="px-2 py-1 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded hover:from-blue-700 hover:to-indigo-700 transition-all"
+                          className="inline-flex items-center justify-center h-7 px-2.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm transition-colors"
                         >
-                          ✏️ Edit
+                          Edit
                         </button>
                       )}
                     </div>
@@ -1323,9 +1319,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 <div className="mt-4 flex justify-end">
                   <button
                     onClick={handleAddContact}
-                    className="px-4 py-2 text-sm font-bold text-white bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg hover:from-green-700 hover:to-emerald-700 border-2 border-green-600 shadow-lg transition-all transform hover:scale-105"
+                    className="inline-flex items-center justify-center h-9 px-4 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 shadow-sm transition-colors"
                   >
-                    ➕ Add Contact
+                    Add Contact
                   </button>
                 </div>
               )}
@@ -1360,12 +1356,12 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                         type="button"
                         onClick={handleAddNewTag}
                         disabled={isCreatingTag}
-                        className={`px-4 py-2 text-sm font-semibold text-white rounded-lg border-2 shadow-sm ${isCreatingTag
-                            ? 'bg-gray-400 border-gray-400 cursor-not-allowed'
-                            : 'bg-indigo-600 border-indigo-600 hover:bg-indigo-700'
+                        className={`inline-flex items-center justify-center h-9 px-4 text-sm font-semibold text-white rounded-lg shadow-sm transition-colors ${isCreatingTag
+                            ? 'bg-slate-400 cursor-not-allowed'
+                            : 'bg-indigo-600 hover:bg-indigo-700'
                           }`}
                       >
-                        {isCreatingTag ? 'Adding…' : '➕ Add Tag'}
+                        {isCreatingTag ? 'Adding…' : 'Add Tag'}
                       </button>
                     </div>
                   )}
@@ -1411,9 +1407,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
               <div className="flex justify-end pt-4">
                 <button
                   onClick={handleSave}
-                  className="px-6 py-2 text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-blue-600 rounded-lg hover:from-indigo-700 hover:to-blue-700 border-2 border-indigo-600 shadow-lg transition-all transform hover:scale-105"
+                  className="inline-flex items-center justify-center h-9 px-4 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 shadow-sm transition-colors"
                 >
-                  ✅ Save Changes
+                  Save Changes
                 </button>
               </div>
             )}
@@ -1429,9 +1425,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 {canEdit && (
                   <button
                     onClick={() => setActiveTab('followups')}
-                    className="px-4 py-2 text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-blue-600 rounded-lg hover:from-indigo-700 hover:to-blue-700 border-2 border-indigo-600 shadow-lg transition-all transform hover:scale-105"
+                    className="inline-flex items-center justify-center h-9 px-4 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm transition-colors"
                   >
-                    ➕ Add Follow-up
+                    Add Follow-up
                   </button>
                 )}
               </div>
