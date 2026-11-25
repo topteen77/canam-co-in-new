@@ -16,6 +16,14 @@ type MeetingItem = FollowUp & {
   city?: string;
 };
 
+type MeetingOutcomeValue = 'successful' | 'rescheduled' | 'cancelled' | 'no_show' | 'other';
+
+type MeetingThread = {
+  key: string;
+  primary: MeetingItem;
+  others: MeetingItem[];
+};
+
 interface MeetingPlannerProps {
   leads: Lead[];
   meetingCheckInRecords?: MeetingCheckInRecord[];
@@ -25,6 +33,66 @@ interface MeetingPlannerProps {
   onUpdateLead: (lead: Lead) => void;
   onPlanNewMeeting: () => void;
   onStartScheduledMeeting?: (meeting: ScheduledMeetingStart) => void;
+}
+
+const OUTCOME_OPTIONS: Array<{ value: MeetingOutcomeValue; label: string }> = [
+  { value: 'successful', label: 'Successful' },
+  { value: 'rescheduled', label: 'Rescheduled (same meeting)' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'no_show', label: 'No Show / agent not joining' },
+  { value: 'other', label: 'Other' },
+];
+
+function normalizeOutcome(raw: string): MeetingOutcomeValue | null {
+  const value = String(raw || '').trim().toLowerCase().replace(/\s+/g, '_');
+  if (value === 'successful' || value === 'rescheduled' || value === 'cancelled' || value === 'no_show' || value === 'other') {
+    return value;
+  }
+  return null;
+}
+
+function parseMeetingOutcome(notes: string): MeetingOutcomeValue | null {
+  const text = String(notes || '');
+  const outcomeMatch = text.match(/Outcome:\s*([a-z_ ]+)/i);
+  if (outcomeMatch?.[1]) {
+    const parsed = normalizeOutcome(outcomeMatch[1].split(/[—\-–]/)[0] || '');
+    if (parsed) return parsed;
+  }
+  const rescheduleMatch = text.match(/Rescheduled\s*\(([a-z_ ]+)\)/i);
+  if (rescheduleMatch?.[1]) {
+    return normalizeOutcome(rescheduleMatch[1]) || 'rescheduled';
+  }
+  return null;
+}
+
+function outcomeLabel(outcome: MeetingOutcomeValue): string {
+  return OUTCOME_OPTIONS.find((option) => option.value === outcome)?.label
+    || outcome.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function meetingBadgeLabel(meeting: MeetingItem): string {
+  const outcome = parseMeetingOutcome(meeting.notes || '');
+  if (outcome) return outcomeLabel(outcome);
+  return meeting.status;
+}
+
+function meetingBadgeClass(meeting: MeetingItem): string {
+  const outcome = parseMeetingOutcome(meeting.notes || '');
+  if (outcome === 'successful') return 'bg-green-100 text-green-800';
+  if (outcome === 'rescheduled' || outcome === 'no_show') return 'bg-sky-100 text-sky-800';
+  if (outcome === 'cancelled') return 'bg-rose-100 text-rose-800';
+  if (outcome === 'other') return 'bg-slate-100 text-slate-800';
+  if (meeting.status === 'Done') return 'bg-green-100 text-green-800';
+  return 'bg-amber-100 text-amber-800';
+}
+
+function meetingTimeMs(meeting: MeetingItem): number {
+  const time = new Date(meeting.date).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function threadKeyFor(meeting: MeetingItem): string {
+  return String(meeting.leadId || meeting.agencyName || meeting.id);
 }
 
 function normalizeMeetingUrl(raw: string): string {
@@ -236,6 +304,12 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   const [editLink, setEditLink] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editSaving, setEditSaving] = useState(false);
+  const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({});
+  const [outcomeMeeting, setOutcomeMeeting] = useState<MeetingItem | null>(null);
+  const [outcomeValue, setOutcomeValue] = useState<MeetingOutcomeValue | ''>('');
+  const [outcomeNotes, setOutcomeNotes] = useState('');
+  const [outcomeRescheduleDate, setOutcomeRescheduleDate] = useState('');
+  const [outcomeSaving, setOutcomeSaving] = useState(false);
 
   const visibleMeetings = useMemo(() => {
     if (canViewAllMeetings) return allMeetings;
@@ -263,8 +337,9 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   );
 
   const filteredMeetings = useMemo(() => {
-    const matched = visibleMeetings.filter((meeting) => {
-      if (meeting.status === 'Done') return false;
+    return visibleMeetings.filter((meeting) => {
+      // Upcoming list: only open meetings. Selected day: include Done so prior slots show in the client thread.
+      if (!selectedDate && meeting.status === 'Done') return false;
       if (agentFilter && meeting.agencyName !== agentFilter) return false;
       if (managerFilter && !emailsMatch(meeting.accountManager, managerFilter)) return false;
       if (cityFilter && (meeting.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
@@ -275,8 +350,24 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
       }
       return new Date(meeting.date).toDateString() === selectedDate.toDateString();
     });
-    return matched;
   }, [visibleMeetings, agentFilter, managerFilter, cityFilter, selectedDate]);
+
+  const meetingThreads = useMemo((): MeetingThread[] => {
+    const groups = new Map<string, MeetingItem[]>();
+    filteredMeetings.forEach((meeting) => {
+      const key = threadKeyFor(meeting);
+      const list = groups.get(key) || [];
+      list.push(meeting);
+      groups.set(key, list);
+    });
+    return Array.from(groups.entries()).map(([key, items]) => {
+      const sorted = [...items].sort((a, b) => meetingTimeMs(b) - meetingTimeMs(a));
+      const planned = sorted.filter((item) => item.status === 'Planned' && !item.isCheckIn);
+      const primary = planned[0] || sorted[0];
+      const others = sorted.filter((item) => item.id !== primary.id);
+      return { key, primary, others };
+    }).sort((a, b) => meetingTimeMs(b.primary) - meetingTimeMs(a.primary));
+  }, [filteredMeetings]);
 
   const accountManagerName = currentUser
     ? getUserDisplayName(currentUser, availableUsers)
@@ -344,6 +435,315 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     } finally {
       setEditSaving(false);
     }
+  };
+
+  const beginOutcomeMeeting = (meeting: MeetingItem) => {
+    if (meeting.isCheckIn) return;
+    setOutcomeMeeting(meeting);
+    setOutcomeValue(parseMeetingOutcome(meeting.notes || '') || '');
+    setOutcomeNotes('');
+    setOutcomeRescheduleDate('');
+    setEditingMeeting(null);
+  };
+
+  const cancelOutcomeMeeting = () => {
+    setOutcomeMeeting(null);
+    setOutcomeValue('');
+    setOutcomeNotes('');
+    setOutcomeRescheduleDate('');
+  };
+
+  const savePreviousOutcome = async () => {
+    if (!outcomeMeeting || outcomeMeeting.isCheckIn) return;
+    if (!outcomeValue) {
+      alert('Select a previous meeting outcome.');
+      return;
+    }
+    const notesRequired = outcomeNotes.trim();
+    if (!notesRequired) {
+      alert('Outcome comments are required.');
+      return;
+    }
+    const shouldReschedule = outcomeValue === 'rescheduled' || outcomeValue === 'no_show';
+    if (shouldReschedule && !outcomeRescheduleDate.trim()) {
+      alert('Pick a new date and time to reschedule this same meeting.');
+      return;
+    }
+    const lead = leads.find((row) => row.id === outcomeMeeting.leadId);
+    if (!lead) {
+      alert('Lead not found for this meeting.');
+      return;
+    }
+    try {
+      setOutcomeSaving(true);
+      const followUps = (Array.isArray(lead.followUps) ? lead.followUps : []).map((followUp) => {
+        if (followUp.id !== outcomeMeeting.id) return followUp;
+        if (shouldReschedule) {
+          const nextDate = new Date(outcomeRescheduleDate).toISOString();
+          const rescheduleLine = `Rescheduled (${outcomeValue}): ${notesRequired}`;
+          return {
+            ...followUp,
+            status: 'Planned' as const,
+            date: nextDate,
+            notes: [followUp.notes, rescheduleLine].filter(Boolean).join('\n'),
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser || undefined,
+          };
+        }
+        const outcomeLine = `Outcome: ${outcomeValue} — ${notesRequired}`;
+        return {
+          ...followUp,
+          status: 'Done' as const,
+          notes: [followUp.notes, outcomeLine].filter(Boolean).join('\n'),
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser || undefined,
+        };
+      });
+      await Promise.resolve(onUpdateLead({ ...lead, followUps }));
+      cancelOutcomeMeeting();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to save previous meeting outcome');
+    } finally {
+      setOutcomeSaving(false);
+    }
+  };
+
+  const toggleThread = (key: string) => {
+    setExpandedThreads((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const renderOutcomeForm = (meeting: MeetingItem) => {
+    if (outcomeMeeting?.id !== meeting.id) return null;
+    const needsReschedule = outcomeValue === 'rescheduled' || outcomeValue === 'no_show';
+    return (
+      <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-3">
+        <p className="text-sm font-semibold text-slate-800">
+          Add previous meeting outcome
+        </p>
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+            Outcome *
+          </label>
+          <select
+            value={outcomeValue}
+            onChange={(e) => setOutcomeValue((e.target.value as MeetingOutcomeValue | '') || '')}
+            className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+          >
+            <option value="">Select outcome</option>
+            {OUTCOME_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+        {needsReschedule && (
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+              New date & time *
+            </label>
+            <input
+              type="datetime-local"
+              value={outcomeRescheduleDate}
+              onChange={(e) => setOutcomeRescheduleDate(e.target.value)}
+              className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+            />
+          </div>
+        )}
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+            Outcome comments *
+          </label>
+          <textarea
+            value={outcomeNotes}
+            onChange={(e) => setOutcomeNotes(e.target.value)}
+            rows={2}
+            placeholder="Required: describe what happened in this previous meeting…"
+            className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white"
+          />
+        </div>
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <button
+            type="button"
+            onClick={cancelOutcomeMeeting}
+            disabled={outcomeSaving}
+            className="min-h-[44px] px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={savePreviousOutcome}
+            disabled={outcomeSaving}
+            className="min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {outcomeSaving ? 'Saving…' : 'Save outcome'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMeetingBody = (meeting: MeetingItem, options: { isPrimary: boolean; isPrevious: boolean }) => {
+    const { isPrimary, isPrevious } = options;
+    const showPlannedActions = meeting.status === 'Planned' && !meeting.isCheckIn && editingMeeting?.id !== meeting.id;
+    return (
+      <>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+          <div className="min-w-0">
+            {isPrimary && (
+              <p className="font-semibold text-slate-900 break-words">{meeting.agencyName}</p>
+            )}
+            {isPrevious && (
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-0.5">Previous meeting</p>
+            )}
+            <p className={`text-sm text-slate-600 ${isPrevious ? 'font-medium text-slate-800' : ''}`}>
+              {new Date(meeting.date).toLocaleString([], {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+            </p>
+            <p className="text-sm text-slate-500 mt-1 whitespace-pre-wrap">
+              Notes: {meeting.notes || '—'}
+            </p>
+          </div>
+          <div className="text-left sm:text-right flex-shrink-0">
+            <span className={`px-2 py-1 text-xs font-medium rounded-full ${meetingBadgeClass(meeting)}`}>
+              {meetingBadgeLabel(meeting)}
+            </span>
+          </div>
+        </div>
+
+        {showPlannedActions && isPrimary && (
+          <div className="mt-3 space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-[44px]">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Scheduled by</p>
+                <p className="text-sm font-medium text-slate-800 truncate">{meeting.creatorLabel || '—'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => meeting.meetingLink?.trim() && openMeetingLink(meeting.meetingLink)}
+                disabled={!meeting.meetingLink?.trim()}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 min-h-[44px] text-left disabled:opacity-70"
+                title={meeting.meetingLink || 'No meeting link'}
+              >
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Meeting link</p>
+                <p className="text-sm font-medium text-indigo-700 truncate">
+                  {meeting.meetingLink?.trim() ? meetingLinkLabel(meeting.meetingLink) : 'No link added'}
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => startScheduledMeeting(meeting)}
+                className="rounded-lg min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
+              >
+                {meetingCheckInRecords.some((record) => (
+                  String(record.leadId || '') === String(meeting.leadId)
+                  && meetingBelongsToUser(record, currentUser)
+                  && isActiveMeetingRecord(record)
+                )) ? 'End meeting' : 'Start meeting'}
+              </button>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+              <button
+                type="button"
+                onClick={() => beginEditMeeting(meeting)}
+                className="min-h-[44px] px-3 py-2 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+              >
+                Edit / Reschedule
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!meeting.isCheckIn && isPrevious && outcomeMeeting?.id !== meeting.id && (
+          <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:justify-end">
+            <button
+              type="button"
+              onClick={() => beginOutcomeMeeting(meeting)}
+              className="min-h-[44px] px-3 py-2 text-sm font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100"
+            >
+              {parseMeetingOutcome(meeting.notes || '') ? 'Update outcome' : 'Add previous meeting outcome'}
+            </button>
+          </div>
+        )}
+
+        {/* Allow outcome on a lone Done primary when viewing a day (no planned sibling) */}
+        {!meeting.isCheckIn && isPrimary && meeting.status === 'Done' && outcomeMeeting?.id !== meeting.id && (
+          <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:justify-end">
+            <button
+              type="button"
+              onClick={() => beginOutcomeMeeting(meeting)}
+              className="min-h-[44px] px-3 py-2 text-sm font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100"
+            >
+              {parseMeetingOutcome(meeting.notes || '') ? 'Update outcome' : 'Add previous meeting outcome'}
+            </button>
+          </div>
+        )}
+
+        {editingMeeting?.id === meeting.id && (
+          <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-3">
+            <p className="text-sm font-semibold text-slate-800">
+              Edit / reschedule this same meeting (does not create a new calendar entry)
+            </p>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+                New date & time *
+              </label>
+              <input
+                type="datetime-local"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+                Meeting link
+              </label>
+              <input
+                type="url"
+                value={editLink}
+                onChange={(e) => setEditLink(e.target.value)}
+                placeholder="https://zoom.us/j/… or meet.google.com/…"
+                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+                Notes
+              </label>
+              <textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={2}
+                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white"
+              />
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelEditMeeting}
+                disabled={editSaving}
+                className="min-h-[44px] px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveEditMeeting}
+                disabled={editSaving}
+                className="min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {editSaving ? 'Saving…' : 'Save reschedule'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {renderOutcomeForm(meeting)}
+      </>
+    );
   };
 
   return (
@@ -422,144 +822,50 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
             </label>
           </div>
         </div>
-        {filteredMeetings.length > 0 ? (
+        {meetingThreads.length > 0 ? (
           <ul className="space-y-4">
-            {filteredMeetings.map((meeting) => (
-              <li
-                key={meeting.id}
-                className="p-3 sm:p-4 bg-white rounded-lg border border-slate-200 shadow-sm"
-              >
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-900 break-words">{meeting.agencyName}</p>
-                    <p className="text-sm text-slate-600">
-                      {new Date(meeting.date).toLocaleString([], {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })}
-                    </p>
-                    <p className="text-sm text-slate-500 mt-1">
-                      Notes: {meeting.notes || '—'}
-                    </p>
-                  </div>
-                  <div className="text-left sm:text-right flex-shrink-0">
-                    <span
-                      className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        meeting.status === 'Done'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}
-                    >
-                      {meeting.status}
-                    </span>
-                  </div>
-                </div>
+            {meetingThreads.map((thread) => {
+              const isExpanded = Boolean(expandedThreads[thread.key]);
+              const hasThread = thread.others.length > 0;
+              return (
+                <li
+                  key={thread.key}
+                  className="p-3 sm:p-4 bg-white rounded-lg border border-slate-200 shadow-sm"
+                >
+                  {renderMeetingBody(thread.primary, { isPrimary: true, isPrevious: false })}
 
-                {meeting.status === 'Planned' && !meeting.isCheckIn && editingMeeting?.id !== meeting.id && (
-                  <div className="mt-3 space-y-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-[44px]">
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Scheduled by</p>
-                        <p className="text-sm font-medium text-slate-800 truncate">{meeting.creatorLabel || '—'}</p>
-                      </div>
+                  {hasThread && (
+                    <div className="mt-3 -mx-3 sm:-mx-4 -mb-3 sm:-mb-4">
+                      {isExpanded && (
+                        <ul className="space-y-3 border-t border-indigo-100 bg-indigo-50 px-3 sm:px-4 py-3 border-l-4 border-l-indigo-400 ml-2 sm:ml-3">
+                          {thread.others.map((meeting) => (
+                            <li
+                              key={meeting.id}
+                              className="rounded-lg border border-indigo-200 bg-white p-3 shadow-sm ring-1 ring-indigo-100"
+                            >
+                              {renderMeetingBody(meeting, { isPrimary: false, isPrevious: true })}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       <button
                         type="button"
-                        onClick={() => meeting.meetingLink?.trim() && openMeetingLink(meeting.meetingLink)}
-                        disabled={!meeting.meetingLink?.trim()}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 min-h-[44px] text-left disabled:opacity-70"
-                        title={meeting.meetingLink || 'No meeting link'}
+                        onClick={() => toggleThread(thread.key)}
+                        className="flex w-full items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 text-sm font-semibold text-indigo-700 bg-indigo-50 border-t border-indigo-100 hover:bg-indigo-100 rounded-b-lg transition-colors"
+                        aria-expanded={isExpanded}
                       >
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Meeting link</p>
-                        <p className="text-sm font-medium text-indigo-700 truncate">
-                          {meeting.meetingLink?.trim() ? meetingLinkLabel(meeting.meetingLink) : 'No link added'}
-                        </p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => startScheduledMeeting(meeting)}
-                        className="rounded-lg min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
-                      >
-                        {meetingCheckInRecords.some((record) => (
-                          String(record.leadId || '') === String(meeting.leadId)
-                          && meetingBelongsToUser(record, currentUser)
-                          && isActiveMeetingRecord(record)
-                        )) ? 'End meeting' : 'Start meeting'}
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-indigo-600 text-white text-xs font-bold">
+                          {isExpanded ? '−' : '+'}
+                        </span>
+                        {isExpanded
+                          ? 'View less'
+                          : `View more (+${thread.others.length} meeting${thread.others.length === 1 ? '' : 's'})`}
                       </button>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
-                      <button
-                        type="button"
-                        onClick={() => beginEditMeeting(meeting)}
-                        className="min-h-[44px] px-3 py-2 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
-                      >
-                        Edit / Reschedule
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {editingMeeting?.id === meeting.id && (
-                  <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-3">
-                    <p className="text-sm font-semibold text-slate-800">
-                      Edit / reschedule this same meeting (does not create a new calendar entry)
-                    </p>
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
-                        New date & time *
-                      </label>
-                      <input
-                        type="datetime-local"
-                        value={editDate}
-                        onChange={(e) => setEditDate(e.target.value)}
-                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
-                        Meeting link
-                      </label>
-                      <input
-                        type="url"
-                        value={editLink}
-                        onChange={(e) => setEditLink(e.target.value)}
-                        placeholder="https://zoom.us/j/… or meet.google.com/…"
-                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
-                        Notes
-                      </label>
-                      <textarea
-                        value={editNotes}
-                        onChange={(e) => setEditNotes(e.target.value)}
-                        rows={2}
-                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={cancelEditMeeting}
-                        disabled={editSaving}
-                        className="min-h-[44px] px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={saveEditMeeting}
-                        disabled={editSaving}
-                        className="min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                      >
-                        {editSaving ? 'Saving…' : 'Save reschedule'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </li>
-            ))}
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <div className="text-center py-8 sm:py-12 bg-white rounded-xl shadow-sm border border-slate-200 px-4">

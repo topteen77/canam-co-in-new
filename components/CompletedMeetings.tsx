@@ -39,6 +39,7 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({});
 
   // Filter and sort completed meetings
   const filteredMeetings = useMemo(() => {
@@ -126,6 +127,60 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
         return timeB - timeA;
       });
   }, [meetingCheckIns, filters]);
+
+  const getMeetingSortTime = (meeting: MeetingCheckInRecord): number => {
+    if (meeting.checkOutTime && meeting.checkOutTime.trim() !== '') {
+      const checkOutDate = new Date(meeting.checkOutTime);
+      if (!isNaN(checkOutDate.getTime())) return checkOutDate.getTime();
+    }
+    if (meeting.checkInTime) {
+      const checkInDate = new Date(meeting.checkInTime);
+      if (!isNaN(checkInDate.getTime())) return checkInDate.getTime();
+    }
+    if (meeting.date) {
+      const date = new Date(meeting.date);
+      if (!isNaN(date.getTime())) return date.getTime();
+    }
+    return 0;
+  };
+
+  const meetingRowKey = (meeting: MeetingCheckInRecord): string => (
+    `${meeting.leadId || ''}-${meeting.username}-${meeting.date}-${meeting.checkInTime}`
+  );
+
+  const meetingThreads = useMemo(() => {
+    const normalizeName = (value?: string) => String(value || 'Unknown Lead').trim().toLowerCase();
+
+    // Prefer leadId; if some rows only have a name, map that name to a known leadId first.
+    const nameToLeadId = new Map<string, string>();
+    filteredMeetings.forEach((meeting) => {
+      const leadId = String(meeting.leadId || '').trim();
+      const name = normalizeName(meeting.leadName);
+      if (leadId && name) nameToLeadId.set(name, leadId);
+    });
+
+    const groups = new Map<string, MeetingCheckInRecord[]>();
+    filteredMeetings.forEach((meeting) => {
+      const name = normalizeName(meeting.leadName);
+      const leadId = String(meeting.leadId || '').trim() || nameToLeadId.get(name) || '';
+      const key = leadId ? `lead:${leadId}` : `name:${name}`;
+      const list = groups.get(key) || [];
+      list.push(meeting);
+      groups.set(key, list);
+    });
+
+    return Array.from(groups.entries()).map(([key, items]) => {
+      const sorted = [...items].sort((a, b) => getMeetingSortTime(b) - getMeetingSortTime(a));
+      const unique = sorted.filter((item, index, arr) => (
+        arr.findIndex((row) => meetingRowKey(row) === meetingRowKey(item)) === index
+      ));
+      return {
+        key,
+        primary: unique[0],
+        others: unique.slice(1),
+      };
+    }).sort((a, b) => getMeetingSortTime(b.primary) - getMeetingSortTime(a.primary));
+  }, [filteredMeetings]);
 
   // Get unique values for filter dropdowns safely
   const uniqueUsers = [...new Set((Array.isArray(meetingCheckIns) ? meetingCheckIns : []).map(m => m.username))];
@@ -256,6 +311,127 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
   const prevPhoto = () => {
     if (selectedPhotos.length === 0) return;
     setCurrentPhotoIndex((prev) => (prev - 1 + selectedPhotos.length) % selectedPhotos.length);
+  };
+
+  const toggleThread = (key: string) => {
+    setExpandedThreads((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const renderMeetingCard = (
+    meeting: MeetingCheckInRecord,
+    options: { showClientName: boolean; isPrevious?: boolean } = { showClientName: true }
+  ) => {
+    const allPhotos = [...(meeting.checkInPhotos || []), ...(meeting.completionPhotos || [])];
+    const endLocation = Array.isArray(meeting.completionPhotoMetadata)
+      ? meeting.completionPhotoMetadata[0]?.location
+      : undefined;
+    const durationLabel = formatDuration(meeting.meetingDuration);
+    const timeRange = `${formatTime(meeting.checkInTime)}${meeting.checkOutTime ? ` – ${formatTime(meeting.checkOutTime)}` : ' – Ongoing'}`;
+    const endPlace =
+      endLocation?.address
+        ? shortPlace(endLocation.address)
+        : endLocation?.latitude != null && endLocation?.longitude != null
+          ? `${Number(endLocation.latitude).toFixed(5)}, ${Number(endLocation.longitude).toFixed(5)}`
+          : meeting.checkOutTime
+            ? 'Not available'
+            : null;
+
+    return (
+      <div className={`flex gap-3 ${options.isPrevious ? '' : ''}`}>
+        {allPhotos[0] ? (
+          <button
+            type="button"
+            onClick={() => openPhotoModal(allPhotos, 0)}
+            className="relative w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] rounded-xl overflow-hidden border border-slate-200 shrink-0"
+            aria-label={`Open ${allPhotos.length} photo${allPhotos.length === 1 ? '' : 's'}`}
+          >
+            <img src={allPhotos[0]} alt="" className="w-full h-full object-cover" />
+            {allPhotos.length > 1 && (
+              <span className="absolute bottom-1 right-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                +{allPhotos.length - 1}
+              </span>
+            )}
+          </button>
+        ) : null}
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              {options.isPrevious && (
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-0.5">
+                  Previous meeting
+                </p>
+              )}
+              {options.showClientName && (
+                <h3 className="text-[15px] sm:text-base font-semibold text-slate-900 leading-snug">
+                  {meeting.leadName || 'Unknown Lead'}
+                </h3>
+              )}
+            </div>
+            {meeting.meetingOutcome && (
+              <span className={`shrink-0 px-2 py-0.5 text-[11px] font-semibold rounded-full ${getOutcomeColor(meeting.meetingOutcome)}`}>
+                {meeting.meetingOutcome.charAt(0).toUpperCase() + meeting.meetingOutcome.slice(1).replace('_', ' ')}
+              </span>
+            )}
+          </div>
+
+          <p className="mt-1 text-sm font-medium text-slate-800">
+            {formatDate(meeting.date)} · {timeRange}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {getUserDisplayName(meeting.username)}
+            {durationLabel ? ` · ${durationLabel}` : ''}
+          </p>
+
+          {meeting.location?.address && (
+            <a
+              href={`https://www.google.com/maps?q=${meeting.location.latitude},${meeting.location.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={meeting.location.address}
+              className="mt-2 flex items-center gap-1.5 text-sm text-indigo-700 hover:text-indigo-900 min-w-0"
+            >
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="truncate">{shortPlace(meeting.location.address)}</span>
+            </a>
+          )}
+
+          {endPlace && (
+            <p className="mt-0.5 pl-5 text-xs text-slate-500 truncate" title={endLocation?.address || endPlace}>
+              End: {endPlace}
+            </p>
+          )}
+
+          {meeting.notes && (
+            <p className="mt-2 text-sm text-slate-700 line-clamp-2">
+              {meeting.notes}
+            </p>
+          )}
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {allPhotos.length > 0 && (
+              <button
+                type="button"
+                onClick={() => openPhotoModal(allPhotos)}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+              >
+                📸 Photos ({allPhotos.length})
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelectedMeeting(meeting)}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-md hover:bg-indigo-100"
+            >
+              👁️ View Details
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -396,9 +572,9 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
         </div>
       )}
 
-      {/* Meetings List */}
+      {/* Meetings List — one card per client; expand for prior meetings */}
       <div className="space-y-4">
-        {filteredMeetings.length === 0 ? (
+        {meetingThreads.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-lg p-12 text-center">
             <div className="mx-auto w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-4">
               <svg className="h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -409,113 +585,46 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
             <p className="text-slate-500">Try adjusting your filters or check back later for new meetings.</p>
           </div>
         ) : (
-          filteredMeetings.map((meeting) => {
-            const allPhotos = [...(meeting.checkInPhotos || []), ...(meeting.completionPhotos || [])];
-            const endLocation = Array.isArray(meeting.completionPhotoMetadata)
-              ? meeting.completionPhotoMetadata[0]?.location
-              : undefined;
-            const durationLabel = formatDuration(meeting.meetingDuration);
-            const timeRange = `${formatTime(meeting.checkInTime)}${meeting.checkOutTime ? ` – ${formatTime(meeting.checkOutTime)}` : ' – Ongoing'}`;
-            const endPlace =
-              endLocation?.address
-                ? shortPlace(endLocation.address)
-                : endLocation?.latitude != null && endLocation?.longitude != null
-                  ? `${Number(endLocation.latitude).toFixed(5)}, ${Number(endLocation.longitude).toFixed(5)}`
-                  : meeting.checkOutTime
-                    ? 'Not available'
-                    : null;
-
+          meetingThreads.map((thread) => {
+            const isExpanded = Boolean(expandedThreads[thread.key]);
+            const hasThread = thread.others.length > 0;
             return (
-            <div
-              key={`${meeting.username}-${meeting.date}-${meeting.checkInTime}`}
-              className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-indigo-200 transition-shadow"
-            >
-              <div className="flex gap-3">
-                {allPhotos[0] ? (
-                  <button
-                    type="button"
-                    onClick={() => openPhotoModal(allPhotos, 0)}
-                    className="relative w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] rounded-xl overflow-hidden border border-slate-200 shrink-0"
-                    aria-label={`Open ${allPhotos.length} photo${allPhotos.length === 1 ? '' : 's'}`}
-                  >
-                    <img src={allPhotos[0]} alt="" className="w-full h-full object-cover" />
-                    {allPhotos.length > 1 && (
-                      <span className="absolute bottom-1 right-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                        +{allPhotos.length - 1}
-                      </span>
-                    )}
-                  </button>
-                ) : null}
+              <div
+                key={thread.key}
+                className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-indigo-200 transition-shadow"
+              >
+                {renderMeetingCard(thread.primary, { showClientName: true })}
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-[15px] sm:text-base font-semibold text-slate-900 leading-snug">
-                      {meeting.leadName || 'Unknown Lead'}
-                    </h3>
-                    {meeting.meetingOutcome && (
-                      <span className={`shrink-0 px-2 py-0.5 text-[11px] font-semibold rounded-full ${getOutcomeColor(meeting.meetingOutcome)}`}>
-                        {meeting.meetingOutcome.charAt(0).toUpperCase() + meeting.meetingOutcome.slice(1).replace('_', ' ')}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="mt-1 text-sm font-medium text-slate-800">
-                    {formatDate(meeting.date)} · {timeRange}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {getUserDisplayName(meeting.username)}
-                    {durationLabel ? ` · ${durationLabel}` : ''}
-                  </p>
-
-                  {meeting.location?.address && (
-                    <a
-                      href={`https://www.google.com/maps?q=${meeting.location.latitude},${meeting.location.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={meeting.location.address}
-                      className="mt-2 flex items-center gap-1.5 text-sm text-indigo-700 hover:text-indigo-900 min-w-0"
-                    >
-                      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <span className="truncate">{shortPlace(meeting.location.address)}</span>
-                    </a>
-                  )}
-
-                  {endPlace && (
-                    <p className="mt-0.5 pl-5 text-xs text-slate-500 truncate" title={endLocation?.address || endPlace}>
-                      End: {endPlace}
-                    </p>
-                  )}
-
-                  {meeting.notes && (
-                    <p className="mt-2 text-sm text-slate-700 line-clamp-2">
-                      {meeting.notes}
-                    </p>
-                  )}
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {allPhotos.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => openPhotoModal(allPhotos)}
-                        className="flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
-                      >
-                        📸 Photos ({allPhotos.length})
-                      </button>
+                {hasThread && (
+                  <div className="mt-3 -mx-4 -mb-4">
+                    {isExpanded && (
+                      <ul className="space-y-3 border-t border-indigo-100 bg-indigo-50 px-4 py-3 border-l-4 border-l-indigo-400 ml-2 sm:ml-3">
+                        {thread.others.map((meeting) => (
+                          <li
+                            key={meetingRowKey(meeting)}
+                            className="rounded-lg border border-indigo-200 bg-white p-3 shadow-sm ring-1 ring-indigo-100"
+                          >
+                            {renderMeetingCard(meeting, { showClientName: false, isPrevious: true })}
+                          </li>
+                        ))}
+                      </ul>
                     )}
                     <button
                       type="button"
-                      onClick={() => setSelectedMeeting(meeting)}
-                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-md hover:bg-indigo-100"
+                      onClick={() => toggleThread(thread.key)}
+                      className="flex w-full items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 text-sm font-semibold text-indigo-700 bg-indigo-50 border-t border-indigo-100 hover:bg-indigo-100 rounded-b-xl transition-colors"
+                      aria-expanded={isExpanded}
                     >
-                      👁️ View Details
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-indigo-600 text-white text-xs font-bold">
+                        {isExpanded ? '−' : '+'}
+                      </span>
+                      {isExpanded
+                        ? 'View less'
+                        : `View more (+${thread.others.length} meeting${thread.others.length === 1 ? '' : 's'})`}
                     </button>
                   </div>
-                </div>
+                )}
               </div>
-            </div>
             );
           })
         )}
