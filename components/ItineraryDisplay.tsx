@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { Lead, FollowUp, MeetingCheckInRecord } from '../types';
 import { PlusIcon } from './icons/SparklesIcon';
+import { SearchableFilterSelect } from './SearchableFilterSelect';
 import { getUserDisplayName } from '../utils/dataCleaning';
 import { emailsMatch } from '../utils/leadPermissions';
 import { isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
@@ -14,6 +15,7 @@ type MeetingItem = FollowUp & {
   accountManager?: string;
   salesPerson?: string;
   city?: string;
+  meetingOutcome?: MeetingCheckInRecord['meetingOutcome'] | string;
 };
 
 type MeetingOutcomeValue = 'successful' | 'rescheduled' | 'cancelled' | 'no_show' | 'other';
@@ -30,6 +32,8 @@ interface MeetingPlannerProps {
   availableUsers?: Array<{ id?: string; name?: string; email?: string; role?: string }>;
   currentUser?: string | null;
   canViewAllMeetings?: boolean;
+  selectedDate?: Date | null;
+  onSelectedDateChange?: (date: Date | null) => void;
   onUpdateLead: (lead: Lead) => void;
   onPlanNewMeeting: () => void;
   onStartScheduledMeeting?: (meeting: ScheduledMeetingStart) => void;
@@ -70,14 +74,26 @@ function outcomeLabel(outcome: MeetingOutcomeValue): string {
     || outcome.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function resolveMeetingOutcome(meeting: MeetingItem): MeetingOutcomeValue | null {
+  const fromField = normalizeOutcome(String(meeting.meetingOutcome || ''));
+  if (fromField) return fromField;
+  const fromNotes = parseMeetingOutcome(meeting.notes || '');
+  if (fromNotes) return fromNotes;
+  const notes = String(meeting.notes || '').toLowerCase();
+  if (/reschedul/.test(notes)) return 'rescheduled';
+  if (/no[\s_-]?show/.test(notes)) return 'no_show';
+  if (/cancel/.test(notes)) return 'cancelled';
+  return null;
+}
+
 function meetingBadgeLabel(meeting: MeetingItem): string {
-  const outcome = parseMeetingOutcome(meeting.notes || '');
+  const outcome = resolveMeetingOutcome(meeting);
   if (outcome) return outcomeLabel(outcome);
   return meeting.status;
 }
 
 function meetingBadgeClass(meeting: MeetingItem): string {
-  const outcome = parseMeetingOutcome(meeting.notes || '');
+  const outcome = resolveMeetingOutcome(meeting);
   if (outcome === 'successful') return 'bg-green-100 text-green-800';
   if (outcome === 'rescheduled' || outcome === 'no_show') return 'bg-sky-100 text-sky-800';
   if (outcome === 'cancelled') return 'bg-rose-100 text-rose-800';
@@ -117,8 +133,31 @@ function leadCity(lead?: Lead | null): string {
 }
 
 function uniqueSorted(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
-    .sort((a, b) => a.localeCompare(b));
+  const seen = new Map<string, string>();
+  values.forEach((value) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed || trimmed === '—') return;
+    const key = trimmed.toLowerCase();
+    if (!seen.has(key)) seen.set(key, trimmed);
+  });
+  return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+}
+
+/** Stable YYYY-MM-DD in local time (avoids UTC date-only shift bugs). */
+function localDateKey(input: Date | string | null | undefined): string {
+  if (input == null) return '';
+  if (typeof input === 'string') {
+    const match = input.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+  const date = input instanceof Date ? input : new Date(input);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function namesMatch(a?: string, b?: string): boolean {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 }
 
 function openMeetingLink(raw: string) {
@@ -138,14 +177,7 @@ const Calendar: React.FC<{
     const safe = Array.isArray(meetings) ? meetings : [];
     return new Set(
       safe
-        .map((m) => {
-          try {
-            const d = new Date(m.date);
-            return isNaN(d.getTime()) ? null : d.toDateString();
-          } catch {
-            return null;
-          }
-        })
+        .map((m) => localDateKey(m.date) || null)
         .filter(Boolean) as string[]
     );
   }, [meetings]);
@@ -197,12 +229,13 @@ const Calendar: React.FC<{
           <div key={`blank-${i}`} />
         ))}
         {days.map((day) => {
-          const isToday = day.toDateString() === new Date().toDateString();
-          const hasMeeting = meetingDays.has(day.toDateString());
-          const isSelected = selectedDate?.toDateString() === day.toDateString();
+          const dayKey = localDateKey(day);
+          const isToday = dayKey === localDateKey(new Date());
+          const hasMeeting = meetingDays.has(dayKey);
+          const isSelected = selectedDate ? localDateKey(selectedDate) === dayKey : false;
           return (
             <button
-              key={day.toISOString()}
+              key={dayKey}
               onClick={() => onDateSelect(isSelected ? null : day)}
               className={`app-icon-btn w-full aspect-square max-h-11 sm:max-h-none sm:w-9 sm:h-9 sm:aspect-auto mx-auto flex items-center justify-center rounded-full transition-colors relative
                 ${isSelected ? 'bg-indigo-600 text-white' : ''}
@@ -237,6 +270,8 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   availableUsers = [],
   currentUser = null,
   canViewAllMeetings = false,
+  selectedDate: selectedDateProp = null,
+  onSelectedDateChange,
   onUpdateLead,
   onPlanNewMeeting,
   onStartScheduledMeeting,
@@ -273,12 +308,13 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
             type: 'Meeting' as const,
             status,
             date: dateStr,
-            notes: stripScheduledFollowUpId(r.notes || ''),
+            notes: stripScheduledFollowUpId(r.notes || (r as { completionNotes?: string }).completionNotes || ''),
             meetingLink: (r as { meetingLink?: string }).meetingLink || '',
             createdBy: creatorRaw,
             leadId: r.leadId || '',
             agencyName: r.leadName || linkedLead?.agencyName || '—',
             isCheckIn: true,
+            meetingOutcome: r.meetingOutcome,
             creatorLabel: creatorRaw
               ? r.salesPersonName || getUserDisplayName(creatorRaw, availableUsers)
               : '',
@@ -295,7 +331,12 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     });
   }, [leads, meetingCheckInRecords, availableUsers]);
 
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedDateInternal, setSelectedDateInternal] = useState<Date | null>(null);
+  const selectedDate = onSelectedDateChange ? selectedDateProp : selectedDateInternal;
+  const setSelectedDate = (date: Date | null) => {
+    if (onSelectedDateChange) onSelectedDateChange(date);
+    else setSelectedDateInternal(date);
+  };
   const [agentFilter, setAgentFilter] = useState('');
   const [managerFilter, setManagerFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
@@ -320,35 +361,45 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     ));
   }, [allMeetings, canViewAllMeetings, currentUser]);
 
-  const agentOptions = useMemo(
-    () => uniqueSorted(visibleMeetings.map((meeting) => meeting.agencyName)),
-    [visibleMeetings]
-  );
+  const agentOptions = useMemo(() => {
+    const fromMeetings = visibleMeetings.map((meeting) => meeting.agencyName);
+    const fromLeads = (Array.isArray(leads) ? leads : [])
+      .filter((lead) => (Array.isArray(lead.followUps) ? lead.followUps : []).some((f) => f.type === 'Meeting'))
+      .map((lead) => lead.agencyName);
+    return uniqueSorted([...fromMeetings, ...fromLeads]);
+  }, [visibleMeetings, leads]);
   const managerOptions = useMemo(
     () => uniqueSorted(visibleMeetings.map((meeting) => meeting.accountManager || '')).map((email) => ({
-      email,
+      value: email,
       label: getUserDisplayName(email, availableUsers),
     })),
     [visibleMeetings, availableUsers]
   );
   const cityOptions = useMemo(
-    () => uniqueSorted(visibleMeetings.map((meeting) => meeting.city || '')),
-    [visibleMeetings]
+    () => uniqueSorted([
+      ...visibleMeetings.map((meeting) => meeting.city || ''),
+      ...(Array.isArray(leads) ? leads : []).flatMap((lead) => {
+        const contacts = Array.isArray(lead.contacts) ? lead.contacts : [];
+        return contacts.map((contact) => String(contact.city || '').trim());
+      }),
+    ]),
+    [visibleMeetings, leads]
   );
 
   const filteredMeetings = useMemo(() => {
+    const selectedKey = selectedDate ? localDateKey(selectedDate) : '';
+    const todayKey = localDateKey(new Date());
     return visibleMeetings.filter((meeting) => {
       // Upcoming list: only open meetings. Selected day: include Done so prior slots show in the client thread.
       if (!selectedDate && meeting.status === 'Done') return false;
-      if (agentFilter && meeting.agencyName !== agentFilter) return false;
+      if (agentFilter && !namesMatch(meeting.agencyName, agentFilter)) return false;
       if (managerFilter && !emailsMatch(meeting.accountManager, managerFilter)) return false;
       if (cityFilter && (meeting.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
+      const meetingKey = localDateKey(meeting.date);
       if (!selectedDate) {
-        const today = new Date(new Date().toDateString()).getTime();
-        const time = new Date(meeting.date).getTime();
-        return !isNaN(time) && time >= today;
+        return Boolean(meetingKey) && meetingKey >= todayKey;
       }
-      return new Date(meeting.date).toDateString() === selectedDate.toDateString();
+      return meetingKey === selectedKey;
     });
   }, [visibleMeetings, agentFilter, managerFilter, cityFilter, selectedDate]);
 
@@ -368,6 +419,25 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
       return { key, primary, others };
     }).sort((a, b) => meetingTimeMs(b.primary) - meetingTimeMs(a.primary));
   }, [filteredMeetings]);
+
+  const selectedDateKey = selectedDate ? localDateKey(selectedDate) : '';
+
+  // When a calendar date is selected, auto-open threads that contain that day’s meeting in history
+  useEffect(() => {
+    if (!selectedDateKey) return;
+    setExpandedThreads((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      meetingThreads.forEach((thread) => {
+        const hasSelectedInOthers = thread.others.some((m) => localDateKey(m.date) === selectedDateKey);
+        if (hasSelectedInOthers && !next[thread.key]) {
+          next[thread.key] = true;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [selectedDateKey, meetingThreads]);
 
   const accountManagerName = currentUser
     ? getUserDisplayName(currentUser, availableUsers)
@@ -764,7 +834,7 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
       <Calendar
         meetings={visibleMeetings.filter((meeting) => {
           if (meeting.status === 'Done') return false;
-          if (agentFilter && meeting.agencyName !== agentFilter) return false;
+          if (agentFilter && !namesMatch(meeting.agencyName, agentFilter)) return false;
           if (managerFilter && !emailsMatch(meeting.accountManager, managerFilter)) return false;
           if (cityFilter && (meeting.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
           return true;
@@ -781,45 +851,34 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
               : 'Upcoming Meetings'}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full xl:max-w-3xl">
-            <label className="block">
-              <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Agent</span>
-              <select
-                value={agentFilter}
-                onChange={(e) => setAgentFilter(e.target.value)}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
-              >
-                <option value="">All agents</option>
-                {agentOptions.map((agent) => <option key={agent} value={agent}>{agent}</option>)}
-              </select>
-            </label>
-            <label className="block">
-              <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Account manager</span>
-              <select
-                value={canViewAllMeetings ? managerFilter : (currentUser || '')}
-                onChange={(e) => canViewAllMeetings && setManagerFilter(e.target.value)}
-                disabled={!canViewAllMeetings}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px] disabled:bg-slate-50"
-              >
-                {canViewAllMeetings && <option value="">All account managers</option>}
-                {(canViewAllMeetings ? managerOptions : [{
-                  email: currentUser || '',
-                  label: accountManagerName && accountManagerName !== 'N/A' ? accountManagerName : 'My meetings',
-                }]).map((manager) => (
-                  <option key={manager.email || 'me'} value={manager.email}>{manager.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">City</span>
-              <select
-                value={cityFilter}
-                onChange={(e) => setCityFilter(e.target.value)}
-                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
-              >
-                <option value="">All cities</option>
-                {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
-              </select>
-            </label>
+            <SearchableFilterSelect
+              label="Agent"
+              value={agentFilter}
+              onChange={setAgentFilter}
+              allLabel="All agents"
+              placeholder="Search agents…"
+              options={agentOptions.map((agent) => ({ value: agent, label: agent }))}
+            />
+            <SearchableFilterSelect
+              label="Account manager"
+              value={canViewAllMeetings ? managerFilter : (currentUser || '')}
+              onChange={(next) => canViewAllMeetings && setManagerFilter(next)}
+              allLabel="All account managers"
+              placeholder="Search account managers…"
+              disabled={!canViewAllMeetings}
+              options={canViewAllMeetings ? managerOptions : [{
+                value: currentUser || '',
+                label: accountManagerName && accountManagerName !== 'N/A' ? accountManagerName : 'My meetings',
+              }]}
+            />
+            <SearchableFilterSelect
+              label="City"
+              value={cityFilter}
+              onChange={setCityFilter}
+              allLabel="All cities"
+              placeholder="Search cities…"
+              options={cityOptions.map((city) => ({ value: city, label: city }))}
+            />
           </div>
         </div>
         {meetingThreads.length > 0 ? (
@@ -827,10 +886,11 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
             {meetingThreads.map((thread) => {
               const isExpanded = Boolean(expandedThreads[thread.key]);
               const hasThread = thread.others.length > 0;
+              // Agenda stays normal white — no selected-date color wash on this section.
               return (
                 <li
                   key={thread.key}
-                  className="p-3 sm:p-4 bg-white rounded-lg border border-slate-200 shadow-sm"
+                  className="p-3 sm:p-4 rounded-lg border border-slate-200 bg-white shadow-sm"
                 >
                   {renderMeetingBody(thread.primary, { isPrimary: true, isPrevious: false })}
 

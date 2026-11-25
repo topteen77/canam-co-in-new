@@ -118,6 +118,7 @@ const App: React.FC = () => {
   const [isUserProfileOpen, setUserProfileOpen] = useState(false); // ✅ Profile Modal State
   const [isCallLoggingModalOpen, setIsCallLoggingModalOpen] = useState(false);
   const [isMeetingCheckInModalOpen, setIsMeetingCheckInModalOpen] = useState(false);
+  const [meetingsSelectedDate, setMeetingsSelectedDate] = useState<Date | null>(null);
   const [scheduledMeetingStart, setScheduledMeetingStart] = useState<ScheduledMeetingStart | null>(null);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -1100,12 +1101,20 @@ const App: React.FC = () => {
                               availableUsers={availableUsers}
                               currentUser={currentUser}
                               canViewAllMeetings={isAdmin || isSubAdmin}
+                              selectedDate={meetingsSelectedDate}
+                              onSelectedDateChange={setMeetingsSelectedDate}
                               onUpdateLead={(lead) => handleUpdateLead(lead.id, { followUps: lead.followUps })}
                               onPlanNewMeeting={() => setPlanMeetingModalOpen(true)}
                               onStartScheduledMeeting={(meeting) => openMeetingCheckIn(meeting)}
                             />
                             <div className="mt-6 sm:mt-10">
-                                <CompletedMeetings meetingCheckIns={meetingCheckIns} leads={displayedLeads} currentUser={currentUser} availableUsers={availableUsers} />
+                                <CompletedMeetings
+                                  meetingCheckIns={meetingCheckIns}
+                                  leads={displayedLeads}
+                                  currentUser={currentUser}
+                                  availableUsers={availableUsers}
+                                  highlightDate={meetingsSelectedDate}
+                                />
                             </div>
                         </>
                     )}

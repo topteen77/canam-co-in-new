@@ -184,11 +184,14 @@ export interface PhotoMetadata {
 }
 
 export interface MeetingCheckInRecord {
+  id?: string;
+  firebase_id?: string;
   username: string;
   salesPersonName?: string;
   salesPersonEmail?: string;
   meetingType?: string;
   notes?: string;
+  completionNotes?: string;
   leadId?: string;
   leadName?: string;
   date: string; // YYYY-MM-DD format

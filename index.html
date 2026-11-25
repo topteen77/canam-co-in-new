@@ -33,6 +33,14 @@
     
     <!-- Page Title -->
     <title>Canam STUDYABROAD CRM</title>
+    <!-- Skip splash animation on reload within the same browser session -->
+    <script>
+      try {
+        if (sessionStorage.getItem('crm_splash_seen') === '1') {
+          document.documentElement.classList.add('splash-skip');
+        }
+      } catch (e) {}
+    </script>
     
     <!-- Web App Manifest -->
     <link rel="manifest" href="/manifest.json" />
@@ -91,6 +99,9 @@
         padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
         box-sizing: border-box;
         transition: opacity 0.45s ease, visibility 0.45s ease;
+      }
+      html.splash-skip #app-splash {
+        display: none !important;
       }
       #app-splash.is-done {
         opacity: 0;

@@ -1,11 +1,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { MeetingCheckInRecord, Lead } from '../types';
+import { SearchableFilterSelect } from './SearchableFilterSelect';
+import apiClient from '../services/apiClient';
 
 interface CompletedMeetingsProps {
   meetingCheckIns: MeetingCheckInRecord[];
   leads: Lead[];
   currentUser: string | null;
   availableUsers: Array<{ id: string, name: string, email: string, role: string }>;
+  /** Calendar date selected on Meetings page — highlight matching cards in open threads. */
+  highlightDate?: Date | null;
+}
+
+function localDateKey(input: Date | string | null | undefined): string {
+  if (input == null) return '';
+  if (typeof input === 'string') {
+    const match = input.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+  const date = input instanceof Date ? input : new Date(input);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 interface MeetingFilters {
@@ -22,7 +38,8 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
   meetingCheckIns,
   leads,
   currentUser,
-  availableUsers
+  availableUsers,
+  highlightDate = null,
 }) => {
   const [filters, setFilters] = useState<MeetingFilters>({
     dateFrom: '',
@@ -40,6 +57,10 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
   const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({});
+  const [localOutcomes, setLocalOutcomes] = useState<Record<string, string>>({});
+  const [outcomeEditKey, setOutcomeEditKey] = useState<string | null>(null);
+  const [outcomeDraft, setOutcomeDraft] = useState('');
+  const [outcomeSaving, setOutcomeSaving] = useState(false);
 
   // Filter and sort completed meetings
   const filteredMeetings = useMemo(() => {
@@ -71,14 +92,32 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
         // User filtering
         if (filters.user && meeting.username !== filters.user) return false;
 
-        // Lead filtering
-        if (filters.leadId && meeting.leadId !== filters.leadId) return false;
+        // Lead filtering (id or name: fallback for check-ins without leadId)
+        if (filters.leadId) {
+          if (filters.leadId.startsWith('name:')) {
+            const name = filters.leadId.slice(5).trim().toLowerCase();
+            if (String(meeting.leadName || '').trim().toLowerCase() !== name) return false;
+          } else if (String(meeting.leadId || '') !== filters.leadId) {
+            return false;
+          }
+        }
 
         // Meeting status filtering
         if (filters.meetingStatus && meeting.meetingStatus !== filters.meetingStatus) return false;
 
-        // Meeting outcome filtering
-        if (filters.meetingOutcome && meeting.meetingOutcome !== filters.meetingOutcome) return false;
+        // Meeting outcome filtering (include locally corrected + notes-inferred outcomes)
+        if (filters.meetingOutcome) {
+          const key = String(meeting.id || meeting.firebase_id || `${meeting.leadId || ''}-${meeting.username}-${meeting.date}-${meeting.checkInTime}`);
+          const local = localOutcomes[key];
+          const notes = `${meeting.notes || ''} ${meeting.completionNotes || ''}`.toLowerCase();
+          const inferred = local
+            || meeting.meetingOutcome
+            || (/reschedul/.test(notes) ? 'rescheduled'
+              : /no[\s_-]?show/.test(notes) ? 'no_show'
+                : /cancel/.test(notes) ? 'cancelled'
+                  : /successful|success/.test(notes) ? 'successful' : '');
+          if (inferred !== filters.meetingOutcome) return false;
+        }
 
         // Search term filtering
         if (filters.searchTerm) {
@@ -126,7 +165,7 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
         // Sort descending (most recent first)
         return timeB - timeA;
       });
-  }, [meetingCheckIns, filters]);
+  }, [meetingCheckIns, filters, localOutcomes]);
 
   const getMeetingSortTime = (meeting: MeetingCheckInRecord): number => {
     if (meeting.checkOutTime && meeting.checkOutTime.trim() !== '') {
@@ -182,12 +221,55 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
     }).sort((a, b) => getMeetingSortTime(b.primary) - getMeetingSortTime(a.primary));
   }, [filteredMeetings]);
 
-  // Get unique values for filter dropdowns safely
-  const uniqueUsers = [...new Set((Array.isArray(meetingCheckIns) ? meetingCheckIns : []).map(m => m.username))];
+  const highlightDateKey = highlightDate ? localDateKey(highlightDate) : '';
 
-  const uniqueLeads = (Array.isArray(leads) ? leads : []).filter(lead =>
-    (Array.isArray(meetingCheckIns) ? meetingCheckIns : []).some(m => m.leadId === lead.id)
-  );
+  // Auto-open client threads that contain a meeting on the calendar-selected date
+  useEffect(() => {
+    if (!highlightDateKey) return;
+    setExpandedThreads((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      meetingThreads.forEach((thread) => {
+        const matchInOthers = thread.others.some((m) => localDateKey(m.date) === highlightDateKey);
+        if (matchInOthers && !next[thread.key]) {
+          next[thread.key] = true;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [highlightDateKey, meetingThreads]);
+
+  // Get unique values for filter dropdowns safely — include check-in-only names so none are missing
+  const uniqueUsers = [...new Set((Array.isArray(meetingCheckIns) ? meetingCheckIns : []).map(m => m.username).filter(Boolean))];
+
+  const uniqueLeadOptions = useMemo(() => {
+    const byId = new Map<string, { value: string; label: string }>();
+    const byName = new Map<string, { value: string; label: string }>();
+    const safeLeads = Array.isArray(leads) ? leads : [];
+    const safeCheckIns = Array.isArray(meetingCheckIns) ? meetingCheckIns : [];
+
+    safeLeads.forEach((lead) => {
+      if (!safeCheckIns.some((m) => String(m.leadId || '') === String(lead.id))) return;
+      byId.set(String(lead.id), { value: String(lead.id), label: lead.agencyName || lead.id });
+    });
+
+    safeCheckIns.forEach((meeting) => {
+      const leadId = String(meeting.leadId || '').trim();
+      const name = String(meeting.leadName || '').trim();
+      if (leadId && byId.has(leadId)) return;
+      if (leadId && name) {
+        byId.set(leadId, { value: leadId, label: name });
+        return;
+      }
+      if (name) {
+        const key = name.toLowerCase();
+        if (!byName.has(key)) byName.set(key, { value: `name:${name}`, label: name });
+      }
+    });
+
+    return [...byId.values(), ...byName.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [leads, meetingCheckIns]);
 
   const uniqueOutcomes = [...new Set((Array.isArray(meetingCheckIns) ? meetingCheckIns : []).map(m => m.meetingOutcome).filter(Boolean))];
 
@@ -291,6 +373,49 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
     }
   };
 
+  const meetingRecordKey = (meeting: MeetingCheckInRecord): string => (
+    String(meeting.id || meeting.firebase_id || meetingRowKey(meeting))
+  );
+
+  const resolveOutcome = (meeting: MeetingCheckInRecord): string => {
+    const key = meetingRecordKey(meeting);
+    if (localOutcomes[key]) return localOutcomes[key];
+    if (meeting.meetingOutcome) return meeting.meetingOutcome;
+    const notes = `${meeting.notes || ''} ${meeting.completionNotes || ''}`.toLowerCase();
+    if (/reschedul/.test(notes)) return 'rescheduled';
+    if (/no[\s_-]?show/.test(notes)) return 'no_show';
+    if (/cancel/.test(notes)) return 'cancelled';
+    if (/successful|success/.test(notes)) return 'successful';
+    return '';
+  };
+
+  const formatOutcomeLabel = (outcome: string) => (
+    outcome ? outcome.charAt(0).toUpperCase() + outcome.slice(1).replace('_', ' ') : ''
+  );
+
+  const saveOutcomeUpdate = async (meeting: MeetingCheckInRecord) => {
+    const meetingId = meeting.id || meeting.firebase_id;
+    if (!meetingId) {
+      alert('This meeting record has no id, so the outcome cannot be updated.');
+      return;
+    }
+    if (!outcomeDraft) {
+      alert('Select an outcome.');
+      return;
+    }
+    try {
+      setOutcomeSaving(true);
+      await apiClient.put(`/meetings/update/${meetingId}`, { meetingOutcome: outcomeDraft });
+      setLocalOutcomes((prev) => ({ ...prev, [meetingRecordKey(meeting)]: outcomeDraft }));
+      setOutcomeEditKey(null);
+      setOutcomeDraft('');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update meeting outcome');
+    } finally {
+      setOutcomeSaving(false);
+    }
+  };
+
   const openPhotoModal = (photos: string[], startIndex: number = 0) => {
     setSelectedPhotos(photos);
     setCurrentPhotoIndex(startIndex);
@@ -368,9 +493,9 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
                 </h3>
               )}
             </div>
-            {meeting.meetingOutcome && (
-              <span className={`shrink-0 px-2 py-0.5 text-[11px] font-semibold rounded-full ${getOutcomeColor(meeting.meetingOutcome)}`}>
-                {meeting.meetingOutcome.charAt(0).toUpperCase() + meeting.meetingOutcome.slice(1).replace('_', ' ')}
+            {resolveOutcome(meeting) && (
+              <span className={`shrink-0 px-2 py-0.5 text-[11px] font-semibold rounded-full ${getOutcomeColor(resolveOutcome(meeting))}`}>
+                {formatOutcomeLabel(resolveOutcome(meeting))}
               </span>
             )}
           </div>
@@ -428,7 +553,55 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
             >
               👁️ View Details
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOutcomeEditKey(meetingRecordKey(meeting));
+                setOutcomeDraft(resolveOutcome(meeting) || '');
+              }}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md hover:bg-emerald-100"
+            >
+              {resolveOutcome(meeting) ? 'Fix outcome' : 'Add outcome'}
+            </button>
           </div>
+
+          {outcomeEditKey === meetingRecordKey(meeting) && (
+            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Set correct meeting outcome
+              </p>
+              <select
+                value={outcomeDraft}
+                onChange={(e) => setOutcomeDraft(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md bg-white min-h-[40px]"
+              >
+                <option value="">Select outcome</option>
+                <option value="successful">Successful</option>
+                <option value="rescheduled">Rescheduled</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="no_show">No Show</option>
+                <option value="other">Other</option>
+              </select>
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={outcomeSaving}
+                  onClick={() => { setOutcomeEditKey(null); setOutcomeDraft(''); }}
+                  className="min-h-[40px] px-3 py-1.5 text-sm text-slate-700 bg-white border border-slate-300 rounded-md"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={outcomeSaving}
+                  onClick={() => void saveOutcomeUpdate(meeting)}
+                  className="min-h-[40px] px-3 py-1.5 text-sm font-semibold text-white bg-emerald-600 rounded-md disabled:opacity-50"
+                >
+                  {outcomeSaving ? 'Saving…' : 'Save outcome'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -496,56 +669,38 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
               />
             </div>
 
-            {/* User */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">User</label>
-              <select
-                value={filters.user}
-                onChange={(e) => setFilters(prev => ({ ...prev, user: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value="">All Users</option>
-                {uniqueUsers.map(user => (
-                  <option key={user} value={user}>
-                    {getUserDisplayName(user)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableFilterSelect
+              label="User"
+              value={filters.user}
+              onChange={(user) => setFilters((prev) => ({ ...prev, user }))}
+              allLabel="All Users"
+              placeholder="Search users…"
+              options={uniqueUsers.map((user) => ({
+                value: user,
+                label: getUserDisplayName(user),
+              }))}
+            />
 
-            {/* Lead */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Lead</label>
-              <select
-                value={filters.leadId}
-                onChange={(e) => setFilters(prev => ({ ...prev, leadId: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value="">All Leads</option>
-                {uniqueLeads.map(lead => (
-                  <option key={lead.id} value={lead.id}>
-                    {lead.agencyName}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableFilterSelect
+              label="Lead"
+              value={filters.leadId}
+              onChange={(leadId) => setFilters((prev) => ({ ...prev, leadId }))}
+              allLabel="All Leads"
+              placeholder="Search leads / agents…"
+              options={uniqueLeadOptions}
+            />
 
-            {/* Meeting Outcome */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Outcome</label>
-              <select
-                value={filters.meetingOutcome}
-                onChange={(e) => setFilters(prev => ({ ...prev, meetingOutcome: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value="">All Outcomes</option>
-                {uniqueOutcomes.map(outcome => (
-                  <option key={outcome} value={outcome}>
-                    {outcome.charAt(0).toUpperCase() + outcome.slice(1).replace('_', ' ')}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableFilterSelect
+              label="Outcome"
+              value={filters.meetingOutcome}
+              onChange={(meetingOutcome) => setFilters((prev) => ({ ...prev, meetingOutcome }))}
+              allLabel="All Outcomes"
+              placeholder="Search outcomes…"
+              options={uniqueOutcomes.map((outcome) => ({
+                value: outcome,
+                label: formatOutcomeLabel(outcome),
+              }))}
+            />
 
             {/* Search */}
             <div>
@@ -588,25 +743,49 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
           meetingThreads.map((thread) => {
             const isExpanded = Boolean(expandedThreads[thread.key]);
             const hasThread = thread.others.length > 0;
+            const primaryIsSelectedDay = Boolean(
+              highlightDateKey && localDateKey(thread.primary.date) === highlightDateKey
+            );
             return (
               <div
                 key={thread.key}
-                className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-indigo-200 transition-shadow"
+                className={`rounded-xl p-4 shadow-sm transition-shadow bg-white border border-slate-200 hover:shadow-md hover:border-indigo-200 ${
+                  primaryIsSelectedDay ? 'border-l-4 border-l-amber-200 bg-[#FFFEF8]' : ''
+                }`}
               >
+                {primaryIsSelectedDay && (
+                  <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-amber-600/70">
+                    Selected date
+                  </p>
+                )}
                 {renderMeetingCard(thread.primary, { showClientName: true })}
 
                 {hasThread && (
                   <div className="mt-3 -mx-4 -mb-4">
                     {isExpanded && (
                       <ul className="space-y-3 border-t border-indigo-100 bg-indigo-50 px-4 py-3 border-l-4 border-l-indigo-400 ml-2 sm:ml-3">
-                        {thread.others.map((meeting) => (
-                          <li
-                            key={meetingRowKey(meeting)}
-                            className="rounded-lg border border-indigo-200 bg-white p-3 shadow-sm ring-1 ring-indigo-100"
-                          >
-                            {renderMeetingCard(meeting, { showClientName: false, isPrevious: true })}
-                          </li>
-                        ))}
+                        {thread.others.map((meeting) => {
+                          const isSelectedDay = Boolean(
+                            highlightDateKey && localDateKey(meeting.date) === highlightDateKey
+                          );
+                          return (
+                            <li
+                              key={meetingRowKey(meeting)}
+                              className={`rounded-lg p-3 shadow-sm ${
+                                isSelectedDay
+                                  ? 'border border-amber-100 border-l-4 border-l-amber-200 bg-[#FFFEF8]'
+                                  : 'border border-indigo-200 bg-white ring-1 ring-indigo-100'
+                              }`}
+                            >
+                              {isSelectedDay && (
+                                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-amber-600/70">
+                                  Selected date
+                                </p>
+                              )}
+                              {renderMeetingCard(meeting, { showClientName: false, isPrevious: true })}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                     <button
@@ -652,9 +831,9 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
                       {String(selectedMeeting.meetingStatus).charAt(0).toUpperCase() + String(selectedMeeting.meetingStatus).slice(1)}
                     </span>
                   )}
-                  {selectedMeeting.meetingOutcome && (
-                    <span className={`lead-chip ${getOutcomeColor(selectedMeeting.meetingOutcome)}`}>
-                      {selectedMeeting.meetingOutcome.charAt(0).toUpperCase() + selectedMeeting.meetingOutcome.slice(1).replace('_', ' ')}
+                  {resolveOutcome(selectedMeeting) && (
+                    <span className={`lead-chip ${getOutcomeColor(resolveOutcome(selectedMeeting))}`}>
+                      {formatOutcomeLabel(resolveOutcome(selectedMeeting))}
                     </span>
                   )}
                 </div>

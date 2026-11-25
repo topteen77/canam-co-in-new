@@ -22,16 +22,37 @@ root.render(
   </React.StrictMode>
 );
 
+const SPLASH_SEEN_KEY = 'crm_splash_seen';
+const splashAlreadySeen = (() => {
+  try {
+    return sessionStorage.getItem(SPLASH_SEEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+})();
+
 const splashStartedAt = Date.now();
 const hideSplash = () => {
   const splash = document.getElementById('app-splash');
   if (!splash || splash.classList.contains('is-done')) return;
-  const remaining = Math.max(0, 2800 - (Date.now() - splashStartedAt));
-  window.setTimeout(() => {
+  const finish = () => {
     splash.classList.add('is-done');
-    window.setTimeout(() => splash.remove(), 380);
-  }, remaining);
+    window.setTimeout(() => {
+      try { splash.remove(); } catch { /* ignore */ }
+    }, splashAlreadySeen ? 0 : 380);
+  };
+  if (splashAlreadySeen || document.documentElement.classList.contains('splash-skip')) {
+    finish();
+    return;
+  }
+  try { sessionStorage.setItem(SPLASH_SEEN_KEY, '1'); } catch { /* ignore */ }
+  const remaining = Math.max(0, 2800 - (Date.now() - splashStartedAt));
+  window.setTimeout(finish, remaining);
 };
 
-requestAnimationFrame(() => requestAnimationFrame(hideSplash));
-window.setTimeout(hideSplash, 3600);
+if (splashAlreadySeen) {
+  hideSplash();
+} else {
+  requestAnimationFrame(() => requestAnimationFrame(hideSplash));
+  window.setTimeout(hideSplash, 3600);
+}
