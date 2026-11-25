@@ -26,6 +26,7 @@ interface SimpleMeetingCheckInProps {
     leadId: string;
     outcome: string;
     outcomeNotes: string;
+    rescheduleDate?: string;
   }) => void | Promise<void>;
 }
 
@@ -49,8 +50,9 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [activeMeeting, setActiveMeeting] = useState<any>(null);
-  const [meetingOutcome, setMeetingOutcome] = useState('successful');
+  const [meetingOutcome, setMeetingOutcome] = useState('');
   const [completionNotes, setCompletionNotes] = useState('');
+  const [rescheduleDate, setRescheduleDate] = useState('');
 
   // Photo upload states
   const [checkInPhotos, setCheckInPhotos] = useState<string[]>([]);
@@ -324,18 +326,23 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
         ? scheduledMeeting.followUpId
         : ''
     );
-  const scheduledOutcomeRequired = Boolean(scheduledFollowUpId);
-  const scheduledOutcomeMissing = scheduledOutcomeRequired && (!meetingOutcome || !completionNotes.trim());
+  const needsRescheduleSlot = meetingOutcome === 'rescheduled' || meetingOutcome === 'no_show';
+  const outcomeCommentsMissing = !meetingOutcome || !completionNotes.trim();
+  const rescheduleSlotMissing = needsRescheduleSlot && !String(rescheduleDate || '').trim();
+  const cannotCompleteMeeting = outcomeCommentsMissing || rescheduleSlotMissing;
 
   useEffect(() => {
-    if (scheduledFollowUpId) setMeetingOutcome('');
-    else setMeetingOutcome((current) => current || 'successful');
-  }, [scheduledFollowUpId]);
+    if (!needsRescheduleSlot) setRescheduleDate('');
+  }, [needsRescheduleSlot]);
 
   const handleEndMeeting = async () => {
     if (!activeMeeting) return;
-    if (scheduledOutcomeMissing) {
-      alert('Add the meeting outcome before ending this scheduled meeting.');
+    if (outcomeCommentsMissing) {
+      alert('Outcome and outcome comments are required before a meeting can be marked completed.');
+      return;
+    }
+    if (rescheduleSlotMissing) {
+      alert('Choose a new date and time to reschedule this same meeting (do not create a new calendar entry).');
       return;
     }
 
@@ -401,13 +408,21 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
           leadId: String(activeMeeting.leadId || scheduledMeeting?.leadId || ''),
           outcome: meetingOutcome,
           outcomeNotes: completionNotes.trim(),
+          rescheduleDate: needsRescheduleSlot
+            ? new Date(rescheduleDate).toISOString()
+            : undefined,
         });
       }
-      alert(`Meeting ended successfully! Duration: ${durationMinutes} minutes`);
+      alert(
+        needsRescheduleSlot
+          ? `Meeting marked as ${meetingOutcome.replace('_', ' ')}. The same calendar meeting was moved to the new time.`
+          : `Meeting ended successfully! Duration: ${durationMinutes} minutes`
+      );
 
       setActiveMeeting(null);
-      setMeetingOutcome('successful');
+      setMeetingOutcome('');
       setCompletionNotes('');
+      setRescheduleDate('');
       await onMeetingsChange?.();
 
     } catch (error: any) {
@@ -469,40 +484,57 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
 
           <div className="meeting-field">
             <label htmlFor="meeting-outcome">
-              Meeting Outcome{scheduledOutcomeRequired ? ' *' : ''}
+              Meeting Outcome *
             </label>
             <select
               id="meeting-outcome"
               value={meetingOutcome}
               onChange={(e) => setMeetingOutcome(e.target.value)}
-              required={scheduledOutcomeRequired}
+              required
             >
-              {scheduledOutcomeRequired && <option value="">Select outcome</option>}
+              <option value="">Select outcome</option>
               <option value="successful">Successful</option>
-              <option value="rescheduled">Rescheduled</option>
+              <option value="rescheduled">Rescheduled (same meeting)</option>
               <option value="cancelled">Cancelled</option>
-              <option value="no_show">No Show</option>
+              <option value="no_show">No Show / agent not joining (reschedule same)</option>
               <option value="other">Other</option>
             </select>
-            {scheduledOutcomeRequired && !meetingOutcome && (
-              <p className="mt-1 text-xs font-medium text-rose-700">Select an outcome to end this scheduled meeting.</p>
+            {!meetingOutcome && (
+              <p className="mt-1 text-xs font-medium text-rose-700">Select an outcome before completing.</p>
             )}
           </div>
 
+          {needsRescheduleSlot && (
+            <div className="meeting-field">
+              <label htmlFor="reschedule-date">New date & time for this same meeting *</label>
+              <input
+                id="reschedule-date"
+                type="datetime-local"
+                value={rescheduleDate}
+                onChange={(e) => setRescheduleDate(e.target.value)}
+                min={new Date().toISOString().slice(0, 16)}
+                required
+              />
+              <p className="mt-1 text-xs text-slate-500 normal-case tracking-normal font-normal">
+                Updates the existing calendar entry — does not create a new meeting.
+              </p>
+            </div>
+          )}
+
           <div className="meeting-field">
             <label htmlFor="completion-notes">
-              {scheduledOutcomeRequired ? 'Outcome notes *' : 'Completion Notes'}
+              Outcome comments *
             </label>
             <textarea
               id="completion-notes"
               value={completionNotes}
               onChange={(e) => setCompletionNotes(e.target.value)}
               rows={3}
-              required={scheduledOutcomeRequired}
-              placeholder={scheduledOutcomeRequired ? 'What was the outcome of this meeting?' : 'Optional notes about how the meeting went...'}
+              required
+              placeholder="Required: describe the outcome before completing this meeting…"
             />
-            {scheduledOutcomeRequired && !completionNotes.trim() && (
-              <p className="mt-1 text-xs font-medium text-rose-700">Outcome notes are required for a scheduled meeting.</p>
+            {!completionNotes.trim() && (
+              <p className="mt-1 text-xs font-medium text-rose-700">Outcome comments are mandatory.</p>
             )}
           </div>
 
@@ -571,10 +603,14 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
             <button
               type="button"
               onClick={handleEndMeeting}
-              disabled={isSubmitting || scheduledOutcomeMissing}
+              disabled={isSubmitting || cannotCompleteMeeting}
               className="w-full flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
             >
-              {isSubmitting ? 'Saving meeting and photos…' : 'Complete Meeting'}
+              {isSubmitting
+                ? 'Saving meeting and photos…'
+                : needsRescheduleSlot
+                  ? 'Save & Reschedule Same Meeting'
+                  : 'Complete Meeting'}
             </button>
           </div>
         </div>

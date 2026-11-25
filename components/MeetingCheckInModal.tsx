@@ -307,6 +307,14 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
       console.error('No active meeting to end');
       return;
     }
+    if (!meetingOutcome) {
+      alert('Select a meeting outcome before completing.');
+      return;
+    }
+    if (!String(meetingNotes || '').trim()) {
+      alert('Outcome comments are required before a meeting can be marked completed.');
+      return;
+    }
 
     setIsEndingMeeting(true);
 
@@ -322,6 +330,7 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
         completionPhotos: completionPhotos,
         completionPhotoMetadata: completionPhotoMetadata,
         meetingOutcome: meetingOutcome,
+        completionNotes: String(meetingNotes || '').trim(),
         photoUploadCount: {
           checkIn: activeMeeting.photoUploadCount?.checkIn || 0,
           completion: (activeMeeting.photoUploadCount?.completion || 0) + (completionPhotos.length > 0 ? 1 : 0)
@@ -716,17 +725,18 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Meeting Outcome
+                  Meeting Outcome *
                 </label>
                 <select
                   value={meetingOutcome}
                   onChange={(e) => setMeetingOutcome(e.target.value as any)}
+                  required
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="successful">✅ Successful</option>
-                  <option value="rescheduled">🔄 Rescheduled</option>
+                  <option value="rescheduled">🔄 Rescheduled (same meeting)</option>
                   <option value="cancelled">❌ Cancelled</option>
-                  <option value="no_show">👻 No Show</option>
+                  <option value="no_show">👻 No Show (reschedule same)</option>
                   <option value="other">📝 Other</option>
                 </select>
               </div>
@@ -818,23 +828,27 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
 
               <div>
                 <label htmlFor="completionNotes" className="block text-sm font-medium text-slate-700 mb-1">
-                  Meeting Completion Notes (Optional)
+                  Outcome comments *
                 </label>
                 <textarea
                   id="completionNotes"
                   value={meetingNotes}
                   onChange={(e) => setMeetingNotes(e.target.value)}
                   rows={3}
+                  required
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Add any notes about the meeting completion..."
+                  placeholder="Required: describe the outcome before completing this meeting…"
                 />
+                {!String(meetingNotes || '').trim() && (
+                  <p className="mt-1 text-xs font-medium text-rose-700">Outcome comments are mandatory.</p>
+                )}
               </div>
 
               <div className="flex gap-3">
                 <button
                   type="button"
                   onClick={handleEndMeeting}
-                  disabled={isEndingMeeting}
+                  disabled={isEndingMeeting || !meetingOutcome || !String(meetingNotes || '').trim()}
                   className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold"
                 >
                   {isEndingMeeting ? 'Completing...' : '✅ Complete Meeting'}

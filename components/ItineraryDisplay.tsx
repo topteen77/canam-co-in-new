@@ -156,12 +156,20 @@ const Calendar: React.FC<{
   );
 };
 
+function toLocalDateTimeValue(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   leads,
   meetingCheckInRecords = [],
   availableUsers = [],
   currentUser = null,
   canViewAllMeetings = false,
+  onUpdateLead,
   onPlanNewMeeting,
   onStartScheduledMeeting,
 }) => {
@@ -223,6 +231,11 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   const [agentFilter, setAgentFilter] = useState('');
   const [managerFilter, setManagerFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
+  const [editingMeeting, setEditingMeeting] = useState<MeetingItem | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editLink, setEditLink] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   const visibleMeetings = useMemo(() => {
     if (canViewAllMeetings) return allMeetings;
@@ -251,6 +264,7 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
 
   const filteredMeetings = useMemo(() => {
     const matched = visibleMeetings.filter((meeting) => {
+      if (meeting.status === 'Done') return false;
       if (agentFilter && meeting.agencyName !== agentFilter) return false;
       if (managerFilter && !emailsMatch(meeting.accountManager, managerFilter)) return false;
       if (cityFilter && (meeting.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
@@ -282,6 +296,56 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     });
   };
 
+  const beginEditMeeting = (meeting: MeetingItem) => {
+    if (meeting.isCheckIn) return;
+    setEditingMeeting(meeting);
+    setEditDate(toLocalDateTimeValue(meeting.date));
+    setEditLink(meeting.meetingLink || '');
+    setEditNotes(meeting.notes || '');
+  };
+
+  const cancelEditMeeting = () => {
+    setEditingMeeting(null);
+    setEditDate('');
+    setEditLink('');
+    setEditNotes('');
+  };
+
+  const saveEditMeeting = async () => {
+    if (!editingMeeting || editingMeeting.isCheckIn) return;
+    if (!editDate.trim()) {
+      alert('Choose a date and time to reschedule this meeting.');
+      return;
+    }
+    const lead = leads.find((row) => row.id === editingMeeting.leadId);
+    if (!lead) {
+      alert('Lead not found for this meeting.');
+      return;
+    }
+    try {
+      setEditSaving(true);
+      const nextDate = new Date(editDate).toISOString();
+      const followUps = (Array.isArray(lead.followUps) ? lead.followUps : []).map((followUp) => {
+        if (followUp.id !== editingMeeting.id) return followUp;
+        return {
+          ...followUp,
+          status: 'Planned' as const,
+          date: nextDate,
+          meetingLink: editLink.trim() || undefined,
+          notes: editNotes.trim(),
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser || undefined,
+        };
+      });
+      await Promise.resolve(onUpdateLead({ ...lead, followUps }));
+      cancelEditMeeting();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to reschedule meeting');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-4 sm:space-y-8">
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
@@ -299,6 +363,7 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
 
       <Calendar
         meetings={visibleMeetings.filter((meeting) => {
+          if (meeting.status === 'Done') return false;
           if (agentFilter && meeting.agencyName !== agentFilter) return false;
           if (managerFilter && !emailsMatch(meeting.accountManager, managerFilter)) return false;
           if (cityFilter && (meeting.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
@@ -390,35 +455,107 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                   </div>
                 </div>
 
-                {meeting.status === 'Planned' && !meeting.isCheckIn && (
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-[44px]">
-                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Scheduled by</p>
-                      <p className="text-sm font-medium text-slate-800 truncate">{meeting.creatorLabel || '—'}</p>
+                {meeting.status === 'Planned' && !meeting.isCheckIn && editingMeeting?.id !== meeting.id && (
+                  <div className="mt-3 space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-h-[44px]">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Scheduled by</p>
+                        <p className="text-sm font-medium text-slate-800 truncate">{meeting.creatorLabel || '—'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => meeting.meetingLink?.trim() && openMeetingLink(meeting.meetingLink)}
+                        disabled={!meeting.meetingLink?.trim()}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 min-h-[44px] text-left disabled:opacity-70"
+                        title={meeting.meetingLink || 'No meeting link'}
+                      >
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Meeting link</p>
+                        <p className="text-sm font-medium text-indigo-700 truncate">
+                          {meeting.meetingLink?.trim() ? meetingLinkLabel(meeting.meetingLink) : 'No link added'}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => startScheduledMeeting(meeting)}
+                        className="rounded-lg min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
+                      >
+                        {meetingCheckInRecords.some((record) => (
+                          String(record.leadId || '') === String(meeting.leadId)
+                          && meetingBelongsToUser(record, currentUser)
+                          && isActiveMeetingRecord(record)
+                        )) ? 'End meeting' : 'Start meeting'}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => meeting.meetingLink?.trim() && openMeetingLink(meeting.meetingLink)}
-                      disabled={!meeting.meetingLink?.trim()}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 min-h-[44px] text-left disabled:opacity-70"
-                      title={meeting.meetingLink || 'No meeting link'}
-                    >
-                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Meeting link</p>
-                      <p className="text-sm font-medium text-indigo-700 truncate">
-                        {meeting.meetingLink?.trim() ? meetingLinkLabel(meeting.meetingLink) : 'No link added'}
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => startScheduledMeeting(meeting)}
-                      className="rounded-lg min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
-                    >
-                      {meetingCheckInRecords.some((record) => (
-                        String(record.leadId || '') === String(meeting.leadId)
-                        && meetingBelongsToUser(record, currentUser)
-                        && isActiveMeetingRecord(record)
-                      )) ? 'End meeting' : 'Start meeting'}
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => beginEditMeeting(meeting)}
+                        className="min-h-[44px] px-3 py-2 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+                      >
+                        Edit / Reschedule
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {editingMeeting?.id === meeting.id && (
+                  <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-3">
+                    <p className="text-sm font-semibold text-slate-800">
+                      Edit / reschedule this same meeting (does not create a new calendar entry)
+                    </p>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+                        New date & time *
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+                        Meeting link
+                      </label>
+                      <input
+                        type="url"
+                        value={editLink}
+                        onChange={(e) => setEditLink(e.target.value)}
+                        placeholder="https://zoom.us/j/… or meet.google.com/…"
+                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+                        Notes
+                      </label>
+                      <textarea
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        rows={2}
+                        className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white"
+                      />
+                    </div>
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={cancelEditMeeting}
+                        disabled={editSaving}
+                        className="min-h-[44px] px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveEditMeeting}
+                        disabled={editSaving}
+                        className="min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        {editSaving ? 'Saving…' : 'Save reschedule'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </li>

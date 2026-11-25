@@ -485,20 +485,44 @@ const App: React.FC = () => {
     leadId: string;
     outcome: string;
     outcomeNotes: string;
+    rescheduleDate?: string;
   }) => {
     const lead = findLeadById(result.leadId);
     if (!lead) return;
+    const notesRequired = String(result.outcomeNotes || '').trim();
+    if (!notesRequired) {
+      throw new Error('Outcome comments are required before completing a meeting.');
+    }
+    const shouldRescheduleSame =
+      result.outcome === 'rescheduled' || result.outcome === 'no_show';
+    if (shouldRescheduleSame && !String(result.rescheduleDate || '').trim()) {
+      throw new Error('Pick a new date and time to reschedule the same meeting.');
+    }
     const followUps = (Array.isArray(lead.followUps) ? lead.followUps : []).map((followUp) => {
       if (followUp.id !== result.followUpId) return followUp;
-      const outcomeLine = `Outcome: ${result.outcome}${result.outcomeNotes ? ` — ${result.outcomeNotes}` : ''}`;
+      if (shouldRescheduleSame) {
+        const nextDate = new Date(String(result.rescheduleDate)).toISOString();
+        const rescheduleLine = `Rescheduled (${result.outcome}): ${notesRequired}`;
+        return {
+          ...followUp,
+          status: 'Planned' as const,
+          date: nextDate,
+          notes: [followUp.notes, rescheduleLine].filter(Boolean).join('\n'),
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser || undefined,
+        };
+      }
+      const outcomeLine = `Outcome: ${result.outcome} — ${notesRequired}`;
       return {
         ...followUp,
         status: 'Done' as const,
         notes: [followUp.notes, outcomeLine].filter(Boolean).join('\n'),
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser || undefined,
       };
     });
     await handleUpdateLead(result.leadId, { followUps });
-  }, [findLeadById, handleUpdateLead]);
+  }, [findLeadById, handleUpdateLead, currentUser]);
 
   const openMeetingCheckIn = useCallback((scheduled?: ScheduledMeetingStart | null) => {
     setScheduledMeetingStart(scheduled || null);
