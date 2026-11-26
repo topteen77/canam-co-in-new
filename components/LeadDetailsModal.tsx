@@ -1646,6 +1646,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                                 </p>
                                 <p>👤 Assigned to: {getUserDisplayName(lead.accountManager || followUp.assignedTo)}</p>
                                 <p>📝 Created by: {getUserDisplayName(followUp.createdBy)}</p>
+                                <p>
+                                  🕒 Created: {followUp.createdAt ? formatDate(followUp.createdAt) : '—'}
+                                </p>
                               </div>
                             </>
                           )}

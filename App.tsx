@@ -250,6 +250,9 @@ const App: React.FC = () => {
   // --- 3. DERIVED STATE ---
   const isAdmin = ['Admin', 'SuperAdmin', 'superadmin'].includes(userRole);
   const isSubAdmin = userRole === 'SubAdmin';
+  const isAccountManager = /account\s*manager/i.test(String(userRole || ''));
+  /** Upcoming meetings are shared across Admins, SubAdmins, and Account Managers. */
+  const canViewAllMeetings = isAdmin || isSubAdmin || isAccountManager;
   const { alerts: meetingAlerts } = useAdminMeetingAlerts(isAdmin);
   
   const displayedLeads = useMemo(
@@ -1096,11 +1099,11 @@ const App: React.FC = () => {
                     {view === 'meetings' && (
                         <>
                             <MeetingPlanner
-                              leads={displayedLeads}
+                              leads={canViewAllMeetings ? leads : displayedLeads}
                               meetingCheckInRecords={meetingCheckIns}
                               availableUsers={availableUsers}
                               currentUser={currentUser}
-                              canViewAllMeetings={isAdmin || isSubAdmin}
+                              canViewAllMeetings={canViewAllMeetings}
                               selectedDate={meetingsSelectedDate}
                               onSelectedDateChange={setMeetingsSelectedDate}
                               onUpdateLead={(lead) => handleUpdateLead(lead.id, { followUps: lead.followUps })}
@@ -1110,7 +1113,7 @@ const App: React.FC = () => {
                             <div className="mt-6 sm:mt-10">
                                 <CompletedMeetings
                                   meetingCheckIns={meetingCheckIns}
-                                  leads={displayedLeads}
+                                  leads={canViewAllMeetings ? leads : displayedLeads}
                                   currentUser={currentUser}
                                   availableUsers={availableUsers}
                                   highlightDate={meetingsSelectedDate}

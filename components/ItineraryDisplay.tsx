@@ -340,6 +340,8 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   const [agentFilter, setAgentFilter] = useState('');
   const [managerFilter, setManagerFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
   const [editingMeeting, setEditingMeeting] = useState<MeetingItem | null>(null);
   const [editDate, setEditDate] = useState('');
   const [editLink, setEditLink] = useState('');
@@ -389,6 +391,8 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   const filteredMeetings = useMemo(() => {
     const selectedKey = selectedDate ? localDateKey(selectedDate) : '';
     const todayKey = localDateKey(new Date());
+    const fromKey = dateFromFilter ? localDateKey(dateFromFilter) : '';
+    const toKey = dateToFilter ? localDateKey(dateToFilter) : '';
     return visibleMeetings.filter((meeting) => {
       // Upcoming list: only open meetings. Selected day: include Done so prior slots show in the client thread.
       if (!selectedDate && meeting.status === 'Done') return false;
@@ -396,12 +400,17 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
       if (managerFilter && !emailsMatch(meeting.accountManager, managerFilter)) return false;
       if (cityFilter && (meeting.city || '').toLowerCase() !== cityFilter.toLowerCase()) return false;
       const meetingKey = localDateKey(meeting.date);
-      if (!selectedDate) {
-        return Boolean(meetingKey) && meetingKey >= todayKey;
+      if (!meetingKey) return false;
+      if (selectedDate) {
+        return meetingKey === selectedKey;
       }
-      return meetingKey === selectedKey;
+      // Upcoming range: default from today, optionally narrowed by From/To filters.
+      if (meetingKey < todayKey) return false;
+      if (fromKey && meetingKey < fromKey) return false;
+      if (toKey && meetingKey > toKey) return false;
+      return true;
     });
-  }, [visibleMeetings, agentFilter, managerFilter, cityFilter, selectedDate]);
+  }, [visibleMeetings, agentFilter, managerFilter, cityFilter, selectedDate, dateFromFilter, dateToFilter]);
 
   const meetingThreads = useMemo((): MeetingThread[] => {
     const groups = new Map<string, MeetingItem[]>();
@@ -674,6 +683,14 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
             <p className="text-sm text-slate-500 mt-1 whitespace-pre-wrap">
               Notes: {meeting.notes || '—'}
             </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Meeting created:{' '}
+              <span className="font-medium text-slate-700">
+                {meeting.createdAt
+                  ? new Date(meeting.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+                  : '—'}
+              </span>
+            </p>
           </div>
           <div className="text-left sm:text-right flex-shrink-0">
             <span className={`px-2 py-1 text-xs font-medium rounded-full ${meetingBadgeClass(meeting)}`}>
@@ -850,7 +867,27 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
               ? `Agenda for ${selectedDate.toLocaleDateString()}`
               : 'Upcoming Meetings'}
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full xl:max-w-3xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2 w-full xl:max-w-5xl">
+            <label className="block">
+              <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">From date</span>
+              <input
+                type="date"
+                value={dateFromFilter}
+                onChange={(e) => setDateFromFilter(e.target.value)}
+                disabled={Boolean(selectedDate)}
+                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px] disabled:bg-slate-50"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">To date</span>
+              <input
+                type="date"
+                value={dateToFilter}
+                onChange={(e) => setDateToFilter(e.target.value)}
+                disabled={Boolean(selectedDate)}
+                className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px] disabled:bg-slate-50"
+              />
+            </label>
             <SearchableFilterSelect
               label="Agent"
               value={agentFilter}
