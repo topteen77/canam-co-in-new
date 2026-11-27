@@ -1619,6 +1619,47 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                                 />
                               </div>
 
+                              {(isAdmin || canEdit) && (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  <div className="space-y-2">
+                                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Assigned to</label>
+                                    <select
+                                      value={editFollowUpData.assignedTo || ''}
+                                      onChange={(e) => setEditFollowUpData({ ...editFollowUpData, assignedTo: e.target.value || undefined })}
+                                      className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    >
+                                      <option value="">Select user</option>
+                                      {(Array.isArray(availableUsers) ? availableUsers : []).map((user) => (
+                                        <option key={user.email || user.id} value={user.email}>{user.name || user.email}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Created by</label>
+                                    <select
+                                      value={editFollowUpData.createdBy || ''}
+                                      onChange={(e) => setEditFollowUpData({ ...editFollowUpData, createdBy: e.target.value || undefined })}
+                                      disabled={!isAdmin}
+                                      className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-slate-100"
+                                    >
+                                      <option value="">Select user</option>
+                                      <option value="System">System</option>
+                                      {(Array.isArray(availableUsers) ? availableUsers : []).map((user) => (
+                                        <option key={`created-${user.email || user.id}`} value={user.email}>{user.name || user.email}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Created date & time</label>
+                                    <CustomDateTimePicker
+                                      value={editFollowUpData.createdAt || ''}
+                                      onChange={(date) => setEditFollowUpData({ ...editFollowUpData, createdAt: date })}
+                                      disabled={!isAdmin}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
                               <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
                                 <button
                                   onClick={() => {
@@ -1644,11 +1685,25 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                                 <p>
                                   📅 Scheduled: <span className={new Date(followUp.date) < new Date() && followUp.status === 'Planned' ? 'text-red-600 font-semibold' : ''}>{formatDate(followUp.date)}</span>
                                 </p>
-                                <p>👤 Assigned to: {getUserDisplayName(lead.accountManager || followUp.assignedTo)}</p>
-                                <p>📝 Created by: {getUserDisplayName(followUp.createdBy)}</p>
+                                <p>👤 Assigned to: {getUserDisplayName(followUp.assignedTo || lead.accountManager)}</p>
+                                <p>📝 Created by: {followUp.createdBy ? getUserDisplayName(followUp.createdBy) : '—'}</p>
                                 <p>
                                   🕒 Created: {followUp.createdAt ? formatDate(followUp.createdAt) : '—'}
                                 </p>
+                                {followUp.backfilledByScript && (
+                                  <p className="inline-flex items-center rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                    Backfilled by system script
+                                    {Array.isArray(followUp.backfilledFields) && followUp.backfilledFields.length > 0
+                                      ? ` (${followUp.backfilledFields.join(', ')})`
+                                      : ''}
+                                  </p>
+                                )}
+                                {followUp.manuallyFixedBy && (
+                                  <p className="text-[11px] text-emerald-700">
+                                    Manually fixed by {getUserDisplayName(followUp.manuallyFixedBy)}
+                                    {followUp.manuallyFixedAt ? ` · ${formatDate(followUp.manuallyFixedAt)}` : ''}
+                                  </p>
+                                )}
                               </div>
                             </>
                           )}
@@ -1658,7 +1713,10 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                             <button
                               onClick={() => {
                                 setEditingFollowUpId(followUp.id);
-                                setEditFollowUpData({ ...followUp });
+                                setEditFollowUpData({
+                                  ...followUp,
+                                  assignedTo: followUp.assignedTo || lead.accountManager || '',
+                                });
                               }}
                               className="px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 border border-indigo-200"
                               title="Edit follow-up"

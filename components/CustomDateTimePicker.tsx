@@ -6,6 +6,7 @@ interface CustomDateTimePickerProps {
   label?: string;
   min?: string;
   required?: boolean;
+  disabled?: boolean;
 }
 
 export const CustomDateTimePicker: React.FC<CustomDateTimePickerProps> = ({
@@ -13,7 +14,8 @@ export const CustomDateTimePicker: React.FC<CustomDateTimePickerProps> = ({
   value,
   onChange,
   min,
-  required
+  required,
+  disabled = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -125,8 +127,15 @@ export const CustomDateTimePicker: React.FC<CustomDateTimePickerProps> = ({
         </label>
       )}
       <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-2.5 text-sm border-2 border-slate-300 rounded-xl shadow-sm cursor-pointer bg-white hover:border-indigo-500 transition-all duration-200 flex items-center justify-between"
+        onClick={() => {
+          if (disabled) return;
+          setIsOpen(!isOpen);
+        }}
+        className={`w-full px-4 py-2.5 text-sm border-2 border-slate-300 rounded-xl shadow-sm transition-all duration-200 flex items-center justify-between ${
+          disabled
+            ? 'bg-slate-100 cursor-not-allowed opacity-80'
+            : 'cursor-pointer bg-white hover:border-indigo-500'
+        }`}
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <span className="text-slate-500">📅</span>

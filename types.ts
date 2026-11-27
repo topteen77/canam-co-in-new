@@ -74,6 +74,13 @@ export interface FollowUp {
   createdAt?: string;
   updatedAt?: string;
   updatedBy?: string;
+  /** Set when missing creator/assignee fields were filled by a system backfill script. */
+  backfilledByScript?: boolean;
+  backfilledAt?: string;
+  backfilledFields?: string[];
+  /** Cleared/updated when an admin manually corrects backfilled metadata. */
+  manuallyFixedAt?: string;
+  manuallyFixedBy?: string;
 }
 
 export interface AgencyDocument {

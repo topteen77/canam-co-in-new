@@ -544,6 +544,29 @@ const App: React.FC = () => {
       refreshLeadInBackground(id);
   }, [findLeadById, currentUser, isAdmin, applyLeadUpdate, refreshLeadInBackground]);
 
+  const handleUpdateFollowUp = useCallback(async (leadId: string, followUpId: string, updates: Partial<FollowUp>) => {
+      const existing = findLeadById(leadId);
+      if (!existing) return;
+      if (!canMutateLead(existing, { currentUser, isAdmin })) return;
+      const followUps = (Array.isArray(existing.followUps) ? existing.followUps : []).map((followUp) => {
+        if (followUp.id !== followUpId) return followUp;
+        const next: FollowUp = {
+          ...followUp,
+          ...updates,
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser || undefined,
+        };
+        // Admin manual correction of creator/assignee clears the script-backfill badge.
+        if (isAdmin && (updates.createdBy !== undefined || updates.createdAt !== undefined || updates.assignedTo !== undefined)) {
+          next.backfilledByScript = false;
+          next.manuallyFixedAt = new Date().toISOString();
+          next.manuallyFixedBy = currentUser || undefined;
+        }
+        return next;
+      });
+      await handleUpdateLead(leadId, { followUps });
+  }, [findLeadById, currentUser, isAdmin, handleUpdateLead]);
+
   const handleAddMeeting = useCallback(async (leadId: string, meetingDetails: { date: string; notes?: string; durationMinutes?: number; meetingLink?: string }) => {
       const lead = findLeadById(leadId);
       if (!lead) return;
@@ -1265,6 +1288,7 @@ const App: React.FC = () => {
                 userRole={userRole || ''}
                 onUpdateLead={handleUpdateLead}
                 onAddFollowUp={handleAddFollowUp}
+                onUpdateFollowUp={handleUpdateFollowUp}
                 availableUsers={availableUsers}
                 meetingCheckIns={meetingCheckIns}
                 availableTags={leadTags}

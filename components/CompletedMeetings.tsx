@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { MeetingCheckInRecord, Lead } from '../types';
+import type { MeetingCheckInRecord, Lead, FollowUp } from '../types';
 import { SearchableFilterSelect } from './SearchableFilterSelect';
 import apiClient from '../services/apiClient';
+import { readScheduledFollowUpId } from '../utils/scheduledMeeting';
 
 interface CompletedMeetingsProps {
   meetingCheckIns: MeetingCheckInRecord[];
@@ -442,6 +443,22 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
     setExpandedThreads((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const resolveLinkedFollowUp = (meeting: MeetingCheckInRecord): FollowUp | null => {
+    const lead = (Array.isArray(leads) ? leads : []).find(
+      (item) => String(item.id) === String(meeting.leadId || '')
+    );
+    if (!lead || !Array.isArray(lead.followUps)) return null;
+    const markedId = readScheduledFollowUpId(meeting.notes);
+    if (markedId) {
+      const byId = lead.followUps.find((f) => String(f.id) === String(markedId));
+      if (byId) return byId;
+    }
+    const meetingDay = localDateKey(meeting.date || meeting.checkInTime);
+    const meetings = lead.followUps.filter((f) => String(f.type || '').toLowerCase() === 'meeting');
+    const sameDay = meetings.find((f) => localDateKey(f.date) === meetingDay);
+    return sameDay || null;
+  };
+
   const renderMeetingCard = (
     meeting: MeetingCheckInRecord,
     options: { showClientName: boolean; isPrevious?: boolean } = { showClientName: true }
@@ -460,6 +477,10 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
           : meeting.checkOutTime
             ? 'Not available'
             : null;
+    const linkedFollowUp = resolveLinkedFollowUp(meeting);
+    const createdByRaw = linkedFollowUp?.createdBy || meeting.createdBy || '';
+    const createdAtRaw = linkedFollowUp?.createdAt || meeting.createdAt || '';
+    const backfilledByScript = Boolean(linkedFollowUp?.backfilledByScript);
 
     return (
       <div className={`flex gap-3 ${options.isPrevious ? '' : ''}`}>
@@ -507,6 +528,22 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
             {getUserDisplayName(meeting.username)}
             {durationLabel ? ` · ${durationLabel}` : ''}
           </p>
+          {(createdByRaw || createdAtRaw) && (
+            <p className="mt-0.5 text-xs text-slate-500">
+              Created by {createdByRaw ? getUserDisplayName(createdByRaw) : '—'}
+              {createdAtRaw
+                ? ` · ${new Date(createdAtRaw).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`
+                : ''}
+            </p>
+          )}
+          {backfilledByScript && (
+            <p className="mt-1 inline-flex items-center rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+              Backfilled by system script
+              {Array.isArray(linkedFollowUp?.backfilledFields) && linkedFollowUp.backfilledFields.length > 0
+                ? ` (${linkedFollowUp.backfilledFields.join(', ')})`
+                : ''}
+            </p>
+          )}
 
           {meeting.location?.address && (
             <a

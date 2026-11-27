@@ -5,7 +5,7 @@ import { SearchableFilterSelect } from './SearchableFilterSelect';
 import { getUserDisplayName } from '../utils/dataCleaning';
 import { emailsMatch } from '../utils/leadPermissions';
 import { isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
-import { stripScheduledFollowUpId, type ScheduledMeetingStart } from '../utils/scheduledMeeting';
+import { readScheduledFollowUpId, stripScheduledFollowUpId, type ScheduledMeetingStart } from '../utils/scheduledMeeting';
 
 type MeetingItem = FollowUp & {
   leadId: string;
@@ -301,8 +301,26 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
           const id = (r as { id?: string }).id ?? (r as { firebase_id?: string }).firebase_id ?? `checkin-${i}`;
           const dateStr = r.date || r.checkInTime || '';
           const status = r.meetingStatus === 'completed' ? ('Done' as const) : ('Planned' as const);
-          const creatorRaw = r.createdBy || r.salesPersonEmail || r.username || r.salesPersonName || '';
           const linkedLead = leads.find((lead) => String(lead.id) === String(r.leadId || ''));
+          const markedFollowUpId = readScheduledFollowUpId(r.notes);
+          const linkedFollowUp = (() => {
+            const followUps = Array.isArray(linkedLead?.followUps) ? linkedLead!.followUps : [];
+            if (markedFollowUpId) {
+              const byId = followUps.find((f) => String(f.id) === String(markedFollowUpId));
+              if (byId) return byId;
+            }
+            const day = localDateKey(dateStr);
+            return followUps.find(
+              (f) => String(f.type || '').toLowerCase() === 'meeting' && localDateKey(f.date) === day
+            ) || null;
+          })();
+          const creatorRaw =
+            linkedFollowUp?.createdBy
+            || r.createdBy
+            || r.salesPersonEmail
+            || r.username
+            || r.salesPersonName
+            || '';
           return {
             id,
             type: 'Meeting' as const,
@@ -311,6 +329,10 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
             notes: stripScheduledFollowUpId(r.notes || (r as { completionNotes?: string }).completionNotes || ''),
             meetingLink: (r as { meetingLink?: string }).meetingLink || '',
             createdBy: creatorRaw,
+            createdAt: linkedFollowUp?.createdAt || r.createdAt,
+            assignedTo: linkedFollowUp?.assignedTo,
+            backfilledByScript: linkedFollowUp?.backfilledByScript,
+            backfilledFields: linkedFollowUp?.backfilledFields,
             leadId: r.leadId || '',
             agencyName: r.leadName || linkedLead?.agencyName || '—',
             isCheckIn: true,
@@ -691,6 +713,14 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                   : '—'}
               </span>
             </p>
+            {meeting.backfilledByScript && (
+              <p className="mt-1 inline-flex items-center rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                Backfilled by system script
+                {Array.isArray(meeting.backfilledFields) && meeting.backfilledFields.length > 0
+                  ? ` (${meeting.backfilledFields.join(', ')})`
+                  : ''}
+              </p>
+            )}
           </div>
           <div className="text-left sm:text-right flex-shrink-0">
             <span className={`px-2 py-1 text-xs font-medium rounded-full ${meetingBadgeClass(meeting)}`}>
