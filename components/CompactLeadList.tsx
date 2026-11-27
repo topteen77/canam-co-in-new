@@ -384,8 +384,8 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
     { id: 'remarks', label: 'Remarks', width: 'w-[8%]', visible: true },
     { id: 'city', label: 'City', width: 'w-[7%]', visible: true },
     { id: 'salesPerson', label: 'Sales', width: 'w-[6%]', visible: false },
-    { id: 'createdBy', label: 'By', width: 'w-[6%]', visible: true, sortable: true },
-    { id: 'createdAt', label: 'Date', width: 'w-[6%]', visible: true, sortable: true },
+    { id: 'createdBy', label: 'Created by', width: 'w-[7%]', visible: true, sortable: true },
+    { id: 'createdAt', label: 'Created date', width: 'w-[7%]', visible: true, sortable: true },
     { id: 'followUps', label: 'Follow-ups', width: 'w-[10%]', visible: true },
     { id: 'nextAction', label: 'Next', width: 'w-[9%]', visible: true },
     { id: 'actions', label: 'Act', width: 'w-[4%]', visible: true }
@@ -970,8 +970,13 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                         )}
                         
                         {column.id === 'createdBy' && (
-                          <div className="text-slate-600 truncate" title={lead.createdBy}>
-                            {getUserDisplayNameLocal(lead.createdBy)}
+                          <div className="text-slate-600 truncate" title={lead.createdBy || 'System'}>
+                            {(() => {
+                              const raw = String(lead.createdBy || '').trim();
+                              if (!raw || /^unknown$/i.test(raw) || /^system$/i.test(raw)) return 'System';
+                              const name = getUserDisplayNameLocal(raw);
+                              return !name || /^unknown$/i.test(name) ? 'System' : name;
+                            })()}
                           </div>
                         )}
                         
