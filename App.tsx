@@ -18,6 +18,7 @@ import apiClient from './services/apiClient';
 import { restoreAuth, logout as authLogout, getStoredUser, consumePendingLastLogin, syncLoginGps, type ActiveSessionInfo } from './services/authService';
 import { getUserDisplayName as utilGetUserDisplayName } from './utils/dataCleaning';
 import { canMutateLead } from './utils/leadPermissions';
+import { parseLeadFocus } from './utils/leadFocus';
 import { appendLeadFollowUp, mergeLeadFields, sameLeadId } from './utils/leadState';
 import { getAssignedLeads } from './utils/leadVisibility';
 import {
@@ -99,6 +100,7 @@ const App: React.FC = () => {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [leadModalTab, setLeadModalTab] = useState<'details' | 'followups' | 'history' | 'recordings'>('details');
   const [highlightFollowUpId, setHighlightFollowUpId] = useState<string | undefined>(undefined);
+  const [highlightLeadField, setHighlightLeadField] = useState<string | undefined>(undefined);
   
   // Modals
   const [isAddLeadModalOpen, setAddLeadModalOpen] = useState(false);
@@ -434,21 +436,12 @@ const App: React.FC = () => {
       return tagName;
   }, []);
 
-  const handleViewLead = (lead: Lead, followUpId?: string) => {
+  const handleViewLead = (lead: Lead, focusToken?: string) => {
     setSelectedLead(lead);
-    if (followUpId === 'FOLLOWUPS_TAB') {
-      setLeadModalTab('followups');
-      setHighlightFollowUpId(undefined);
-    } else if (followUpId === 'HISTORY_TAB') {
-      setLeadModalTab('history');
-      setHighlightFollowUpId(undefined);
-    } else if (followUpId) {
-      setLeadModalTab('followups');
-      setHighlightFollowUpId(followUpId);
-    } else {
-      setLeadModalTab('details');
-      setHighlightFollowUpId(undefined);
-    }
+    const focus = parseLeadFocus(focusToken);
+    setLeadModalTab(focus.tab);
+    setHighlightFollowUpId(focus.followUpId);
+    setHighlightLeadField(focus.field);
     setIsLeadDetailsModalOpen(true);
   };
 
@@ -1283,6 +1276,7 @@ const App: React.FC = () => {
                   setIsLeadDetailsModalOpen(false);
                   setLeadModalTab('details');
                   setHighlightFollowUpId(undefined);
+                  setHighlightLeadField(undefined);
                 }}
                 currentUser={currentUser}
                 isAdmin={isAdmin}
@@ -1296,6 +1290,7 @@ const App: React.FC = () => {
                 onCreateTag={handleCreateLeadTag}
                 initialActiveTab={leadModalTab}
                 highlightFollowUpId={highlightFollowUpId}
+                highlightField={highlightLeadField}
             />
         )}
 

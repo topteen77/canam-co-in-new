@@ -7,11 +7,12 @@ import { EmailTemplateSelector } from './EmailTemplateSelector';
 import { createWhatsAppUrl } from '../utils/whatsappUtils';
 import { IcpScoringModal, clampIcpScore, emptyIcpCategoryScores } from './IcpScoringModal';
 import { canMutateLead } from '../utils/leadPermissions';
+import { LEAD_FOCUS, type LeadFocusField, fieldFocusToken } from '../utils/leadFocus';
 import { partitionLeadsByOwnership, getLeadRelation, getLeadRelationBadge, LEAD_RELATION_HEADERS } from '../utils/leadVisibility';
 
 interface CompactLeadListProps {
   leads: Lead[];
-  onSelectLead: (lead: Lead, followUpId?: string) => void;
+  onSelectLead: (lead: Lead, focusToken?: string) => void;
   onMeetingCheckIn: (leadId: string) => void;
   meetingCheckIns: any[];
   currentUser: string | null;
@@ -336,6 +337,11 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
   onFilterByCity,
 }) => {
   const showCallIcon = useShowCallIcon(Boolean(isAdmin));
+  const openLeadField = (event: React.MouseEvent, lead: Lead, field?: LeadFocusField) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectLead(lead, field ? fieldFocusToken(field) : undefined);
+  };
   // Simple function to get user display name
   const getUserDisplayNameLocal = (email: string): string => {
     if (!email) return 'Unknown';
@@ -657,17 +663,39 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                     onClick={() => onSelectLead(lead)}
                   >
                     {visibleColumns.map(column => {
-                      // Prevent row click (lead popup) for interactive cells
-                      const isClickableColumn =
+                      // Only checkbox / action widgets should block the row open handler.
+                      const isInteractiveColumn =
                         column.id === 'select' ||
                         column.id === 'followUps' ||
                         column.id === 'nextAction' ||
-                        column.id === 'city';
+                        column.id === 'actions' ||
+                        column.id === 'icpScore';
                         return (
                         <td
                           key={column.id}
-                          className={`${column.width} px-0.5 sm:px-1 py-0.5 sm:py-1 text-[10px] sm:text-xs border-r border-slate-100 last:border-r-0 overflow-hidden min-w-0`}
-                          onClick={isClickableColumn ? (e) => e.stopPropagation() : undefined}
+                          className={`${column.width} px-0.5 sm:px-1 py-0.5 sm:py-1 text-[10px] sm:text-xs border-r border-slate-100 last:border-r-0 overflow-hidden min-w-0 ${
+                            !isInteractiveColumn ? 'cursor-pointer hover:bg-indigo-50/40' : ''
+                          }`}
+                          onClick={
+                            isInteractiveColumn
+                              ? (e) => e.stopPropagation()
+                              : (e) => {
+                                  const fieldMap: Record<string, LeadFocusField | undefined> = {
+                                    agencyName: 'agencyName',
+                                    status: 'status',
+                                    contact: 'contact',
+                                    phone: 'phone',
+                                    city: 'city',
+                                    remarks: 'remarks',
+                                    onboardingDate: 'onboardingDate',
+                                    onboardedDate: 'onboardingDate',
+                                    createdBy: 'createdBy',
+                                    createdAt: 'createdAt',
+                                    salesPerson: 'salesPerson',
+                                  };
+                                  openLeadField(e, lead, fieldMap[column.id]);
+                                }
+                          }
                           onMouseDown={column.id === 'select' ? (e) => e.stopPropagation() : undefined}
                         >
                         {column.id === 'select' && (
@@ -773,13 +801,10 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                         {column.id === 'contact' && (
                           <div className="flex flex-col gap-1">
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedLeadContacts(lead);
-                                setShowContactPopup(true);
-                              }}
+                              type="button"
+                              onClick={(e) => openLeadField(e, lead, 'contact')}
                               className="text-slate-900 text-xs font-medium hover:text-blue-600 hover:underline text-left truncate"
-                              title={`View all contacts for ${lead.agencyName}`}
+                              title={`Open lead details for ${lead.agencyName}`}
                             >
                               {firstContact.name || 'N/A'}
                             </button>
@@ -860,9 +885,14 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                         )}
                         
                         {column.id === 'phone' && (
-                          <div className="text-slate-600" title={firstContact.phone}>
-                            {formatPhone(firstContact.phone || '')}
-                          </div>
+                          <button
+                            type="button"
+                            className="text-slate-600 text-left w-full truncate hover:text-indigo-600 hover:underline"
+                            title={firstContact.phone || 'No phone'}
+                            onClick={(e) => openLeadField(e, lead, 'phone')}
+                          >
+                            {formatPhone(firstContact.phone || '') || '—'}
+                          </button>
                         )}
                         
                         {column.id === 'onboardedDate' && (
@@ -938,14 +968,8 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                           <button
                             type="button"
                             className={`text-slate-600 truncate text-left w-full ${firstContact.city ? 'hover:text-indigo-600 hover:underline cursor-pointer' : ''}`}
-                            title={firstContact.city ? `Filter by ${firstContact.city}` : 'N/A'}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const city = String(firstContact.city || '').trim();
-                              if (city && city !== 'N/A' && onFilterByCity) onFilterByCity(city);
-                              else onSelectLead(lead);
-                            }}
+                            title={firstContact.city ? `Show city for ${lead.agencyName}` : 'N/A'}
+                            onClick={(e) => openLeadField(e, lead, 'city')}
                             onMouseDown={(e) => e.stopPropagation()}
                           >
                             {(() => {
@@ -993,7 +1017,7 @@ export const CompactLeadList: React.FC<CompactLeadListProps> = ({
                               e.preventDefault();
                               e.stopPropagation();
                               if (safeFollowUps.length > 0) {
-                                onSelectLead(lead, 'FOLLOWUPS_TAB');
+                                onSelectLead(lead, LEAD_FOCUS.FOLLOWUPS);
                               }
                             }}
                             onMouseDown={(e) => e.stopPropagation()}

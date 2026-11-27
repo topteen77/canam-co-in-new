@@ -13,6 +13,7 @@ import { MultiSelect } from './MultiSelect';
 import { CustomDateTimePicker } from './CustomDateTimePicker';
 import { SimplePagination } from './SimplePagination';
 import { canMutateLead } from '../utils/leadPermissions';
+import { leadFocusLabel, type LeadFocusField } from '../utils/leadFocus';
 import apiClient from '../services/apiClient';
 import { callStatusLabel } from '../utils/callStatusLabel';
 import { CallRecordingPlay } from './CallRecordingPlay';
@@ -35,6 +36,7 @@ interface LeadDetailsModalProps {
   meetingCheckIns?: MeetingCheckInRecord[];
   initialActiveTab?: 'details' | 'followups' | 'history' | 'recordings';
   highlightFollowUpId?: string;
+  highlightField?: string;
   availableTags?: string[];
   onCreateTag?: (tagName: string) => Promise<string>;
 }
@@ -156,9 +158,28 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   meetingCheckIns = [],
   initialActiveTab = 'details',
   highlightFollowUpId,
+  highlightField,
   availableTags = [],
   onCreateTag
 }) => {
+  const activeHighlightField = (highlightField || '') as LeadFocusField | '';
+  const wrapField = (field: LeadFocusField, children: React.ReactNode) => (
+    <div
+      data-lead-field={field}
+      className={
+        activeHighlightField === field
+          ? 'rounded-lg ring-2 ring-indigo-500 ring-offset-2 bg-indigo-50/80 p-1 -m-1 transition-shadow'
+          : undefined
+      }
+    >
+      {children}
+      {activeHighlightField === field && (
+        <p className="mt-1 text-[11px] font-semibold text-indigo-700">
+          Showing {leadFocusLabel(field)} from Partner Leads
+        </p>
+      )}
+    </div>
+  );
   // Simple function to get user display name
   const getUserDisplayName = (email: string): string => {
     if (!email) return 'N/A';
@@ -277,6 +298,19 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   useEffect(() => {
     if (highlightFollowUpId) setActiveTab('followups');
   }, [highlightFollowUpId]);
+
+  useEffect(() => {
+    if (activeHighlightField) setActiveTab('details');
+  }, [activeHighlightField, lead?.id]);
+
+  useEffect(() => {
+    if (!isOpen || !activeHighlightField || activeTab !== 'details') return undefined;
+    const timer = window.setTimeout(() => {
+      const node = document.querySelector(`[data-lead-field="${activeHighlightField}"]`) as HTMLElement | null;
+      node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, activeHighlightField, activeTab, lead?.id]);
 
   useEffect(() => {
     if (!isOpen || !lead?.id) {
@@ -782,6 +816,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                   📋 Basic Information
                 </h3>
                 <div className="space-y-3">
+                  {wrapField('agencyName', (
                   <div>
                     <label className="block text-sm font-bold text-slate-800 mb-1">🏢 Agency Name</label>
                     {isEditing ? (
@@ -795,7 +830,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">{lead.agencyName}</p>
                     )}
                   </div>
+                  ))}
 
+                  {wrapField('status', (
                   <div>
                     <label className="block text-sm font-bold text-slate-800 mb-1">📊 Status</label>
                     {isEditing ? (
@@ -819,6 +856,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">{lead.status}</p>
                     )}
                   </div>
+                  ))}
 
                   {isLostLeadStatus(isEditing ? (editData.status || lead.status) : lead.status) && (
                     isEditing ? (
@@ -893,6 +931,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 👥 Assignment
               </h3>
               <div className="space-y-3">
+                {wrapField('accountManager', (
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-1">👤 Account Manager</label>
                   {isEditing ? (
@@ -913,7 +952,9 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                     <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">{lead.accountManager ? getUserDisplayName(lead.accountManager) : 'Not assigned'}</p>
                   )}
                 </div>
+                ))}
 
+                {wrapField('salesPerson', (
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-1">💼 Sales Person</label>
                   {isEditing ? (
@@ -934,16 +975,21 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                     <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">{lead.salesPerson ? getUserDisplayName(lead.salesPerson) : 'Not assigned'}</p>
                   )}
                 </div>
+                ))}
 
+                {wrapField('createdBy', (
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-1">✍️ Created By</label>
                   <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">{getUserDisplayName(lead.createdBy)}</p>
                 </div>
+                ))}
 
+                {wrapField('createdAt', (
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-1">📅 Created At</label>
                   <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">{formatDate(lead.createdAt)}</p>
                 </div>
+                ))}
               </div>
             </div>
 
@@ -954,6 +1000,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
               </h3>
               <div className="space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {wrapField('onboardingDate', (
                   <div>
                     <label className="block text-sm font-bold text-slate-800 mb-1">📅 Date of Onboarding</label>
                     {isEditing ? (
@@ -969,6 +1016,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       </p>
                     )}
                   </div>
+                  ))}
 
                   <div>
                     <label className="block text-sm font-bold text-slate-800 mb-1">👥 Potential Students Count (One Month)</label>
@@ -985,6 +1033,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       <p className="text-sm text-slate-900 bg-slate-50 p-2 rounded-lg border">{lead.applicants || 'Not set'}</p>
                     )}
                   </div>
+                  {wrapField('icpScore', (
                   <div>
                     <label className="block text-sm font-bold text-slate-800 mb-1 flex items-center gap-2">
                       <span>🎯</span> ICP Score (0-10)
@@ -1010,6 +1059,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       </button>
                     </div>
                   </div>
+                  ))}
                   <div>
                     <label className="block text-sm font-bold text-slate-800 mb-1">Training Date</label>
                     {isEditing ? (
@@ -1080,6 +1130,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                   )}
                 </div>
 
+                {wrapField('remarks', (
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-1">📝 Remarks</label>
                   {isEditing ? (
@@ -1100,6 +1151,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                     </div>
                   )}
                 </div>
+                ))}
               </div>
             </div>
 
@@ -1252,6 +1304,13 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
             </div>
 
             {/* Contact Information */}
+            {wrapField(
+              activeHighlightField === 'phone'
+                ? 'phone'
+                : activeHighlightField === 'city'
+                  ? 'city'
+                  : 'contact',
+              (
             <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
               <h3 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
                 📞 Contact Information
@@ -1284,9 +1343,19 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       )}
                     </div>
                     <div className="space-y-2 text-sm text-slate-700">
-                      <p className="flex items-center gap-2">📞 {contact.phone}</p>
+                      <p
+                        data-lead-field={index === 0 ? 'phone' : undefined}
+                        className={`flex items-center gap-2 ${activeHighlightField === 'phone' && index === 0 ? 'font-semibold text-indigo-800' : ''}`}
+                      >
+                        📞 {contact.phone || '—'}
+                      </p>
                       <p className="flex items-center gap-2">📧 {contact.email}</p>
-                      {contact.city && <p className="flex items-center gap-2">📍 {contact.city}, {contact.country}</p>}
+                      <p
+                        data-lead-field={index === 0 ? 'city' : undefined}
+                        className={`flex items-center gap-2 ${activeHighlightField === 'city' && index === 0 ? 'font-semibold text-indigo-800' : ''}`}
+                      >
+                        📍 {contact.city ? `${contact.city}${contact.country ? `, ${contact.country}` : ''}` : '—'}
+                      </p>
 
                       {/* Alternate Contact Details - Always show section */}
                       <div className="mt-3 pt-2 border-t border-blue-200">
@@ -1326,6 +1395,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 </div>
               )}
             </div>
+            ))}
 
             <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-200">
               <h3 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
