@@ -1126,6 +1126,7 @@ const App: React.FC = () => {
                               meetingCheckInRecords={meetingCheckIns}
                               availableUsers={availableUsers}
                               currentUser={currentUser}
+                              isAdmin={isAdmin}
                               canViewAllMeetings={canViewAllMeetings}
                               selectedDate={meetingsSelectedDate}
                               onSelectedDateChange={setMeetingsSelectedDate}

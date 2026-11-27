@@ -3,7 +3,7 @@ import type { Lead, FollowUp, MeetingCheckInRecord } from '../types';
 import { PlusIcon } from './icons/SparklesIcon';
 import { SearchableFilterSelect } from './SearchableFilterSelect';
 import { getUserDisplayName } from '../utils/dataCleaning';
-import { emailsMatch } from '../utils/leadPermissions';
+import { canFixBlankMeetingMeta, emailsMatch } from '../utils/leadPermissions';
 import { isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
 import { readScheduledFollowUpId, stripScheduledFollowUpId, type ScheduledMeetingStart } from '../utils/scheduledMeeting';
 
@@ -31,6 +31,7 @@ interface MeetingPlannerProps {
   meetingCheckInRecords?: MeetingCheckInRecord[];
   availableUsers?: Array<{ id?: string; name?: string; email?: string; role?: string }>;
   currentUser?: string | null;
+  isAdmin?: boolean;
   canViewAllMeetings?: boolean;
   selectedDate?: Date | null;
   onSelectedDateChange?: (date: Date | null) => void;
@@ -269,6 +270,7 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   meetingCheckInRecords = [],
   availableUsers = [],
   currentUser = null,
+  isAdmin = false,
   canViewAllMeetings = false,
   selectedDate: selectedDateProp = null,
   onSelectedDateChange,
@@ -368,6 +370,8 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   const [editDate, setEditDate] = useState('');
   const [editLink, setEditLink] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editCreatedAt, setEditCreatedAt] = useState('');
+  const [editCreatedBy, setEditCreatedBy] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({});
   const [outcomeMeeting, setOutcomeMeeting] = useState<MeetingItem | null>(null);
@@ -490,10 +494,18 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
 
   const beginEditMeeting = (meeting: MeetingItem) => {
     if (meeting.isCheckIn) return;
+    const lead = leads.find((row) => row.id === meeting.leadId);
+    const canFixMeta = canFixBlankMeetingMeta(lead, {
+      currentUser,
+      isAdmin,
+      createdAt: meeting.createdAt,
+    });
     setEditingMeeting(meeting);
     setEditDate(toLocalDateTimeValue(meeting.date));
     setEditLink(meeting.meetingLink || '');
     setEditNotes(meeting.notes || '');
+    setEditCreatedAt(canFixMeta ? toLocalDateTimeValue(new Date().toISOString()) : '');
+    setEditCreatedBy(canFixMeta ? (meeting.createdBy || currentUser || '') : '');
   };
 
   const cancelEditMeeting = () => {
@@ -501,6 +513,8 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     setEditDate('');
     setEditLink('');
     setEditNotes('');
+    setEditCreatedAt('');
+    setEditCreatedBy('');
   };
 
   const saveEditMeeting = async () => {
@@ -514,12 +528,30 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
       alert('Lead not found for this meeting.');
       return;
     }
+    const canFixMeta = canFixBlankMeetingMeta(lead, {
+      currentUser,
+      isAdmin,
+      createdAt: editingMeeting.createdAt,
+    });
+    if (canFixMeta) {
+      if (!editCreatedAt.trim()) {
+        alert('Set Meeting created date and time.');
+        return;
+      }
+      if (!editCreatedBy.trim()) {
+        alert('Select who scheduled this meeting.');
+        return;
+      }
+    }
     try {
       setEditSaving(true);
       const nextDate = new Date(editDate).toISOString();
+      const createdAtIso = canFixMeta && editCreatedAt.trim()
+        ? new Date(editCreatedAt).toISOString()
+        : undefined;
       const followUps = (Array.isArray(lead.followUps) ? lead.followUps : []).map((followUp) => {
         if (followUp.id !== editingMeeting.id) return followUp;
-        return {
+        const next: FollowUp = {
           ...followUp,
           status: 'Planned' as const,
           date: nextDate,
@@ -528,6 +560,14 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
           updatedAt: new Date().toISOString(),
           updatedBy: currentUser || undefined,
         };
+        if (canFixMeta && createdAtIso) {
+          next.createdAt = createdAtIso;
+          next.createdBy = editCreatedBy.trim();
+          next.backfilledByScript = false;
+          next.manuallyFixedAt = new Date().toISOString();
+          next.manuallyFixedBy = currentUser || undefined;
+        }
+        return next;
       });
       await Promise.resolve(onUpdateLead({ ...lead, followUps }));
       cancelEditMeeting();
@@ -797,7 +837,14 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
           </div>
         )}
 
-        {editingMeeting?.id === meeting.id && (
+        {editingMeeting?.id === meeting.id && (() => {
+          const lead = leads.find((row) => row.id === meeting.leadId);
+          const canFixMeta = canFixBlankMeetingMeta(lead, {
+            currentUser,
+            isAdmin,
+            createdAt: meeting.createdAt,
+          });
+          return (
           <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-3">
             <p className="text-sm font-semibold text-slate-800">
               Edit / reschedule this same meeting (does not create a new calendar entry)
@@ -837,6 +884,43 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                 className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white"
               />
             </div>
+            {canFixMeta && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+                <p className="sm:col-span-2 text-xs font-semibold text-amber-900">
+                  Meeting created is blank. Fill these two fields (lead creator or admin only).
+                </p>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+                    Meeting created *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={editCreatedAt}
+                    onChange={(e) => setEditCreatedAt(e.target.value)}
+                    className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
+                    Scheduled by *
+                  </label>
+                  <select
+                    value={editCreatedBy}
+                    onChange={(e) => setEditCreatedBy(e.target.value)}
+                    className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
+                    required
+                  >
+                    <option value="">Select user</option>
+                    {(Array.isArray(availableUsers) ? availableUsers : []).map((user) => (
+                      <option key={user.email || user.id} value={user.email || ''}>
+                        {user.name || user.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
               <button
                 type="button"
@@ -856,7 +940,8 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
               </button>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {renderOutcomeForm(meeting)}
       </>
