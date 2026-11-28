@@ -508,3 +508,95 @@ export const adminLogoutUser = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+/** Local / private network only — never on canam.co.in production host. */
+function allowDevQuickLogin(req) {
+  if (String(process.env.DEV_QUICK_LOGIN || '').trim() === '0') return false;
+  const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+  if (host.includes('canam.co.in')) return false;
+
+  const origin = String(req.headers.origin || '');
+  const referer = String(req.headers.referer || '');
+  const hostOk =
+    host === 'localhost'
+    || host === '127.0.0.1'
+    || /^10\./.test(host)
+    || /^192\.168\./.test(host)
+    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+
+  const originOk = /localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+/i.test(
+    `${origin} ${referer}`
+  );
+
+  const ip = String(clientIp(req) || '');
+  const loopback =
+    ip === '127.0.0.1'
+    || ip === '::1'
+    || ip === '::ffff:127.0.0.1'
+    || ip.endsWith('127.0.0.1');
+
+  return hostOk || originOk || loopback;
+}
+
+function rejectIfNotDevQuickLogin(req, res) {
+  if (allowDevQuickLogin(req)) return false;
+  res.status(404).json({ error: 'Not found' });
+  return true;
+}
+
+/** List active users for one-click local login buttons (no passwords). */
+export const listDevQuickUsers = async (req, res) => {
+  if (rejectIfNotDevQuickLogin(req, res)) return;
+  try {
+    const table = await resolveTableNameOrFallback(['users', 'Users'], 'users');
+    const cols = await getColumns(table);
+    const emailCol = cols.has('email') ? 'email' : 'userEmail';
+    const nameCol = cols.has('name') ? 'name' : 'Name';
+    const roleCol = cols.has('role') ? 'role' : 'role';
+    const statusCol = cols.has('status') ? 'status' : 'status';
+    const [rows] = await db.query(
+      `SELECT \`${emailCol}\` AS email, \`${nameCol}\` AS name, \`${roleCol}\` AS role, \`${statusCol}\` AS status
+       FROM ${table}
+       ORDER BY \`${nameCol}\` ASC`
+    );
+    const users = (rows || [])
+      .map((row) => ({
+        email: String(row.email || '').trim().toLowerCase(),
+        name: String(row.name || '').trim() || String(row.email || '').split('@')[0],
+        role: String(row.role || '').trim() || 'User',
+        status: String(row.status || '').trim(),
+      }))
+      .filter((u) => u.email && !/inactive|disabled|deleted/i.test(u.status));
+    res.json({ success: true, users, notice: 'LOCAL DEV ONLY — quick login buttons' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/** Passwordless sign-in for local testing only. Forces prior sessions closed. */
+export const devQuickLogin = async (req, res) => {
+  if (rejectIfNotDevQuickLogin(req, res)) return;
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const { user, passwordCol } = await findUserByEmail(email);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const device = devicePayload(req);
+    device.environment = 'local';
+    if (await isDeviceRestricted(device.deviceId)) {
+      return res.status(403).json({
+        error: 'DEVICE_RESTRICTED',
+        message: 'This device is restricted and cannot sign in.',
+      });
+    }
+
+    const payload = await issueLogin(user, passwordCol, device, true);
+    console.log(`🧪 DEV quick login: ${email}`);
+    res.json({ ...payload, devQuickLogin: true });
+  } catch (error) {
+    console.error('DEV quick login failed:', error);
+    res.status(500).json({ error: error.message || 'Quick login failed' });
+  }
+};

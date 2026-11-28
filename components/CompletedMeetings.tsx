@@ -11,6 +11,8 @@ interface CompletedMeetingsProps {
   availableUsers: Array<{ id: string, name: string, email: string, role: string }>;
   /** Calendar date selected on Meetings page — highlight matching cards in open threads. */
   highlightDate?: Date | null;
+  /** Shared Agent filter from agenda — filter completed meetings by client/agency name. */
+  agentNameFilter?: string;
 }
 
 function localDateKey(input: Date | string | null | undefined): string {
@@ -41,6 +43,7 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
   currentUser,
   availableUsers,
   highlightDate = null,
+  agentNameFilter = '',
 }) => {
   const [filters, setFilters] = useState<MeetingFilters>({
     dateFrom: '',
@@ -92,6 +95,15 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
 
         // User filtering
         if (filters.user && meeting.username !== filters.user) return false;
+
+        // Shared agenda Agent (client) filter
+        if (agentNameFilter) {
+          const wanted = agentNameFilter.trim().toLowerCase();
+          const leadName = String(meeting.leadName || '').trim().toLowerCase();
+          const lead = (Array.isArray(leads) ? leads : []).find((row) => String(row.id) === String(meeting.leadId || ''));
+          const agencyName = String(lead?.agencyName || '').trim().toLowerCase();
+          if (leadName !== wanted && agencyName !== wanted) return false;
+        }
 
         // Lead filtering (id or name: fallback for check-ins without leadId)
         if (filters.leadId) {
@@ -166,7 +178,7 @@ const CompletedMeetings: React.FC<CompletedMeetingsProps> = ({
         // Sort descending (most recent first)
         return timeB - timeA;
       });
-  }, [meetingCheckIns, filters, localOutcomes]);
+  }, [meetingCheckIns, filters, localOutcomes, agentNameFilter, leads]);
 
   const getMeetingSortTime = (meeting: MeetingCheckInRecord): number => {
     if (meeting.checkOutTime && meeting.checkOutTime.trim() !== '') {

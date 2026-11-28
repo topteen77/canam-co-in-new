@@ -56,6 +56,53 @@ export function currentUserAliases(currentUserEmail, currentUserName = '', users
 /**
  * True when Account Manager / lead AM points at a different known user than the logged-in session.
  */
+/**
+ * Only the meeting scheduler (createdBy) may Start a planned meeting.
+ * Others may still view the card. Blank createdBy keeps Start allowed (legacy).
+ */
+export function canStartScheduledMeeting({
+  currentUserEmail,
+  currentUserName = '',
+  createdBy = '',
+  users = [],
+} = {}) {
+  const ownerRaw = String(createdBy || '').trim();
+  if (!ownerRaw) {
+    return { allowed: true, code: 'NO_OWNER', ownerEmail: null, ownerLabel: '' };
+  }
+
+  const me = currentUserAliases(currentUserEmail, currentUserName, users);
+  const ownerEmail = resolveIdentityEmail(ownerRaw, users) || (looksLikeEmail(ownerRaw) ? normalizeIdentity(ownerRaw) : null);
+  const ownerNorm = ownerEmail || normalizeIdentity(ownerRaw);
+
+  if (ownerNorm && me.has(ownerNorm)) {
+    return {
+      allowed: true,
+      code: 'OK',
+      ownerEmail: ownerEmail || ownerNorm,
+      ownerLabel: ownerRaw,
+    };
+  }
+
+  const list = Array.isArray(users) ? users : [];
+  const ownerUser = ownerEmail
+    ? list.find((u) => normalizeIdentity(u?.email) === ownerEmail)
+    : list.find((u) => normalizeIdentity(u?.name) === normalizeIdentity(ownerRaw));
+  const ownerLabel =
+    (ownerUser?.name && String(ownerUser.name).trim())
+    || ownerRaw;
+
+  return {
+    allowed: false,
+    code: 'NOT_MEETING_OWNER',
+    ownerEmail: ownerEmail || null,
+    ownerLabel,
+    message:
+      `This meeting was scheduled by ${ownerLabel}. `
+      + 'You can view it, but only that user can start it.',
+  };
+}
+
 export function evaluateCheckInIdentity({
   currentUserEmail,
   currentUserName = '',

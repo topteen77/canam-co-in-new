@@ -19,6 +19,7 @@ interface SimpleMeetingCheckInProps {
   userLeads: Lead[];
   currentUser: string;
   isAdmin?: boolean;
+  onLogout?: () => void | Promise<void>;
   /** Refresh parent meeting list so header "In Meeting" stays in sync. */
   onMeetingsChange?: () => void | Promise<void>;
   /** Prefill check-in when an account manager starts a scheduled agenda meeting. */
@@ -40,6 +41,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
   userLeads,
   currentUser,
   isAdmin = false,
+  onLogout,
   onMeetingsChange,
   scheduledMeeting = null,
   onScheduledMeetingCompleted,
@@ -66,6 +68,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
   // Lead search states
   const [leadSearchTerm, setLeadSearchTerm] = useState('');
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
+  const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
 
   // 🟢 SAFE FIX: Ensure userLeads is an array
   const safeUserLeads = Array.isArray(userLeads) ? userLeads : [];
@@ -132,6 +135,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
         await onMeetingsChange?.();
       })();
     }
+    if (!isOpen) setShowIdentityPrompt(false);
   }, [isOpen, currentUser, onMeetingsChange]);
 
   useEffect(() => {
@@ -235,6 +239,130 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
     return `${lat}, ${lng}`;
   };
 
+  const resolveLeadName = (leadIdValue: string) => {
+    const fromList = safeUserLeads.find(
+      (lead) => String(lead.id) === String(leadIdValue)
+    );
+    return (
+      String(fromList?.agencyName || '').trim()
+      || String(scheduledMeeting?.leadName || '').trim()
+      || ''
+    );
+  };
+
+  const submitStartMeeting = async (confirmIdentityOverride = false) => {
+    if (!location) {
+      alert('Please wait for location to be captured or try again');
+      return;
+    }
+
+    // Soft client guard: do not start a second active meeting
+    try {
+      const { data: rows } = await apiClient.get('/meetings/all');
+      const list = Array.isArray(rows) ? rows : [];
+      const alreadyActive = list.find(
+        (r: any) => meetingBelongsToUser(r, currentUser) && isActiveMeetingRecord(r)
+      );
+      if (alreadyActive) {
+        alert('You already have a meeting in progress. End that meeting before starting another.');
+        await checkActiveMeeting();
+        return;
+      }
+    } catch {
+      // continue; server also guards
+    }
+
+    const leadIdValue = String(selectedLead || scheduledMeeting?.leadId || '').trim();
+    const leadNameValue = resolveLeadName(leadIdValue);
+    if (!leadIdValue || !leadNameValue) {
+      alert('Please select a client / lead before starting the meeting.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setShowIdentityPrompt(false);
+    try {
+      console.log('🚀 Starting meeting...');
+
+      const now = new Date();
+      const optimizedPhotos = checkInPhotos;
+
+      const meetingData = {
+        username: currentUser,
+        salesPersonName: selectedSalesPerson,
+        salesPersonEmail: personMeetingName || '',
+        meetingType: meetingType,
+        notes: scheduledMeeting?.followUpId
+          ? withScheduledFollowUpId(meetingNotes, scheduledMeeting.followUpId)
+          : meetingNotes,
+        leadId: leadIdValue,
+        leadName: leadNameValue,
+        date: now.toISOString().split('T')[0],
+        checkInTime: now.toISOString(),
+        meetingStatus: 'active',
+        location: {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          address: location.address
+        },
+        checkInPhotos: optimizedPhotos,
+        photoUploadCount: {
+          checkIn: optimizedPhotos.length,
+          completion: 0
+        },
+        createdBy: currentUser,
+        createdAt: now.toISOString(),
+        ...(confirmIdentityOverride ? { confirmIdentityOverride: true } : {}),
+      };
+
+      console.log('📝 Meeting data:', meetingData);
+
+      await apiClient.post('/meetings/check-in', meetingData);
+
+      console.log('✅ Meeting started successfully');
+      alert('Meeting started successfully!');
+
+      setSelectedSalesPerson('');
+      setPersonMeetingName('');
+      setMeetingNotes('');
+      setSelectedLead('');
+      setCheckInPhotos([]);
+      setUploadedPhotoSize('');
+
+      await checkActiveMeeting();
+      await onMeetingsChange?.();
+    } catch (error: any) {
+      console.error('❌ Error starting meeting:', error);
+
+      const apiData = error?.response?.data;
+      let errorMessage = 'Unknown error';
+      if (apiData?.error === 'IDENTITY_MISMATCH' || apiData?.code === 'IDENTITY_MISMATCH') {
+        setShowIdentityPrompt(true);
+        return;
+      } else if (apiData?.error === 'NOT_MEETING_OWNER') {
+        errorMessage = apiData.message
+          || `Only ${apiData.ownerLabel || 'the scheduler'} can start this meeting.`;
+      } else if (apiData?.error === 'ACTIVE_MEETING_EXISTS') {
+        errorMessage = apiData.message || 'You already have a meeting in progress.';
+        await checkActiveMeeting();
+      } else if (apiData?.error === 'LEAD_REQUIRED') {
+        errorMessage = apiData.message || 'Please select a client / lead before starting.';
+      } else if (error.message?.includes('bytes')) {
+        errorMessage = 'Photos are too large. Please try with fewer or smaller photos.';
+      } else if (error.message?.includes('permission') || error?.response?.status === 401) {
+        errorMessage = 'Permission denied. Please sign in again.';
+      } else if (error.message?.includes('network')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else {
+        errorMessage = apiData?.message || error.message || 'Unknown error';
+      }
+
+      alert(`Error starting meeting: ${errorMessage}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleStartMeeting = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -258,98 +386,23 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
       return;
     }
 
-    let confirmIdentityOverride = false;
+    // Popup only when Account Manager / lead AM does not match signed-in user
     if (identityMismatch) {
-      if (!isAdmin) {
-        alert(identityCheck.message || 'Signed-in user does not match Account Manager. Log out and sign in with the correct account.');
-        return;
-      }
-      const ok = window.confirm(
-        `${identityCheck.message}\n\nYou are an admin. Start this meeting anyway under your login (${signedInLabel})?`
-      );
-      if (!ok) return;
-      confirmIdentityOverride = true;
+      setShowIdentityPrompt(true);
+      return;
     }
 
-    setIsSubmitting(true);
-    try {
-      console.log('🚀 Starting meeting...');
+    await submitStartMeeting(false);
+  };
 
-      const selectedLeadData = safeUserLeads.find(lead => lead.id === selectedLead);
-      const now = new Date();
-
-      // Intelligent photo optimization for database storage
-      let optimizedPhotos = checkInPhotos;
-
-      const meetingData = {
-        username: currentUser,
-        salesPersonName: selectedSalesPerson,
-        salesPersonEmail: personMeetingName || '',
-        meetingType: meetingType,
-        notes: scheduledMeeting?.followUpId
-          ? withScheduledFollowUpId(meetingNotes, scheduledMeeting.followUpId)
-          : meetingNotes,
-        leadId: selectedLead || '',
-        leadName: selectedLeadData?.agencyName || '',
-        date: now.toISOString().split('T')[0],
-        checkInTime: now.toISOString(),
-        meetingStatus: 'active',
-        location: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          address: location.address
-        },
-        // Photo upload fields - optimized for size
-        checkInPhotos: optimizedPhotos,
-        photoUploadCount: {
-          checkIn: optimizedPhotos.length,
-          completion: 0
-        },
-        createdBy: currentUser,
-        createdAt: now.toISOString(),
-        ...(confirmIdentityOverride ? { confirmIdentityOverride: true } : {}),
-      };
-
-      console.log('📝 Meeting data:', meetingData);
-
-      await apiClient.post('/meetings/check-in', meetingData);
-
-      console.log('✅ Meeting started successfully');
-      alert('Meeting started successfully!');
-
-      // Reset form
-      setSelectedSalesPerson('');
-      setPersonMeetingName('');
-      setMeetingNotes('');
-      setSelectedLead('');
-      setCheckInPhotos([]);
-      setUploadedPhotoSize('');
-
-      // Check for active meeting to update UI
-      await checkActiveMeeting();
-      await onMeetingsChange?.();
-
-    } catch (error: any) {
-      console.error('❌ Error starting meeting:', error);
-
-      const apiData = error?.response?.data;
-      let errorMessage = 'Unknown error';
-      if (apiData?.error === 'IDENTITY_MISMATCH' || apiData?.code === 'IDENTITY_MISMATCH') {
-        errorMessage = apiData.message || identityCheck.message;
-      } else if (error.message?.includes('bytes')) {
-        errorMessage = 'Photos are too large. Please try with fewer or smaller photos.';
-      } else if (error.message?.includes('permission') || error?.response?.status === 401) {
-        errorMessage = 'Permission denied. Please sign in again.';
-      } else if (error.message?.includes('network')) {
-        errorMessage = 'Network error. Please check your internet connection.';
-      } else {
-        errorMessage = apiData?.message || error.message || 'Unknown error';
-      }
-
-      alert(`Error starting meeting: ${errorMessage}`);
-    } finally {
-      setIsSubmitting(false);
+  const handleIdentityLogout = async () => {
+    setShowIdentityPrompt(false);
+    onClose();
+    if (onLogout) {
+      await onLogout();
+      return;
     }
+    window.location.reload();
   };
 
   const scheduledFollowUpId = readScheduledFollowUpId(activeMeeting?.notes)
@@ -502,12 +555,15 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
                 <dt className="lead-fact-label">AM</dt>
                 <dd className="min-w-0 text-[13px] text-slate-800 break-words">{activeMeeting.salesPersonName || '—'}</dd>
               </div>
-              {activeMeeting.leadName && (
-                <div className="flex items-baseline gap-2">
-                  <dt className="lead-fact-label">Lead</dt>
-                  <dd className="min-w-0 text-[13px] text-slate-800 break-words">{activeMeeting.leadName}</dd>
-                </div>
-              )}
+              <div className="flex items-baseline gap-2">
+                <dt className="lead-fact-label">Client</dt>
+                <dd className="min-w-0 text-[13px] text-slate-800 break-words">
+                  {activeMeeting.leadName
+                    || scheduledMeeting?.leadName
+                    || resolveLeadName(String(activeMeeting.leadId || scheduledMeeting?.leadId || ''))
+                    || '—'}
+                </dd>
+              </div>
               <div className="flex items-baseline gap-2">
                 <dt className="lead-fact-label">Started</dt>
                 <dd className="min-w-0 text-[13px] text-slate-700">{formatStartTime(activeMeeting.checkInTime)}</dd>
@@ -648,31 +704,61 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
           </div>
         </div>
       ) : (
-        <form onSubmit={handleStartMeeting} className="space-y-4">
-          <div
-            className={`rounded-lg border px-3 py-2.5 text-[13px] ${
-              identityMismatch
-                ? 'border-amber-300 bg-amber-50 text-amber-950'
-                : 'border-slate-200 bg-slate-50 text-slate-800'
-            }`}
-          >
+        <form onSubmit={handleStartMeeting} className="space-y-4 relative">
+          {showIdentityPrompt && (
+            <div className="absolute inset-0 z-30 flex items-start justify-center rounded-lg bg-slate-900/40 p-3 sm:p-4">
+              <div
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="meeting-identity-title"
+                className="w-full max-w-md rounded-xl border border-amber-200 bg-white p-4 shadow-xl"
+              >
+                <h3 id="meeting-identity-title" className="text-base font-semibold text-slate-900">
+                  Account mismatch
+                </h3>
+                <p className="mt-2 text-sm text-slate-700 leading-snug">
+                  You are signed in as <strong>{signedInLabel}</strong>
+                  {currentUser ? ` (${currentUser})` : ''}, but Account Manager is{' '}
+                  <strong>{identityCheck.conflictingLabel || selectedSalesPerson || 'someone else'}</strong>.
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Log out and sign in with the correct account, or start anyway (saved under your current login).
+                </p>
+                <div className="mt-4 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleIdentityLogout()}
+                    className="min-h-[44px] rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+                  >
+                    Log out
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => void submitStartMeeting(true)}
+                    className="min-h-[44px] rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {isSubmitting ? 'Starting…' : 'Start anyway'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowIdentityPrompt(false)}
+                    className="min-h-[44px] rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-800">
             <p className="font-semibold">
               Checking in as: {signedInLabel}
               {currentUser ? (
                 <span className="font-normal text-slate-600"> ({currentUser})</span>
               ) : null}
             </p>
-            {identityMismatch ? (
-              <p className="mt-1 text-[12px] leading-snug">
-                {isAdmin
-                  ? `Account Manager / lead AM looks like ${identityCheck.conflictingLabel || 'someone else'}. Admins can confirm to continue under this login.`
-                  : `This meeting looks like it belongs to ${identityCheck.conflictingLabel || 'another user'}. Log out and sign in as that account before starting.`}
-              </p>
-            ) : (
-              <p className="mt-1 text-[12px] text-slate-600">
-                Meetings are saved under the signed-in account. On a shared phone, log out first.
-              </p>
-            )}
           </div>
 
           <div className="meeting-field">
@@ -716,70 +802,86 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
           </div>
 
           <div className="meeting-field">
-            <label htmlFor="lead">Select Lead *</label>
-            <div className="relative">
-              <input
-                type="text"
+            <label htmlFor="lead">{scheduledMeeting ? 'Lead *' : 'Select Lead *'}</label>
+            {scheduledMeeting ? (
+              <div
                 id="lead"
-                value={selectedLead ? `${selectedLeadData?.agencyName || ''} - ${selectedLeadData?.status || ''}` : leadSearchTerm}
-                onChange={(e) => {
-                  setLeadSearchTerm(e.target.value);
-                  setSelectedLead('');
-                  setShowLeadDropdown(true);
-                }}
-                onFocus={() => setShowLeadDropdown(true)}
-                onBlur={() => {
-                  setTimeout(() => setShowLeadDropdown(false), 200);
-                }}
-                placeholder="Search and select a lead..."
-                required
-              />
-              {showLeadDropdown && (
-                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
-                  {filteredLeads.length > 0 ? (
-                    filteredLeads.map((lead) => (
-                      <button
-                        type="button"
-                        key={lead.id}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setSelectedLead(lead.id);
-                          setLeadSearchTerm('');
-                          setShowLeadDropdown(false);
-                          if (lead.accountManager) {
-                            setSelectedSalesPerson(lead.accountManager);
-                          }
-                        }}
-                        className="w-full text-left px-3 py-2.5 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
-                      >
-                        <div className="font-medium text-slate-900 text-sm break-words">{lead.agencyName}</div>
-                        <div className="text-xs text-slate-500 mt-0.5">
-                          {lead.contacts?.[0]?.city ? (
-                            <span className="text-sky-700 font-medium">{lead.contacts[0].city}</span>
-                          ) : null}
-                          <span className={lead.contacts?.[0]?.city ? ' ml-2' : ''}>Status: {lead.status}</span>
+                className="meeting-info-panel text-[14px] font-semibold text-slate-900 break-words"
+              >
+                {String(
+                  scheduledMeeting.leadName
+                  || selectedLeadData?.agencyName
+                  || resolveLeadName(String(scheduledMeeting.leadId || selectedLead || ''))
+                  || ''
+                ).trim() || '—'}
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="lead"
+                    value={selectedLead ? `${selectedLeadData?.agencyName || ''} - ${selectedLeadData?.status || ''}` : leadSearchTerm}
+                    onChange={(e) => {
+                      setLeadSearchTerm(e.target.value);
+                      setSelectedLead('');
+                      setShowLeadDropdown(true);
+                    }}
+                    onFocus={() => setShowLeadDropdown(true)}
+                    onBlur={() => {
+                      setTimeout(() => setShowLeadDropdown(false), 200);
+                    }}
+                    placeholder="Search and select a lead..."
+                    required
+                  />
+                  {showLeadDropdown && (
+                    <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                      {filteredLeads.length > 0 ? (
+                        filteredLeads.map((lead) => (
+                          <button
+                            type="button"
+                            key={lead.id}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setSelectedLead(lead.id);
+                              setLeadSearchTerm('');
+                              setShowLeadDropdown(false);
+                              if (lead.accountManager) {
+                                setSelectedSalesPerson(lead.accountManager);
+                              }
+                            }}
+                            className="w-full text-left px-3 py-2.5 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                          >
+                            <div className="font-medium text-slate-900 text-sm break-words">{lead.agencyName}</div>
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              {lead.contacts?.[0]?.city ? (
+                                <span className="text-sky-700 font-medium">{lead.contacts[0].city}</span>
+                              ) : null}
+                              <span className={lead.contacts?.[0]?.city ? ' ml-2' : ''}>Status: {lead.status}</span>
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-slate-500 text-sm">
+                          {leadSearchTerm ? 'No leads found' : 'No leads available'}
                         </div>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-3 py-2 text-slate-500 text-sm">
-                      {leadSearchTerm ? 'No leads found' : 'No leads available'}
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-            {selectedLead && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedLead('');
-                  setLeadSearchTerm('');
-                }}
-                className="mt-1.5 text-xs text-slate-500 hover:text-slate-700 underline"
-              >
-                Clear selected lead
-              </button>
+                {selectedLead && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedLead('');
+                      setLeadSearchTerm('');
+                    }}
+                    className="mt-1.5 text-xs text-slate-500 hover:text-slate-700 underline"
+                  >
+                    Clear selected lead
+                  </button>
+                )}
+              </>
             )}
           </div>
 
@@ -894,19 +996,10 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
             </button>
             <button
               type="submit"
-              disabled={
-                isSubmitting
-                || !location
-                || checkInPhotos.length === 0
-                || (identityMismatch && !isAdmin)
-              }
+              disabled={isSubmitting || !location || checkInPhotos.length === 0}
               className="w-full flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting
-                ? 'Sending meeting and photos…'
-                : identityMismatch && isAdmin
-                  ? 'Start Meeting (admin override)'
-                  : 'Start Meeting'}
+              {isSubmitting ? 'Sending meeting and photos…' : 'Start Meeting'}
             </button>
           </div>
         </form>

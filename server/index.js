@@ -45,8 +45,13 @@ import {
   inlinePreviewDisposition,
   wantsAttachmentDownload,
 } from '../shared/documentAccess.js';
-import { evaluateCheckInIdentity } from '../shared/meetingCheckInIdentity.js';
+import { evaluateCheckInIdentity, canStartScheduledMeeting } from '../shared/meetingCheckInIdentity.js';
 import { isAdminAccount } from './services/sessionService.js';
+
+function readScheduledFollowUpIdFromNotes(notes) {
+  const match = String(notes || '').match(/(?:^|\n)__followUpId:(\S+)/);
+  return match?.[1] || '';
+}
 import * as trainingTargetsService from './services/trainingTargetsService.js';
 import * as travelSessionsService from './services/travelSessionsService.js';
 import * as meetingCompletionsService from './services/meetingCompletionsService.js';
@@ -311,6 +316,38 @@ app.post('/api/meetings/check-in', authenticateToken, async (req, res) => {
       (u) => String(u?.email || '').trim().toLowerCase() === sessionEmail.toLowerCase()
     );
 
+    // Starting a *planned* follow-up meeting is allowed only for the scheduler (createdBy).
+    // Other users may still view the card; they cannot start it.
+    const followUpId = String(
+      body.followUpId || readScheduledFollowUpIdFromNotes(body.notes) || ''
+    ).trim();
+    if (followUpId && body.leadId) {
+      try {
+        const lead = await leadsService.getLeadById(body.leadId);
+        const followUps = Array.isArray(lead?.followUps) ? lead.followUps : [];
+        const planned = followUps.find((f) => String(f?.id) === followUpId);
+        if (planned) {
+          const ownership = canStartScheduledMeeting({
+            currentUserEmail: sessionEmail,
+            currentUserName: sessionUser?.name || '',
+            createdBy: planned.createdBy || '',
+            users,
+          });
+          if (!ownership.allowed) {
+            return res.status(403).json({
+              error: 'NOT_MEETING_OWNER',
+              message: ownership.message,
+              ownerEmail: ownership.ownerEmail,
+              ownerLabel: ownership.ownerLabel,
+              canOverride: false,
+            });
+          }
+        }
+      } catch (ownerErr) {
+        console.warn('Meeting ownership pre-check failed:', ownerErr.message);
+      }
+    }
+
     const identity = evaluateCheckInIdentity({
       currentUserEmail: sessionEmail,
       currentUserName: sessionUser?.name || '',
@@ -319,30 +356,77 @@ app.post('/api/meetings/check-in', authenticateToken, async (req, res) => {
       users,
     });
 
-    const admin = isAdminAccount(req.user || {});
     if (!identity.match) {
-      if (!admin || body.confirmIdentityOverride !== true) {
+      if (body.confirmIdentityOverride !== true) {
         return res.status(403).json({
           error: identity.code || 'IDENTITY_MISMATCH',
           message: identity.message,
           conflictingEmail: identity.conflictingEmail,
           conflictingLabel: identity.conflictingLabel,
-          adminCanOverride: admin,
+          canOverride: true,
+          canLogout: true,
         });
       }
       console.warn(
-        `⚠️ Admin ${sessionEmail} overrode meeting identity mismatch (expected ${identity.conflictingEmail})`
+        `⚠️ ${sessionEmail} confirmed meeting identity mismatch override (expected ${identity.conflictingEmail})`
       );
+    }
+
+    // Block a second concurrent active meeting for this user
+    try {
+      const existing = await meetingService.getMeetingsByUser(sessionEmail);
+      const today = new Date();
+      const y = today.getFullYear();
+      const m = String(today.getMonth() + 1).padStart(2, '0');
+      const d = String(today.getDate()).padStart(2, '0');
+      const todayKey = `${y}-${m}-${d}`;
+      const activeExisting = (existing || []).find((row) => {
+        const status = String(row.meetingStatus || '').trim().toLowerCase();
+        if (status !== 'active') return false;
+        if (row.checkOutTime) return false;
+        const day = String(row.date || row.checkInTime || '').slice(0, 10);
+        return day === todayKey;
+      });
+      if (activeExisting) {
+        return res.status(409).json({
+          error: 'ACTIVE_MEETING_EXISTS',
+          message: 'You already have a meeting in progress. End that meeting before starting another.',
+          activeMeetingId: activeExisting.id || activeExisting.firebase_id || null,
+          leadName: activeExisting.leadName || null,
+        });
+      }
+    } catch (activeErr) {
+      console.warn('Active meeting pre-check failed:', activeErr.message);
+    }
+
+    // Always persist a client name when leadId is known
+    let leadName = String(body.leadName || '').trim();
+    let leadId = String(body.leadId || '').trim();
+    if (leadId && !leadName) {
+      try {
+        const lead = await leadsService.getLeadById(leadId);
+        leadName = String(lead?.agencyName || lead?.agency_name || '').trim();
+      } catch (leadNameErr) {
+        console.warn('Meeting check-in leadName lookup failed:', leadNameErr.message);
+      }
+    }
+    if (!leadId || !leadName) {
+      return res.status(400).json({
+        error: 'LEAD_REQUIRED',
+        message: 'Select a client / lead before starting the meeting.',
+      });
     }
 
     const payload = {
       ...body,
+      leadId,
+      leadName,
       username: sessionEmail,
       createdBy: sessionEmail,
     };
     delete payload.confirmIdentityOverride;
 
-    console.log('🤝 Meeting check-in received for', sessionEmail, body.leadName || body.leadId || '');
+    console.log('🤝 Meeting check-in received for', sessionEmail, leadName || leadId || '');
 
     let result;
     if (meetingService.addMeetingCheckIn) {
@@ -465,6 +549,9 @@ const otpLimiter = rateLimit({
 
 app.post('/api/auth/login', authController.login);
 app.post('/api/auth/register', authController.register);
+// Localhost / private-network only (returns 404 on production host)
+app.get('/api/auth/dev-quick-users', authController.listDevQuickUsers);
+app.post('/api/auth/dev-quick-login', authController.devQuickLogin);
 app.get('/api/auth/me', authenticateToken, authController.getMe);
 app.post('/api/auth/force-login/request-otp', otpLimiter, authController.requestAdminForceLoginOtp);
 app.post('/api/auth/force-login', otpLimiter, authController.adminForceLogin);

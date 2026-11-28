@@ -17,6 +17,7 @@ interface MeetingCheckInModalProps {
   currentUser: string | null;
   userLeads?: Lead[];
   isAdmin?: boolean;
+  onLogout?: () => void | Promise<void>;
 }
 
 export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
@@ -26,6 +27,7 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
   currentUser,
   userLeads = [],
   isAdmin = false,
+  onLogout,
 }) => {
   const [selectedSalesPerson, setSelectedSalesPerson] = useState('');
   const [salesPersonEmail, setSalesPersonEmail] = useState('');
@@ -59,6 +61,7 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
   const [photoUploadCount, setPhotoUploadCount] = useState({ checkIn: 0, completion: 0 });
   const [leadSearchTerm, setLeadSearchTerm] = useState('');
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
+  const [showIdentityPrompt, setShowIdentityPrompt] = useState(false);
 
   // 🟢 SAFE FIX: Array check
   const safeUserLeads = Array.isArray(userLeads) ? userLeads : [];
@@ -205,32 +208,14 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedSalesPerson) {
-      alert('Please select a sales person');
-      return;
-    }
-
+  const submitCheckIn = async (confirmIdentityOverride = false) => {
     if (!location) {
       alert('Please wait for location to be captured or try again');
       return;
     }
 
-    let confirmIdentityOverride = false;
-    if (identityMismatch) {
-      if (!isAdmin) {
-        alert(identityCheck.message || 'Signed-in user does not match Account Manager. Log out and sign in with the correct account.');
-        return;
-      }
-      const ok = window.confirm(
-        `${identityCheck.message}\n\nYou are an admin. Start this meeting anyway under your login (${signedInLabel})?`
-      );
-      if (!ok) return;
-      confirmIdentityOverride = true;
-    }
-
     setIsSubmitting(true);
+    setShowIdentityPrompt(false);
     try {
       // Intelligent photo optimization for database storage
       let optimizedPhotos = checkInPhotos;
@@ -319,7 +304,11 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
       let errorMessage = 'Error recording meeting check-in. Please try again.';
       const apiData = error?.response?.data;
       if (apiData?.error === 'IDENTITY_MISMATCH') {
-        errorMessage = apiData.message || identityCheck.message;
+        setShowIdentityPrompt(true);
+        return;
+      } else if (apiData?.error === 'NOT_MEETING_OWNER') {
+        errorMessage = apiData.message
+          || `Only ${apiData.ownerLabel || 'the scheduler'} can start this meeting.`;
       } else if (error instanceof Error) {
         if (error.message.includes('permission') || error?.response?.status === 401) {
           errorMessage = 'Permission denied. Please sign in again.';
@@ -334,6 +323,36 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSalesPerson) {
+      alert('Please select a sales person');
+      return;
+    }
+
+    if (!location) {
+      alert('Please wait for location to be captured or try again');
+      return;
+    }
+
+    if (identityMismatch) {
+      setShowIdentityPrompt(true);
+      return;
+    }
+
+    await submitCheckIn(false);
+  };
+
+  const handleIdentityLogout = async () => {
+    setShowIdentityPrompt(false);
+    onClose();
+    if (onLogout) {
+      await onLogout();
+      return;
+    }
+    window.location.reload();
   };
 
   const handleEndMeeting = async () => {
@@ -415,29 +434,58 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
       )}
 
       {!activeMeeting ? (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div
-            className={`rounded-lg border px-3 py-2.5 text-[13px] ${
-              identityMismatch
-                ? 'border-amber-300 bg-amber-50 text-amber-950'
-                : 'border-slate-200 bg-slate-50 text-slate-800'
-            }`}
-          >
+        <form onSubmit={handleSubmit} className="space-y-4 relative">
+          {showIdentityPrompt && (
+            <div className="absolute inset-0 z-30 flex items-start justify-center rounded-lg bg-slate-900/40 p-3 sm:p-4">
+              <div
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="meeting-identity-title-legacy"
+                className="w-full max-w-md rounded-xl border border-amber-200 bg-white p-4 shadow-xl"
+              >
+                <h3 id="meeting-identity-title-legacy" className="text-base font-semibold text-slate-900">
+                  Account mismatch
+                </h3>
+                <p className="mt-2 text-sm text-slate-700 leading-snug">
+                  You are signed in as <strong>{signedInLabel}</strong>
+                  {currentUser ? ` (${currentUser})` : ''}, but Account Manager is{' '}
+                  <strong>{identityCheck.conflictingLabel || selectedSalesPerson || 'someone else'}</strong>.
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Log out and sign in with the correct account, or start anyway (saved under your current login).
+                </p>
+                <div className="mt-4 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleIdentityLogout()}
+                    className="min-h-[44px] rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+                  >
+                    Log out
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => void submitCheckIn(true)}
+                    className="min-h-[44px] rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {isSubmitting ? 'Starting…' : 'Start anyway'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowIdentityPrompt(false)}
+                    className="min-h-[44px] rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-800">
             <p className="font-semibold">
               Checking in as: {signedInLabel}
               {currentUser ? <span className="font-normal text-slate-600"> ({currentUser})</span> : null}
             </p>
-            {identityMismatch ? (
-              <p className="mt-1 text-[12px] leading-snug">
-                {isAdmin
-                  ? `Account Manager looks like ${identityCheck.conflictingLabel || 'someone else'}. Confirm to continue under this login.`
-                  : `This meeting looks like it belongs to ${identityCheck.conflictingLabel || 'another user'}. Log out and sign in with that account.`}
-              </p>
-            ) : (
-              <p className="mt-1 text-[12px] text-slate-600">
-                Meetings are saved under the signed-in account. On a shared phone, log out first.
-              </p>
-            )}
           </div>
           <div>
             <label htmlFor="salesPerson" className="block text-sm font-medium text-slate-700 mb-1">

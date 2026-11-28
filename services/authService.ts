@@ -223,6 +223,44 @@ export async function login(email: string, password: string, rememberMe = true):
   }
 }
 
+export type DevQuickUser = { email: string; name: string; role: string; status?: string };
+
+/** True in Vite local `npm run dev` / private hosts — never on canam.co.in or production builds. */
+export function isLocalDevQuickLoginUi(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase();
+  if (host.includes('canam.co.in')) return false;
+  // Vite sets DEV=true only for `npm run dev` (never for production builds).
+  if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) return true;
+  return (
+    host === 'localhost'
+    || host === '127.0.0.1'
+    || /^10\./.test(host)
+    || /^192\.168\./.test(host)
+    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  );
+}
+
+export async function fetchDevQuickUsers(): Promise<DevQuickUser[]> {
+  const res = await apiClient.get<{ success?: boolean; users?: DevQuickUser[] }>('/auth/dev-quick-users');
+  return Array.isArray(res.data?.users) ? res.data.users : [];
+}
+
+/** Passwordless local-only login for testing. */
+export async function devQuickLogin(email: string, rememberMe = true): Promise<{ user: AuthUser; token: string }> {
+  const res = await apiClient.post<{ success?: boolean; token: string; user: AuthUser }>(
+    '/auth/dev-quick-login',
+    await loginBody(email, 'dev-quick-login')
+  );
+  if (!res.data?.token || !res.data?.user) throw new Error('Invalid response from server');
+  const { token, user } = res.data;
+  persistAuth(token, user, rememberMe);
+  setAuthHeader(token);
+  storePendingLastLogin(null);
+  syncLoginGps();
+  return { user, token };
+}
+
 const MASTER_UNLOCK = 'crmMasterUnlock';
 
 export function getMasterUnlockToken(): string | null {

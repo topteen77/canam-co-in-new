@@ -121,6 +121,7 @@ const App: React.FC = () => {
   const [isCallLoggingModalOpen, setIsCallLoggingModalOpen] = useState(false);
   const [isMeetingCheckInModalOpen, setIsMeetingCheckInModalOpen] = useState(false);
   const [meetingsSelectedDate, setMeetingsSelectedDate] = useState<Date | null>(null);
+  const [meetingsAgentFilter, setMeetingsAgentFilter] = useState('');
   const [scheduledMeetingStart, setScheduledMeetingStart] = useState<ScheduledMeetingStart | null>(null);
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -560,18 +561,29 @@ const App: React.FC = () => {
       await handleUpdateLead(leadId, { followUps });
   }, [findLeadById, currentUser, isAdmin, handleUpdateLead]);
 
-  const handleAddMeeting = useCallback(async (leadId: string, meetingDetails: { date: string; notes?: string; durationMinutes?: number; meetingLink?: string }) => {
+  const handleAddMeeting = useCallback(async (leadId: string, meetingDetails: {
+    date: string;
+    notes?: string;
+    durationMinutes?: number;
+    meetingLink?: string;
+    createdBy?: string;
+    createdAt?: string;
+    assignedTo?: string;
+  }) => {
       const lead = findLeadById(leadId);
       if (!lead) return;
       const durationNote = meetingDetails.durationMinutes ? `Duration: ${meetingDetails.durationMinutes} min.\n` : '';
       const link = String(meetingDetails.meetingLink || '').trim();
+      // Scheduled by = Account Manager (from plan form); Meeting created = always now
+      const scheduledBy = String(meetingDetails.createdBy || meetingDetails.assignedTo || lead.accountManager || currentUser || '').trim();
       await handleAddFollowUp(leadId, {
           type: 'Meeting',
           status: 'Planned',
           date: meetingDetails.date,
           notes: durationNote + (meetingDetails.notes || ''),
           meetingLink: link || undefined,
-          createdBy: currentUser || undefined,
+          createdBy: scheduledBy || undefined,
+          assignedTo: scheduledBy || undefined,
           createdAt: new Date().toISOString(),
       });
       setPlanMeetingModalOpen(false);
@@ -1123,6 +1135,8 @@ const App: React.FC = () => {
                               canViewAllMeetings={canViewAllMeetings}
                               selectedDate={meetingsSelectedDate}
                               onSelectedDateChange={setMeetingsSelectedDate}
+                              agentFilter={meetingsAgentFilter}
+                              onAgentFilterChange={setMeetingsAgentFilter}
                               onUpdateLead={(lead) => handleUpdateLead(lead.id, { followUps: lead.followUps })}
                               onPlanNewMeeting={() => setPlanMeetingModalOpen(true)}
                               onStartScheduledMeeting={(meeting) => openMeetingCheckIn(meeting)}
@@ -1134,6 +1148,7 @@ const App: React.FC = () => {
                                   currentUser={currentUser}
                                   availableUsers={availableUsers}
                                   highlightDate={meetingsSelectedDate}
+                                  agentNameFilter={meetingsAgentFilter}
                                 />
                             </div>
                         </>
@@ -1240,9 +1255,10 @@ const App: React.FC = () => {
                   setScheduledMeetingStart(null);
                 }}
                 availableUsers={availableUsers}
-                userLeads={displayedLeads}
+                userLeads={canViewAllMeetings ? leads : displayedLeads}
                 currentUser={currentUser!}
                 isAdmin={isAdmin}
+                onLogout={handleLogout}
                 onMeetingsChange={refreshMeetingCheckIns}
                 scheduledMeeting={scheduledMeetingStart}
                 onScheduledMeetingCompleted={handleScheduledMeetingCompleted}
@@ -1251,7 +1267,8 @@ const App: React.FC = () => {
 
         {isPlanMeetingModalOpen && (
             <PlanMeetingModal
-                leads={displayedLeads}
+                leads={isAdmin ? leads : displayedLeads}
+                availableUsers={availableUsers}
                 onClose={() => setPlanMeetingModalOpen(false)}
                 onSchedule={handleAddMeeting}
             />

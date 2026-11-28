@@ -1,5 +1,14 @@
-import React, { useState } from 'react';
-import { login as apiLogin, register, readSessionActiveError, type ActiveSessionInfo } from '../services/authService';
+import React, { useEffect, useState } from 'react';
+import {
+  login as apiLogin,
+  register,
+  readSessionActiveError,
+  isLocalDevQuickLoginUi,
+  fetchDevQuickUsers,
+  devQuickLogin,
+  type ActiveSessionInfo,
+  type DevQuickUser,
+} from '../services/authService';
 import { ForceLoginOtp } from './ForceLoginOtp';
 import BrandLogo from './BrandLogo';
 
@@ -13,7 +22,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showEmailLogin, setShowEmailLogin] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
   const [name, setName] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
@@ -21,6 +29,31 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [blockedSession, setBlockedSession] = useState<ActiveSessionInfo | null>(null);
   const [needsForceLogin, setNeedsForceLogin] = useState(false);
   const [canForceLogin, setCanForceLogin] = useState(false);
+  const showDevQuick = isLocalDevQuickLoginUi();
+  const [devUsers, setDevUsers] = useState<DevQuickUser[]>([]);
+  const [devUsersError, setDevUsersError] = useState<string | null>(null);
+  const [devFilter, setDevFilter] = useState('');
+  const [quickBusyEmail, setQuickBusyEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showDevQuick) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const users = await fetchDevQuickUsers();
+        if (!cancelled) {
+          setDevUsers(users);
+          setDevUsersError(null);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setDevUsers([]);
+          setDevUsersError(err?.response?.data?.error || err?.message || 'Could not load users');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showDevQuick]);
 
   const handleEmailLogin = async () => {
     const trimmedEmail = email.trim();
@@ -75,9 +108,37 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
+  const handleDevQuickLogin = async (userEmail: string) => {
+    try {
+      setQuickBusyEmail(userEmail);
+      setLoading(true);
+      setError(null);
+      setSuccess(null);
+      setBlockedSession(null);
+      setNeedsForceLogin(false);
+      const { user } = await devQuickLogin(userEmail, rememberMe);
+      setSuccess(`Signed in as ${user.name || user.email}`);
+      onLogin(user.email);
+    } catch (err: any) {
+      const data = err?.response?.data;
+      setError(data?.message || data?.error || err?.message || 'Quick login failed');
+    } finally {
+      setQuickBusyEmail(null);
+      setLoading(false);
+    }
+  };
+
+  const filterQ = devFilter.trim().toLowerCase();
+  const filteredDevUsers = filterQ
+    ? devUsers.filter((u) =>
+        u.name.toLowerCase().includes(filterQ)
+        || u.email.toLowerCase().includes(filterQ)
+        || u.role.toLowerCase().includes(filterQ))
+    : devUsers;
+
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+      <div className={`bg-white rounded-lg shadow-xl p-8 w-full ${showDevQuick ? 'max-w-lg' : 'max-w-md'}`}>
         <div className="text-center mb-8">
           <div className="mx-auto mb-5 w-fit">
             <BrandLogo heightClass="h-14" variant="light" animate className="mx-auto" />
@@ -192,6 +253,55 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         >
           {showRegister ? 'Already have an account? Sign in' : 'Need an account? Register'}
         </button>
+
+        {showDevQuick && (
+          <div className="mt-6 rounded-lg border-2 border-amber-400 bg-amber-50 p-4">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <h3 className="text-base font-semibold text-amber-950">Quick login (all users)</h3>
+              <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900">
+                localhost only
+              </span>
+            </div>
+            <p className="mb-3 text-xs text-amber-800">
+              Click Login next to a name — no password needed. Not shown on production.
+            </p>
+            <input
+              type="search"
+              placeholder="Search name or email…"
+              value={devFilter}
+              onChange={(e) => setDevFilter(e.target.value)}
+              className="mb-3 w-full rounded border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+            {devUsersError && (
+              <p className="mb-2 text-xs text-red-600">{devUsersError}</p>
+            )}
+            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+              {filteredDevUsers.length === 0 && !devUsersError && (
+                <p className="text-xs text-amber-700">Loading users…</p>
+              )}
+              {filteredDevUsers.map((u) => (
+                <div
+                  key={u.email}
+                  className="flex items-center gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-semibold text-gray-900">{u.name}</div>
+                    <div className="truncate text-xs text-gray-500">{u.email}</div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-500">{u.role}</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleDevQuickLogin(u.email)}
+                    className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {quickBusyEmail === u.email ? '…' : 'Login'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-8 space-y-3">
           <div className="flex items-center gap-2 text-green-600">

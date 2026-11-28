@@ -12,7 +12,7 @@ import MeetingRemarksIntegration from './MeetingRemarksIntegration';
 import { MultiSelect } from './MultiSelect';
 import { CustomDateTimePicker } from './CustomDateTimePicker';
 import { SimplePagination } from './SimplePagination';
-import { canMutateLead } from '../utils/leadPermissions';
+import { canMutateLead, resolveAccountManagerEmail } from '../utils/leadPermissions';
 import { leadFocusLabel, type LeadFocusField } from '../utils/leadFocus';
 import apiClient from '../services/apiClient';
 import { callStatusLabel } from '../utils/callStatusLabel';
@@ -326,6 +326,17 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
     };
   }, [isOpen, lead?.id, lead?.accountManager, lead?.salesPerson]);
 
+  // Default Assigned To / Scheduled by to lead Account Manager when opening a lead
+  useEffect(() => {
+    if (!isOpen || !lead) return;
+    const amEmail = resolveAccountManagerEmail(lead.accountManager, availableUsers);
+    if (!amEmail) return;
+    setNewFollowUp((prev) => ({
+      ...prev,
+      assignedTo: amEmail,
+    }));
+  }, [isOpen, lead?.id, lead?.accountManager, availableUsers]);
+
   // Contact editing state
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [contactModalMode, setContactModalMode] = useState<'add' | 'edit'>('add');
@@ -536,14 +547,19 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
 
     if (onAddFollowUp) {
       try {
+        const isMeetingType = String(newFollowUp.type || '').toLowerCase().includes('meeting');
+        const amEmail = resolveAccountManagerEmail(lead?.accountManager, availableUsers);
+        const scheduledBy = isMeetingType
+          ? (newFollowUp.assignedTo || amEmail || currentUser)
+          : (newFollowUp.assignedTo || currentUser);
         await onAddFollowUp(id, {
           type: newFollowUp.type,
           status: newFollowUp.status,
           date: newFollowUp.scheduledDate, // Map scheduledDate to date
           notes: newFollowUp.notes.trim(),
-          assignedTo: newFollowUp.assignedTo,
+          assignedTo: scheduledBy,
           createdAt: new Date().toISOString(),
-          createdBy: currentUser,
+          createdBy: isMeetingType ? scheduledBy : currentUser,
           updatedAt: new Date().toISOString(),
           updatedBy: currentUser
         });
@@ -554,7 +570,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           status: 'Planned',
           scheduledDate: '',
           notes: '',
-          assignedTo: currentUser
+          assignedTo: resolveAccountManagerEmail(lead?.accountManager, availableUsers) || currentUser
         });
 
         alert('Follow-up added successfully!');
@@ -1513,7 +1529,18 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                       <label className="block text-sm font-bold text-slate-800 mb-1">📋 Type</label>
                       <select
                         value={newFollowUp.type}
-                        onChange={(e) => setNewFollowUp(prev => ({ ...prev, type: e.target.value as FollowUpType }))}
+                        onChange={(e) => {
+                          const nextType = e.target.value as FollowUpType;
+                          const isMeetingType = String(nextType || '').toLowerCase().includes('meeting');
+                          const amEmail = resolveAccountManagerEmail(lead?.accountManager, availableUsers);
+                          setNewFollowUp((prev) => ({
+                            ...prev,
+                            type: nextType,
+                            assignedTo: isMeetingType
+                              ? (amEmail || prev.assignedTo || currentUser)
+                              : prev.assignedTo,
+                          }));
+                        }}
                         className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 bg-white text-slate-800"
                       >
                         {FOLLOW_UP_TYPES.map(type => (
@@ -1557,7 +1584,11 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-sm font-bold text-slate-800 mb-1">👤 Assigned To</label>
+                      <label className="block text-sm font-bold text-slate-800 mb-1">
+                        {String(newFollowUp.type || '').toLowerCase().includes('meeting')
+                          ? '👤 Account Manager / Scheduled by'
+                          : '👤 Assigned To'}
+                      </label>
                       <select
                         value={newFollowUp.assignedTo}
                         onChange={(e) => setNewFollowUp(prev => ({ ...prev, assignedTo: e.target.value }))}

@@ -1,13 +1,22 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from './Modal';
 import type { Lead, FollowUp } from '../types';
+import { resolveAccountManagerEmail } from '../utils/leadPermissions';
+import { getUserDisplayName } from '../utils/dataCleaning';
 
 interface PlanMeetingModalProps {
   leads: Lead[];
+  availableUsers?: Array<{ id: string; name: string; email: string; role: string }>;
   onClose: () => void;
   onSchedule: (
     leadId: string,
-    meetingDetails: Omit<FollowUp, 'id' | 'type' | 'status'> & { durationMinutes?: number; meetingLink?: string }
+    meetingDetails: Omit<FollowUp, 'id' | 'type' | 'status'> & {
+      durationMinutes?: number;
+      meetingLink?: string;
+      createdBy?: string;
+      createdAt?: string;
+      assignedTo?: string;
+    }
   ) => void;
 }
 
@@ -52,11 +61,18 @@ function leadCityLabel(lead: Lead, term = ''): string {
   return (t && cities.find((c) => c.toLowerCase().includes(t))) || cities[0] || '';
 }
 
-export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClose, onSchedule }) => {
+export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({
+  leads,
+  availableUsers = [],
+  onClose,
+  onSchedule,
+}) => {
   const safeLeads = Array.isArray(leads) ? leads : [];
+  const safeUsers = Array.isArray(availableUsers) ? availableUsers : [];
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLeadId, setSelectedLeadId] = useState<string>('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [scheduledBy, setScheduledBy] = useState('');
   const [date, setDate] = useState(() => {
     const now = new Date();
     // Manual IST offset logic (original)
@@ -84,17 +100,66 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
   const inputDisplayValue = selectedLeadId && selectedLead ? selectedLead.agencyName || '' : searchTerm;
   const showSuggestions = !selectedLeadId && (dropdownOpen || Boolean(searchTerm.trim()));
 
+  const accountManagerOptions = useMemo(() => {
+    const byEmail = new Map<string, { email: string; name: string; role: string }>();
+    for (const u of safeUsers) {
+      const email = String(u.email || '').trim();
+      if (!email) continue;
+      byEmail.set(email.toLowerCase(), {
+        email,
+        name: u.name || getUserDisplayName(email, safeUsers),
+        role: u.role || '',
+      });
+    }
+    // Ensure current lead AM appears even if not in users list
+    if (selectedLead?.accountManager) {
+      const resolved = resolveAccountManagerEmail(selectedLead.accountManager, safeUsers);
+      const key = resolved.toLowerCase();
+      if (resolved && !byEmail.has(key)) {
+        byEmail.set(key, {
+          email: resolved,
+          name: getUserDisplayName(resolved, safeUsers),
+          role: 'Account Manager',
+        });
+      }
+    }
+    return Array.from(byEmail.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [safeUsers, selectedLead?.accountManager]);
+
+  const applyLeadAccountManager = (lead: Lead | undefined | null) => {
+    if (!lead) {
+      setScheduledBy('');
+      return;
+    }
+    const amEmail = resolveAccountManagerEmail(lead.accountManager, safeUsers);
+    setScheduledBy(amEmail || '');
+  };
+
+  useEffect(() => {
+    applyLeadAccountManager(selectedLead);
+    // Re-resolve when users list loads after lead selection
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLeadId, selectedLead?.accountManager, safeUsers]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedLeadId) {
       alert('Please select an agency.');
       return;
     }
+    if (!scheduledBy.trim()) {
+      alert('Please select the Account Manager (Scheduled by).');
+      return;
+    }
+    const createdAt = new Date().toISOString();
     onSchedule(selectedLeadId, {
       date: new Date(date).toISOString(),
       notes,
       durationMinutes,
       meetingLink: meetingLink.trim(),
+      createdBy: scheduledBy.trim(),
+      assignedTo: scheduledBy.trim(),
+      createdAt,
     });
   };
 
@@ -136,6 +201,9 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
                 ) : (
                   filteredLeads.map((lead) => {
                     const city = leadCityLabel(lead, searchTerm);
+                    const amLabel = lead.accountManager
+                      ? getUserDisplayName(lead.accountManager, safeUsers)
+                      : '';
                     return (
                     <li
                       key={lead.id}
@@ -149,12 +217,16 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
                         setSelectedLeadId(lead.id);
                         setSearchTerm('');
                         setDropdownOpen(false);
+                        // Admin/any planner: picking a client immediately selects that lead's AM
+                        applyLeadAccountManager(lead);
                       }}
                     >
                       <div className="font-medium text-slate-900 break-words">{lead.agencyName}</div>
-                      {city ? (
-                        <div className="mt-0.5 text-xs text-slate-500">{city}</div>
-                      ) : null}
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {amLabel ? <span className="text-rose-700 font-medium">AM: {amLabel}</span> : null}
+                        {amLabel && city ? ' · ' : null}
+                        {city || null}
+                      </div>
                     </li>
                     );
                   })
@@ -162,6 +234,48 @@ export const PlanMeetingModal: React.FC<PlanMeetingModalProps> = ({ leads, onClo
               </ul>
             )}
           </div>
+        </div>
+
+        <div className="meeting-field">
+          <label htmlFor="scheduled-by">
+            Account Manager / Scheduled by <span className="text-rose-500 normal-case tracking-normal">*</span>
+          </label>
+          <select
+            id="scheduled-by"
+            value={(() => {
+              if (!scheduledBy) return '';
+              const match = accountManagerOptions.find(
+                (u) =>
+                  u.email.toLowerCase() === scheduledBy.toLowerCase()
+                  || u.name.toLowerCase() === scheduledBy.toLowerCase()
+              );
+              return match?.email || scheduledBy;
+            })()}
+            onChange={(e) => setScheduledBy(e.target.value)}
+            required
+            disabled={!selectedLeadId}
+          >
+            <option value="">
+              {selectedLeadId ? 'Select account manager…' : 'Select an agency first…'}
+            </option>
+            {accountManagerOptions.map((u) => (
+              <option key={u.email} value={u.email}>
+                {u.name}{u.role ? ` — ${u.role}` : ''}
+              </option>
+            ))}
+          </select>
+          {selectedLead?.accountManager ? (
+            <p className="mt-1 text-xs text-slate-500 normal-case tracking-normal font-normal">
+              Auto-selected from lead AM:{' '}
+              <span className="font-semibold text-slate-700">
+                {getUserDisplayName(scheduledBy || selectedLead.accountManager, safeUsers)}
+              </span>
+            </p>
+          ) : selectedLeadId ? (
+            <p className="mt-1 text-xs text-amber-700 normal-case tracking-normal font-normal">
+              This lead has no Account Manager set — choose one before scheduling.
+            </p>
+          ) : null}
         </div>
 
         <div className="meeting-field">

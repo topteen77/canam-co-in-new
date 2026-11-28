@@ -3,9 +3,10 @@ import type { Lead, FollowUp, MeetingCheckInRecord } from '../types';
 import { PlusIcon } from './icons/SparklesIcon';
 import { SearchableFilterSelect } from './SearchableFilterSelect';
 import { getUserDisplayName } from '../utils/dataCleaning';
-import { canFixBlankMeetingMeta, emailsMatch } from '../utils/leadPermissions';
-import { isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
+import { canFixBlankMeetingMeta, emailsMatch, resolveAccountManagerEmail } from '../utils/leadPermissions';
+import { isActiveMeetingRecord, meetingBelongsToUser, userHasActiveMeeting } from '../utils/meetingActive';
 import { readScheduledFollowUpId, stripScheduledFollowUpId, type ScheduledMeetingStart } from '../utils/scheduledMeeting';
+import { canStartScheduledMeeting } from '../shared/meetingCheckInIdentity.js';
 
 type MeetingItem = FollowUp & {
   leadId: string;
@@ -35,6 +36,9 @@ interface MeetingPlannerProps {
   canViewAllMeetings?: boolean;
   selectedDate?: Date | null;
   onSelectedDateChange?: (date: Date | null) => void;
+  /** Shared with Completed Meetings so client search filters both lists. */
+  agentFilter?: string;
+  onAgentFilterChange?: (agent: string) => void;
   onUpdateLead: (lead: Lead) => void;
   onPlanNewMeeting: () => void;
   onStartScheduledMeeting?: (meeting: ScheduledMeetingStart) => void;
@@ -274,6 +278,8 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
   canViewAllMeetings = false,
   selectedDate: selectedDateProp = null,
   onSelectedDateChange,
+  agentFilter: agentFilterProp,
+  onAgentFilterChange,
   onUpdateLead,
   onPlanNewMeeting,
   onStartScheduledMeeting,
@@ -361,7 +367,12 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     if (onSelectedDateChange) onSelectedDateChange(date);
     else setSelectedDateInternal(date);
   };
-  const [agentFilter, setAgentFilter] = useState('');
+  const [agentFilterInternal, setAgentFilterInternal] = useState('');
+  const agentFilter = agentFilterProp !== undefined ? agentFilterProp : agentFilterInternal;
+  const setAgentFilter = (next: string) => {
+    if (onAgentFilterChange) onAgentFilterChange(next);
+    if (agentFilterProp === undefined) setAgentFilterInternal(next);
+  };
   const [managerFilter, setManagerFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [dateFromFilter, setDateFromFilter] = useState('');
@@ -478,7 +489,38 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     ? getUserDisplayName(currentUser, availableUsers)
     : '';
 
+  const userInActiveMeeting = useMemo(
+    () => userHasActiveMeeting(meetingCheckInRecords, currentUser),
+    [meetingCheckInRecords, currentUser]
+  );
+
+  const isActiveForThisLead = (meeting: MeetingItem) =>
+    meetingCheckInRecords.some(
+      (record) =>
+        String(record.leadId || '') === String(meeting.leadId)
+        && meetingBelongsToUser(record, currentUser)
+        && isActiveMeetingRecord(record)
+    );
+
+  const meetingStartOwnership = (meeting: MeetingItem) =>
+    canStartScheduledMeeting({
+      currentUserEmail: currentUser || '',
+      currentUserName: getUserDisplayName(currentUser || '', availableUsers),
+      createdBy: meeting.createdBy || '',
+      users: availableUsers,
+    });
+
   const startScheduledMeeting = (meeting: MeetingItem) => {
+    // Allow opening check-out for the active lead; block starting a different meeting
+    if (userInActiveMeeting && !isActiveForThisLead(meeting)) {
+      alert('You already have a meeting in progress. End that meeting before starting another.');
+      return;
+    }
+    const ownership = meetingStartOwnership(meeting);
+    if (!ownership.allowed && !isActiveForThisLead(meeting)) {
+      alert(ownership.message || `Only ${ownership.ownerLabel || 'the scheduler'} can start this meeting.`);
+      return;
+    }
     onStartScheduledMeeting?.({
       followUpId: meeting.id,
       leadId: meeting.leadId,
@@ -505,7 +547,8 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
     setEditLink(meeting.meetingLink || '');
     setEditNotes(meeting.notes || '');
     setEditCreatedAt(canFixMeta ? toLocalDateTimeValue(new Date().toISOString()) : '');
-    setEditCreatedBy(canFixMeta ? (meeting.createdBy || currentUser || '') : '');
+    const amEmail = resolveAccountManagerEmail(lead?.accountManager, availableUsers);
+    setEditCreatedBy(canFixMeta ? (meeting.createdBy || amEmail || currentUser || '') : '');
   };
 
   const cancelEditMeeting = () => {
@@ -788,17 +831,36 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                   {meeting.meetingLink?.trim() ? meetingLinkLabel(meeting.meetingLink) : 'No link added'}
                 </p>
               </button>
-              <button
-                type="button"
-                onClick={() => startScheduledMeeting(meeting)}
-                className="rounded-lg min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
-              >
-                {meetingCheckInRecords.some((record) => (
-                  String(record.leadId || '') === String(meeting.leadId)
-                  && meetingBelongsToUser(record, currentUser)
-                  && isActiveMeetingRecord(record)
-                )) ? 'End meeting' : 'Start meeting'}
-              </button>
+              {(() => {
+                const ownership = meetingStartOwnership(meeting);
+                const activeHere = isActiveForThisLead(meeting);
+                const blockedByOwner = !ownership.allowed && !activeHere;
+                const blockedByActive = userInActiveMeeting && !activeHere;
+                const disabled = blockedByOwner || blockedByActive;
+                const title = blockedByOwner
+                  ? (ownership.message || `Only ${ownership.ownerLabel || 'the scheduler'} can start this meeting`)
+                  : blockedByActive
+                    ? 'End your current meeting before starting another'
+                    : undefined;
+                const label = activeHere
+                  ? 'End meeting'
+                  : blockedByOwner
+                    ? `Only ${ownership.ownerLabel || 'scheduler'} can start`
+                    : blockedByActive
+                      ? 'In another meeting'
+                      : 'Start meeting';
+                return (
+                  <button
+                    type="button"
+                    onClick={() => startScheduledMeeting(meeting)}
+                    disabled={disabled}
+                    title={title}
+                    className="rounded-lg min-h-[44px] px-3 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {label}
+                  </button>
+                );
+              })()}
             </div>
             <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
               <button
@@ -903,7 +965,7 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">
-                    Scheduled by *
+                    Account Manager / Scheduled by *
                   </label>
                   <select
                     value={editCreatedBy}
@@ -911,7 +973,7 @@ export const ItineraryDisplay: React.FC<MeetingPlannerProps> = ({
                     className="block w-full px-3 py-2 text-sm border-2 border-slate-300 rounded-lg bg-white min-h-[44px]"
                     required
                   >
-                    <option value="">Select user</option>
+                    <option value="">Select account manager</option>
                     {(Array.isArray(availableUsers) ? availableUsers : []).map((user) => (
                       <option key={user.email || user.id} value={user.email || ''}>
                         {user.name || user.email}
