@@ -111,52 +111,79 @@ export const checkInMeeting = async (data) => {
       ? ((data.photoUploadCount?.checkIn || 0) + (data.photoUploadCount?.completion || 0))
       : (data.photoUploadCount || 0);
 
+    const username = data.username ?? '';
+    const createdBy = data.createdBy ?? username;
+    const hasCreatedBy = cols.has('createdBy') || cols.has('created_by');
+    const createdByCol = cols.has('createdBy') ? 'createdBy' : (cols.has('created_by') ? 'created_by' : null);
+
     if (cols.has('firebase_id') && cols.has('salesPersonEmail')) {
+      const columns = [
+        'firebase_id', 'username', 'salesPersonName', 'salesPersonEmail', 'meetingType', 'notes',
+        'leadId', 'leadName', 'date', 'checkInTime', 'meetingStatus', 'location',
+        'checkInPhotos', 'checkInPhotoMetadata', 'photoUploadCount', 'createdAt',
+      ];
+      const values = [
+        uniqueId,
+        username,
+        data.salesPersonName ?? '',
+        data.salesPersonEmail ?? '',
+        data.meetingType ?? 'In-Person',
+        data.notes ?? '',
+        data.leadId ?? '',
+        data.leadName ?? '',
+        data.date ?? '',
+        data.checkInTime ?? new Date().toISOString(),
+        'active',
+        typeof data.location === 'object' ? JSON.stringify(data.location || {}) : (data.location || '{}'),
+        typeof data.checkInPhotos === 'string' ? data.checkInPhotos : JSON.stringify(data.checkInPhotos || []),
+        data.checkInPhotoMetadata ? JSON.stringify(data.checkInPhotoMetadata) : '{}',
+        typeof photoCount === 'object' ? JSON.stringify(photoCount) : photoCount,
+        // createdAt uses NOW() below
+      ];
+      if (hasCreatedBy && createdByCol) {
+        columns.splice(columns.length - 1, 0, createdByCol);
+        values.push(createdBy);
+      }
+      const placeholders = columns.map((c) => (c === 'createdAt' ? 'NOW()' : '?')).join(', ');
+      const bind = values; // createdAt is NOW(), not bound
       await db.execute(
-        `INSERT INTO ${table} (firebase_id, username, salesPersonName, salesPersonEmail, meetingType, notes, leadId, leadName, date, checkInTime, meetingStatus, location, checkInPhotos, checkInPhotoMetadata, photoUploadCount, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [
-          uniqueId,
-          data.username ?? '',
-          data.salesPersonName ?? '',
-          data.salesPersonEmail ?? '',
-          data.meetingType ?? 'In-Person',
-          data.notes ?? '',
-          data.leadId ?? '',
-          data.leadName ?? '',
-          data.date ?? '',
-          data.checkInTime ?? new Date().toISOString(),
-          'active',
-          typeof data.location === 'object' ? JSON.stringify(data.location || {}) : (data.location || '{}'),
-          typeof data.checkInPhotos === 'string' ? data.checkInPhotos : JSON.stringify(data.checkInPhotos || []),
-          data.checkInPhotoMetadata ? JSON.stringify(data.checkInPhotoMetadata) : '{}',
-          typeof photoCount === 'object' ? JSON.stringify(photoCount) : photoCount,
-        ]
+        `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`,
+        bind
       );
     } else {
+      const columns = [
+        'id', 'username', 'salesPersonName', 'salesPersonEmail', 'meetingType', 'notes',
+        'leadId', 'leadName', 'date', 'checkInTime', 'meetingStatus', 'location',
+        'checkInPhotos', 'checkInPhotoMetadata', 'photoUploadCount', 'createdAt',
+      ];
+      const values = [
+        uniqueId,
+        username,
+        data.salesPersonName ?? '',
+        data.salesPersonEmail ?? '',
+        data.meetingType ?? 'In-Person',
+        data.notes ?? '',
+        data.leadId ?? '',
+        data.leadName ?? '',
+        data.date ?? '',
+        data.checkInTime ?? '',
+        'active',
+        JSON.stringify(data.location || {}),
+        JSON.stringify(data.checkInPhotos || []),
+        JSON.stringify(data.checkInPhotoMetadata || {}),
+        photoCount,
+      ];
+      if (hasCreatedBy && createdByCol) {
+        columns.splice(columns.length - 1, 0, createdByCol);
+        values.push(createdBy);
+      }
+      const placeholders = columns.map((c) => (c === 'createdAt' ? 'NOW()' : '?')).join(', ');
       await db.execute(
-        `INSERT INTO ${table} (id, username, salesPersonName, salesPersonEmail, meetingType, notes, leadId, leadName, date, checkInTime, meetingStatus, location, checkInPhotos, checkInPhotoMetadata, photoUploadCount, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [
-          uniqueId,
-          data.username ?? '',
-          data.salesPersonName ?? '',
-          data.salesPersonEmail ?? '',
-          data.meetingType ?? 'In-Person',
-          data.notes ?? '',
-          data.leadId ?? '',
-          data.leadName ?? '',
-          data.date ?? '',
-          data.checkInTime ?? '',
-          'active',
-          JSON.stringify(data.location || {}),
-          JSON.stringify(data.checkInPhotos || []),
-          JSON.stringify(data.checkInPhotoMetadata || {}),
-          photoCount,
-        ]
+        `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`,
+        values
       );
     }
-    return { success: true, id: uniqueId };
+    return { success: true, id: uniqueId, username, createdBy };
   } catch (error) {
     console.error('❌ Service Error (checkInMeeting):', error.message);
     throw error;

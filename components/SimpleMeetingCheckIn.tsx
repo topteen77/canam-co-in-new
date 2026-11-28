@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import apiClient from '../services/apiClient';
 import type { Lead } from '../types';
@@ -9,6 +9,8 @@ import {
   withScheduledFollowUpId,
   type ScheduledMeetingStart,
 } from '../utils/scheduledMeeting';
+import { evaluateCheckInIdentity } from '../shared/meetingCheckInIdentity.js';
+import { getUserDisplayName } from '../utils/dataCleaning';
 
 interface SimpleMeetingCheckInProps {
   isOpen: boolean;
@@ -16,6 +18,7 @@ interface SimpleMeetingCheckInProps {
   availableUsers: Array<{ id: string, name: string, email: string, role: string }>;
   userLeads: Lead[];
   currentUser: string;
+  isAdmin?: boolean;
   /** Refresh parent meeting list so header "In Meeting" stays in sync. */
   onMeetingsChange?: () => void | Promise<void>;
   /** Prefill check-in when an account manager starts a scheduled agenda meeting. */
@@ -36,6 +39,7 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
   availableUsers,
   userLeads,
   currentUser,
+  isAdmin = false,
   onMeetingsChange,
   scheduledMeeting = null,
   onScheduledMeetingCompleted,
@@ -75,6 +79,19 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
 
   // Get selected lead data for display
   const selectedLeadData = safeUserLeads.find(lead => lead.id === selectedLead);
+  const signedInLabel = getUserDisplayName(currentUser, availableUsers);
+  const identityCheck = useMemo(
+    () =>
+      evaluateCheckInIdentity({
+        currentUserEmail: currentUser,
+        currentUserName: signedInLabel,
+        salesPersonName: selectedSalesPerson,
+        accountManager: selectedLeadData?.accountManager || '',
+        users: availableUsers,
+      }),
+    [currentUser, signedInLabel, selectedSalesPerson, selectedLeadData?.accountManager, availableUsers]
+  );
+  const identityMismatch = !identityCheck.match;
 
   // Photo upload handlers - append photos instead of replacing
   const handleCheckInPhotoUpload = (photos: string[], fileSize?: string) => {
@@ -241,6 +258,19 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
       return;
     }
 
+    let confirmIdentityOverride = false;
+    if (identityMismatch) {
+      if (!isAdmin) {
+        alert(identityCheck.message || 'Signed-in user does not match Account Manager. Log out and sign in with the correct account.');
+        return;
+      }
+      const ok = window.confirm(
+        `${identityCheck.message}\n\nYou are an admin. Start this meeting anyway under your login (${signedInLabel})?`
+      );
+      if (!ok) return;
+      confirmIdentityOverride = true;
+    }
+
     setIsSubmitting(true);
     try {
       console.log('🚀 Starting meeting...');
@@ -276,7 +306,8 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
           completion: 0
         },
         createdBy: currentUser,
-        createdAt: now.toISOString()
+        createdAt: now.toISOString(),
+        ...(confirmIdentityOverride ? { confirmIdentityOverride: true } : {}),
       };
 
       console.log('📝 Meeting data:', meetingData);
@@ -301,16 +332,18 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
     } catch (error: any) {
       console.error('❌ Error starting meeting:', error);
 
-      // Provide specific error messages for common issues
+      const apiData = error?.response?.data;
       let errorMessage = 'Unknown error';
-      if (error.message?.includes('bytes')) {
+      if (apiData?.error === 'IDENTITY_MISMATCH' || apiData?.code === 'IDENTITY_MISMATCH') {
+        errorMessage = apiData.message || identityCheck.message;
+      } else if (error.message?.includes('bytes')) {
         errorMessage = 'Photos are too large. Please try with fewer or smaller photos.';
-      } else if (error.message?.includes('permission')) {
-        errorMessage = 'Permission denied. Please check your access rights.';
+      } else if (error.message?.includes('permission') || error?.response?.status === 401) {
+        errorMessage = 'Permission denied. Please sign in again.';
       } else if (error.message?.includes('network')) {
         errorMessage = 'Network error. Please check your internet connection.';
       } else {
-        errorMessage = error.message || 'Unknown error';
+        errorMessage = apiData?.message || error.message || 'Unknown error';
       }
 
       alert(`Error starting meeting: ${errorMessage}`);
@@ -616,6 +649,32 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
         </div>
       ) : (
         <form onSubmit={handleStartMeeting} className="space-y-4">
+          <div
+            className={`rounded-lg border px-3 py-2.5 text-[13px] ${
+              identityMismatch
+                ? 'border-amber-300 bg-amber-50 text-amber-950'
+                : 'border-slate-200 bg-slate-50 text-slate-800'
+            }`}
+          >
+            <p className="font-semibold">
+              Checking in as: {signedInLabel}
+              {currentUser ? (
+                <span className="font-normal text-slate-600"> ({currentUser})</span>
+              ) : null}
+            </p>
+            {identityMismatch ? (
+              <p className="mt-1 text-[12px] leading-snug">
+                {isAdmin
+                  ? `Account Manager / lead AM looks like ${identityCheck.conflictingLabel || 'someone else'}. Admins can confirm to continue under this login.`
+                  : `This meeting looks like it belongs to ${identityCheck.conflictingLabel || 'another user'}. Log out and sign in as that account before starting.`}
+              </p>
+            ) : (
+              <p className="mt-1 text-[12px] text-slate-600">
+                Meetings are saved under the signed-in account. On a shared phone, log out first.
+              </p>
+            )}
+          </div>
+
           <div className="meeting-field">
             <label htmlFor="salesPerson">Account Manager *</label>
             <input
@@ -835,10 +894,19 @@ export const SimpleMeetingCheckIn: React.FC<SimpleMeetingCheckInProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !location || checkInPhotos.length === 0}
+              disabled={
+                isSubmitting
+                || !location
+                || checkInPhotos.length === 0
+                || (identityMismatch && !isAdmin)
+              }
               className="w-full flex-1 min-h-[44px] px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Sending meeting and photos…' : 'Start Meeting'}
+              {isSubmitting
+                ? 'Sending meeting and photos…'
+                : identityMismatch && isAdmin
+                  ? 'Start Meeting (admin override)'
+                  : 'Start Meeting'}
             </button>
           </div>
         </form>

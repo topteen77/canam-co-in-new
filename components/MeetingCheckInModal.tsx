@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import apiClient from '../services/apiClient';
 import type { Lead } from '../types';
@@ -7,6 +7,8 @@ import { MeetingPhotoUpload } from './MeetingPhotoUpload';
 import { SimplePhotoUpload } from './SimplePhotoUpload';
 import { EnhancedPhotoCapture } from './EnhancedPhotoCapture';
 import { isActiveMeetingRecord, meetingBelongsToUser } from '../utils/meetingActive';
+import { evaluateCheckInIdentity } from '../shared/meetingCheckInIdentity.js';
+import { getUserDisplayName } from '../utils/dataCleaning';
 
 interface MeetingCheckInModalProps {
   isOpen: boolean;
@@ -14,6 +16,7 @@ interface MeetingCheckInModalProps {
   availableUsers: Array<{ id: string, name: string, email: string, role: string }>;
   currentUser: string | null;
   userLeads?: Lead[];
+  isAdmin?: boolean;
 }
 
 export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
@@ -21,7 +24,8 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
   onClose,
   availableUsers,
   currentUser,
-  userLeads = []
+  userLeads = [],
+  isAdmin = false,
 }) => {
   const [selectedSalesPerson, setSelectedSalesPerson] = useState('');
   const [salesPersonEmail, setSalesPersonEmail] = useState('');
@@ -67,6 +71,19 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
 
   // Get selected lead data for display
   const selectedLeadData = safeUserLeads.find(lead => lead.id === selectedLead);
+  const signedInLabel = getUserDisplayName(currentUser || '', availableUsers);
+  const identityCheck = useMemo(
+    () =>
+      evaluateCheckInIdentity({
+        currentUserEmail: currentUser || '',
+        currentUserName: signedInLabel,
+        salesPersonName: selectedSalesPerson,
+        accountManager: selectedLeadData?.accountManager || '',
+        users: availableUsers,
+      }),
+    [currentUser, signedInLabel, selectedSalesPerson, selectedLeadData?.accountManager, availableUsers]
+  );
+  const identityMismatch = !identityCheck.match;
 
   useEffect(() => {
     if (isOpen) {
@@ -200,6 +217,19 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
       return;
     }
 
+    let confirmIdentityOverride = false;
+    if (identityMismatch) {
+      if (!isAdmin) {
+        alert(identityCheck.message || 'Signed-in user does not match Account Manager. Log out and sign in with the correct account.');
+        return;
+      }
+      const ok = window.confirm(
+        `${identityCheck.message}\n\nYou are an admin. Start this meeting anyway under your login (${signedInLabel})?`
+      );
+      if (!ok) return;
+      confirmIdentityOverride = true;
+    }
+
     setIsSubmitting(true);
     try {
       // Intelligent photo optimization for database storage
@@ -266,7 +296,8 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
         },
         createdBy: currentUser,
         createdAt: now.toISOString(),
-        date: now.toISOString().split('T')[0]
+        date: now.toISOString().split('T')[0],
+        ...(confirmIdentityOverride ? { confirmIdentityOverride: true } : {}),
       });
 
       alert('Meeting started successfully!');
@@ -282,13 +313,16 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
       setShowNewLeadForm(false);
       // Refresh active meeting status
       checkActiveMeeting();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error recording meeting check-in:', error);
 
       let errorMessage = 'Error recording meeting check-in. Please try again.';
-      if (error instanceof Error) {
-        if (error.message.includes('permission')) {
-          errorMessage = 'Permission denied. Please check your user permissions.';
+      const apiData = error?.response?.data;
+      if (apiData?.error === 'IDENTITY_MISMATCH') {
+        errorMessage = apiData.message || identityCheck.message;
+      } else if (error instanceof Error) {
+        if (error.message.includes('permission') || error?.response?.status === 401) {
+          errorMessage = 'Permission denied. Please sign in again.';
         } else if (error.message.includes('network')) {
           errorMessage = 'Network error. Please check your internet connection.';
         } else if (error.message.includes('quota')) {
@@ -382,6 +416,29 @@ export const MeetingCheckInModal: React.FC<MeetingCheckInModalProps> = ({
 
       {!activeMeeting ? (
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div
+            className={`rounded-lg border px-3 py-2.5 text-[13px] ${
+              identityMismatch
+                ? 'border-amber-300 bg-amber-50 text-amber-950'
+                : 'border-slate-200 bg-slate-50 text-slate-800'
+            }`}
+          >
+            <p className="font-semibold">
+              Checking in as: {signedInLabel}
+              {currentUser ? <span className="font-normal text-slate-600"> ({currentUser})</span> : null}
+            </p>
+            {identityMismatch ? (
+              <p className="mt-1 text-[12px] leading-snug">
+                {isAdmin
+                  ? `Account Manager looks like ${identityCheck.conflictingLabel || 'someone else'}. Confirm to continue under this login.`
+                  : `This meeting looks like it belongs to ${identityCheck.conflictingLabel || 'another user'}. Log out and sign in with that account.`}
+              </p>
+            ) : (
+              <p className="mt-1 text-[12px] text-slate-600">
+                Meetings are saved under the signed-in account. On a shared phone, log out first.
+              </p>
+            )}
+          </div>
           <div>
             <label htmlFor="salesPerson" className="block text-sm font-medium text-slate-700 mb-1">
               Sales Person Name *

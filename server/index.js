@@ -45,6 +45,8 @@ import {
   inlinePreviewDisposition,
   wantsAttachmentDownload,
 } from '../shared/documentAccess.js';
+import { evaluateCheckInIdentity } from '../shared/meetingCheckInIdentity.js';
+import { isAdminAccount } from './services/sessionService.js';
 import * as trainingTargetsService from './services/trainingTargetsService.js';
 import * as travelSessionsService from './services/travelSessionsService.js';
 import * as meetingCompletionsService from './services/meetingCompletionsService.js';
@@ -280,23 +282,78 @@ app.put('/api/meetings/update/:id', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// ✅ ADD MEETING CHECK-IN (Frontend expects this endpoint)
-app.post('/api/meetings/check-in', async (req, res) => {
+// ✅ ADD MEETING CHECK-IN — identity always comes from the auth token, never the client body
+app.post('/api/meetings/check-in', authenticateToken, async (req, res) => {
   try {
-    console.log('🤝 Meeting check-in received:', req.body);
-    
-    // Try different service function names
+    const sessionEmail = String(req.user?.email || '').trim();
+    if (!sessionEmail) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Sign in again before starting a meeting.' });
+    }
+
+    const body = req.body || {};
+    let accountManager = '';
+    if (body.leadId) {
+      try {
+        const lead = await leadsService.getLeadById(body.leadId);
+        accountManager = lead?.accountManager || lead?.account_manager || '';
+      } catch (leadErr) {
+        console.warn('Meeting check-in lead lookup failed:', leadErr.message);
+      }
+    }
+
+    let users = [];
+    try {
+      users = await userService.getAllUsers();
+    } catch (usersErr) {
+      console.warn('Meeting check-in users lookup failed:', usersErr.message);
+    }
+    const sessionUser = (users || []).find(
+      (u) => String(u?.email || '').trim().toLowerCase() === sessionEmail.toLowerCase()
+    );
+
+    const identity = evaluateCheckInIdentity({
+      currentUserEmail: sessionEmail,
+      currentUserName: sessionUser?.name || '',
+      salesPersonName: body.salesPersonName || '',
+      accountManager,
+      users,
+    });
+
+    const admin = isAdminAccount(req.user || {});
+    if (!identity.match) {
+      if (!admin || body.confirmIdentityOverride !== true) {
+        return res.status(403).json({
+          error: identity.code || 'IDENTITY_MISMATCH',
+          message: identity.message,
+          conflictingEmail: identity.conflictingEmail,
+          conflictingLabel: identity.conflictingLabel,
+          adminCanOverride: admin,
+        });
+      }
+      console.warn(
+        `⚠️ Admin ${sessionEmail} overrode meeting identity mismatch (expected ${identity.conflictingEmail})`
+      );
+    }
+
+    const payload = {
+      ...body,
+      username: sessionEmail,
+      createdBy: sessionEmail,
+    };
+    delete payload.confirmIdentityOverride;
+
+    console.log('🤝 Meeting check-in received for', sessionEmail, body.leadName || body.leadId || '');
+
     let result;
     if (meetingService.addMeetingCheckIn) {
-      result = await meetingService.addMeetingCheckIn(req.body);
+      result = await meetingService.addMeetingCheckIn(payload);
     } else if (meetingService.addMeetingCheckInRecord) {
-      result = await meetingService.addMeetingCheckInRecord(req.body);
+      result = await meetingService.addMeetingCheckInRecord(payload);
     } else {
-      // Fallback to generic addMeeting
-      result = await meetingService.addMeeting(req.body);
+      result = await meetingService.addMeeting(payload);
     }
-    
-    res.json(result || { success: true });
+
+    res.json(result || { success: true, username: sessionEmail });
   } catch (error) {
     console.error('❌ Error in /api/meetings/check-in:', error);
     res.status(500).json({ error: error.message });

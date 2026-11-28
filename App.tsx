@@ -1242,6 +1242,7 @@ const App: React.FC = () => {
                 availableUsers={availableUsers}
                 userLeads={displayedLeads}
                 currentUser={currentUser!}
+                isAdmin={isAdmin}
                 onMeetingsChange={refreshMeetingCheckIns}
                 scheduledMeeting={scheduledMeetingStart}
                 onScheduledMeetingCompleted={handleScheduledMeetingCompleted}
